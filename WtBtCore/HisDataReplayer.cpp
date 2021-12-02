@@ -34,7 +34,26 @@
 
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
-namespace rj = rapidjson;
+
+#include <cstdlib>
+#include <iostream>
+#include <chrono>
+
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::to_json;
+using namespace mongocxx;
 
 #ifdef _WIN32
 #pragma comment(lib, "libmysql.lib")
@@ -58,6 +77,27 @@ uint64_t readFileContent(const char* filename, std::string& content)
 	return length;
 }
 
+int Stamp2Time(long long timestamp)
+{
+	int ms = timestamp % 1000;//取毫秒
+	time_t tick = (time_t)(timestamp / 1000);//转换时间
+	tick = tick - 8 * 60 * 60;
+	struct tm tm;
+	char s[40];
+	tm = *localtime(&tick);
+	strftime(s, sizeof(s), "%H%M%S", &tm);
+	std::string str(s);
+	string s_ms;
+	if (10 < ms && ms < 100) {
+		s_ms = "0" + to_string(ms);
+	}
+	else if (ms < 10) {
+		s_ms = "00" + to_string(ms);
+	}
+	str = str + s_ms;
+
+	return stoi(str);
+}
 
 HisDataReplayer::HisDataReplayer()
 	: _listener(NULL)
@@ -3008,6 +3048,7 @@ bool HisDataReplayer::cacheRawBarsFromCSV(const std::string& key, const char* st
 
 bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bForBars/* = true*/)
 {
+	std::cout<<__FUNCTION__<<std::endl;
 	CodeHelper::CodeInfo cInfo;
 	CodeHelper::extractStdCode(stdCode, cInfo);
 	std::string stdPID = StrUtil::printf("%s.%s", cInfo._exchg, cInfo._product);
@@ -3021,19 +3062,22 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 	switch (period)
 	{
 	case KP_Minute1:
-		tbname = "tb_kline_min1";
+		tbname = "futures_min_1";
 		pname = "min1";
 		break;
-	case KP_Minute5:
+	/*case KP_Minute5:
 		tbname = "tb_kline_min5";
 		pname = "min5";
-		break;
+		break;*/
 	default:
-		tbname = "tb_kline_day";
+		tbname = "futures_day_1";
 		pname = "day";
 		break;
 	}
-
+	mongocxx::instance instance{};
+	mongocxx::uri uri("mongodb://192.168.214.199:27017");
+	mongocxx::client client(uri);
+	auto db = client["lsqt_kline"];
 	BarsList& barList = bForBars ? _bars_cache[key] : _unbars_cache[key];
 	barList._code = stdCode;
 	barList._period = period;
@@ -3049,58 +3093,57 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		//先按照HOT代码进行读取, 如rb.HOT
 		std::vector<WTSBarStruct>* hotAy = NULL;
 		uint32_t lastHotTime = 0;
-		for (;;)
+
+		std::string symbol = cInfo._exchg;
+		symbol += ".";
+		std::string code = cInfo._code;
+		symbol += code;
+		
+		auto cursor_1 = db["futures_min_1"].find(make_document(kvp("symbol", symbol)));
+		uint32_t barcnt = 0;
+		for (auto&& doc:cursor_1)
 		{
-			char sql[256] = { 0 };
-			if (isDay)
-				sprintf(sql, "SELECT `date`,0,open,high,low,close,settle,volume,turnover,interest,diff_interest FROM %s WHERE exchange='%s' AND code='%s.%s' ORDER BY `date`;",
-					tbname.c_str(), cInfo._exchg, cInfo._product, flag);
-			else
-				sprintf(sql, "SELECT `date`,`time`,open,high,low,close,0,volume,turnover,interest,diff_interest FROM %s WHERE exchange='%s' AND code='%s.%s' ORDER BY `time`;",
-					tbname.c_str(), cInfo._exchg, cInfo._product, flag);
+			barcnt++;
+		}
+		
+		auto cursor_2 = db["futures_min_1"].find(make_document(kvp("symbol", symbol)));
+		if (barcnt>0)
+		{
+			hotAy = new std::vector<WTSBarStruct>();
+			hotAy->resize(barcnt);
 
-			MysqlQuery query(*_db_conn);
-			if (!query.exec(sql))
-			{
-				WTSLogger::error("Loading back kbar data from database failed: %s", query.errormsg());
-			}
-			else
-			{
-				uint32_t barcnt = (uint32_t)query.num_rows();
-				if (barcnt > 0)
-				{
-					hotAy = new std::vector<WTSBarStruct>();
-					hotAy->resize(barcnt);
-
-					uint32_t idx = 0;
-					while (query.fetch_row())
-					{
-						WTSBarStruct& bs = hotAy->at(idx);
-						bs.date		= query.getuint(0);
-						bs.time		= query.getuint(1);
-						bs.open		= query.getdouble(2);
-						bs.high		= query.getdouble(3);
-						bs.low		= query.getdouble(4);
-						bs.close	= query.getdouble(5);
-						bs.settle	= query.getdouble(6);
-						bs.vol		= query.getuint(7);
-						bs.money	= query.getdouble(8);
-						bs.hold		= query.getuint(9);
-						bs.add		= query.getdouble(10);
-						idx++;
-					}
-
-					if (period != KP_DAY)
-						lastHotTime = hotAy->at(barcnt - 1).time;
-					else
-						lastHotTime = hotAy->at(barcnt - 1).date;
+			uint32_t idx = 0;
+			m_Kline kline;
+			for(auto&& doc:cursor_2){
+				std::cout << bsoncxx::to_json(doc) << std::endl;
+				rj::Document d;
+				if (d.Parse(bsoncxx::to_json(doc).c_str()).HasParseError()) {
+					WTSLogger::info("Parsing bsoncxx::to_json(doc) failed");
+					return false;
 				}
-
-				//WTSLogger::info("主力合约%s历史%s数据直接缓存%u条", stdCode, pname.c_str(), barcnt);
-				WTSLogger::info("%u items of back %s data of hot contract %s directly loaded", barcnt, pname.c_str(), stdCode);
+				
+				else
+				{
+					WTSVariant* cfg = WTSVariant::createObject();
+					jsonToVariant(d, cfg);
+					WTSBarStruct& bs = hotAy->at(idx);
+					//kline.m_symbol = cfg->getCString("symol");
+					bs.date = stoi(cfg->getCString("trade_day"));
+					bs.open = cfg->getDouble("open");
+					bs.high = cfg->getDouble("high");
+					bs.low = cfg->getDouble("low");
+					bs.close = cfg->getDouble("close");
+					bs.vol = cfg->getInt32("volume");
+					WTSVariant* cfgBF = cfg->get("datetime");
+					unsigned long long time=stoll(cfgBF->getCString("$date"));
+					bs.time=Stamp2Time(time);
+					idx++;
+				}
 			}
-
-			break;
+			if (period != KP_DAY)
+				lastHotTime = hotAy->at(barcnt - 1).time;
+			else
+				lastHotTime = hotAy->at(barcnt - 1).date;
 		}
 
 		HotSections secs;

@@ -20,6 +20,7 @@ ENDIF ()
 #basic libraries
 ADD_SUBDIRECTORY(WTSUtils)
 ADD_SUBDIRECTORY(WTSTools)
+ADD_SUBDIRECTORY(WtCtaStraFact)
 
 #contract Loade through ctp channel
 ADD_SUBDIRECTORY(CTPLoader)

@@ -18,6 +18,9 @@
 
 #include "../WTSTools/WTSHotMgr.h"
 #include "../WTSTools/WTSBaseDataMgr.h"
+#include <rapidjson/document.h>
+#include <numeric>
+namespace rj = rapidjson;
 
 NS_OTP_BEGIN
 class WTSTickData;
@@ -369,5 +372,18 @@ private:
 	MysqlDbPtr	_db_conn;
 
 	EventNotifier*	_notifier;
+
+	struct m_Kline
+	{
+		const char* m_symbol;
+		const char* m_traday;
+		double m_open;
+		double m_high;
+		double m_low;
+		double m_close;
+		int m_volume;
+		const char* m_datetime;
+		const char* m_type;
+	};
 };
 

@@ -67,9 +67,9 @@ void run_bt()
 
 	auto id = init_cta_mocker("test", 0, true);
 
-	init_backtest("logcfgbt.json", true);
+	init_backtest("logcfg.json", true);
 
-	config_backtest("configbt.json", true);
+	config_backtest("config.json", true);
 
 	run_backtest(true, true);
 
