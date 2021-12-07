@@ -3056,10 +3056,10 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		tbname = "futures_min_1";
 		pname = "min1";
 		break;
-	/*case KP_Minute5:
-		tbname = "tb_kline_min5";
+	case KP_Minute5:
+		tbname = "futures_min_5";
 		pname = "min5";
-		break;*/
+		break;
 	case KP_DAY:
 		tbname = "futures_day_1";
 		pname = "day";
@@ -3088,6 +3088,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 
 		//先按照HOT代码进行读取, 如rb.HOT
 		std::vector<WTSBarStruct>* hotAy = NULL;
+		hotAy = new std::vector<WTSBarStruct>();
 		uint32_t lastHotTime = 0;
 
 		std::string symbol = cInfo._exchg;
@@ -3105,7 +3106,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		auto cursor_2 = db["future_min_5"].find(make_document(kvp("symbol", symbol)));
 		if (barcnt>0)
 		{
-			hotAy = new std::vector<WTSBarStruct>();
+			
 			hotAy->resize(barcnt);
 
 			uint32_t idx = 0;
@@ -3136,8 +3137,8 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 					idx++;
 				}
 			}
-			std::cout << "hotAy first:" << hotAy->front().date << std::endl;
-			std::cout << "hotAy last:" << hotAy->back().date << std::endl;
+			/*std::cout << "hotAy first:" << hotAy->front().date << std::endl;
+			std::cout << "hotAy last:" << hotAy->back().date << std::endl;*/
 			std::cout << "bs.size()=" << idx << std::endl;
 			if (period != KP_DAY)
 				lastHotTime = hotAy->at(barcnt - 1).time;
@@ -3253,7 +3254,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 			//	if (bAllCovered)
 			//		break;
 			//}
-		}
+		//}
 
 		if (hotAy)
 		{

@@ -21,6 +21,12 @@ ELSE (UNIX)
 	SET (MyDeps "/home/mydeps")
 	SET(INCS ${MyDeps}/include)
 	SET(LNKS ${MyDeps}/lib)
+	SET(INC_1 "/usr/local/include/bsoncxx")
+	SET(INC_2 "/usr/local/include/bsoncxx/v_noabi")
+	SET(INC_3 "/usr/local/include/mongocxx")
+	SET(INC_4 "/usr/local/include/mongocxx/v_noabi")
+	SET(MONGOCXX "/usr/local//lib")
+	SET(BSONCXX "/usr/local/lib")
 ENDIF ()
 
 SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/bin/WtBtPorter)
@@ -29,8 +35,8 @@ SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/bin/W
 file(GLOB SRCS *.cpp)
 file(GLOB HDRS *.h)
 
-INCLUDE_DIRECTORIES(${INCS})
-LINK_DIRECTORIES(${LNKS})
+INCLUDE_DIRECTORIES(${INCS} ${INC_2} ${INC_3} ${INC_4})
+LINK_DIRECTORIES(${LNKS} ${MONGOCXX} ${BSONCXX})
 ADD_LIBRARY(WtBtPorter SHARED ${SRCS} ${HDRS})
 
 SET(LIBS
@@ -42,6 +48,8 @@ SET(LIBS
 	dl
 	pthread
 	boost_filesystem	
+	mongocxx
+	bsoncxx
 )
 
 TARGET_LINK_LIBRARIES(WtBtPorter ${LIBS})
