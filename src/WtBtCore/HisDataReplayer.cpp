@@ -38,6 +38,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <chrono>
+#include <string>
 
 #include <bsoncxx/builder/basic/array.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
@@ -77,7 +78,35 @@ uint64_t readFileContent(const char* filename, std::string& content)
 	return length;
 }
 
-int Stamp2Time(long long timestamp)
+int StampTimeHM(unsigned long long timestamp)
+{
+	//int ms = timestamp % 1000;//取毫秒
+	time_t tick = (time_t)(timestamp / 1000);//转换时间
+	tick = tick - 8 * 60 * 60;
+	struct tm tm;
+	char s[40];
+	tm = *localtime(&tick);
+	strftime(s, sizeof(s), "%H%M", &tm);
+	std::string str(s);
+
+	return stoi(str);
+}
+
+int StampTimeYmd(unsigned long long timestamp)
+{
+	//int ms = timestamp % 1000;//取毫秒
+	time_t tick = (time_t)(timestamp / 1000);//转换时间
+	tick = tick - 8 * 60 * 60;
+	struct tm tm;
+	char s[40];
+	tm = *localtime(&tick);
+	strftime(s, sizeof(s), "%Y%m%d", &tm);
+	std::string str(s);
+
+	return stoi(str);
+}
+
+int StampTimeHMSms(long long timestamp)
 {
 	int ms = timestamp % 1000;//取毫秒
 	time_t tick = (time_t)(timestamp / 1000);//转换时间
@@ -94,9 +123,66 @@ int Stamp2Time(long long timestamp)
 	else if (ms < 10) {
 		s_ms = "00" + to_string(ms);
 	}
+	else
+	{
+		s_ms = to_string(ms);
+	}
+
 	str = str + s_ms;
 
 	return stoi(str);
+}
+
+uint32_t AddTime(int time1, int time2)
+{
+	uint32_t time = (time1 - 19900000) * 10000 + time2;
+	return time;
+}
+
+uint32_t Get_timeYmdHM(long long timestamp)
+{
+	int time1 = StampTimeYmd(timestamp);
+	int time2 = StampTimeHM(timestamp);
+
+	uint32_t ymdhm = AddTime(time1, time2);
+	return ymdhm;
+}
+
+time_t StringToDatetime(std::string str);
+
+time_t timeTransS(string time) {//time=20191230
+	time += "000000000";
+	//cout << "time=" << time << endl;
+	return StringToDatetime(time);
+}
+
+time_t timeTransE(string time) {//time=20191230
+	time += "235959999";
+	//cout << "time=" << time << endl;
+	return StringToDatetime(time);
+}
+
+time_t StringToDatetime(std::string str)
+{
+	tm tm_;												// 定义tm结构体。
+	int year, month, day, hour, minute, second;			// 定义时间的各个int临时变量。
+	year = atoi((str.substr(0, 4)).c_str());
+	month = atoi((str.substr(4, 2)).c_str());
+	day = atoi((str.substr(6, 2)).c_str());
+	hour = atoi((str.substr(8, 2)).c_str());
+	minute = atoi((str.substr(10, 2)).c_str());
+	second = atoi((str.substr(12, 2)).c_str());
+	//milsecond = atoi((str.substr(14, 3)).c_str());
+
+	tm_.tm_year = year - 1900;                 // 年，由于tm结构体存储的是从1900年开始的时间，所以tm_year为int临时变量减去1900。      
+	tm_.tm_mon = month - 1;                    // 月，由于tm结构体的月份存储范围为0-11，所以tm_mon为int临时变量减去1。
+	tm_.tm_mday = day;                         // 日。
+	tm_.tm_hour = hour;                        // 时。
+	tm_.tm_min = minute;                       // 分。
+	tm_.tm_sec = second;                       // 秒。
+	tm_.tm_isdst = 0;                          // 非夏令时。
+	time_t t_ = mktime(&tm_);                  // 将tm结构体转换成time_t格式。
+	return t_;						           // 返回值。
 }
 
 HisDataReplayer::HisDataReplayer()
@@ -2018,7 +2104,7 @@ WTSKlineSlice* HisDataReplayer::get_kline_slice(const char* stdCode, const char*
 
 WTSTickSlice* HisDataReplayer::get_tick_slice(const char* stdCode, uint32_t count, uint64_t etime)
 {
-	if (!_tick_enabled)
+	if (!_tick_enabled)//
 		return NULL;
 
 	if (!checkTicks(stdCode, _cur_tdate))
@@ -2267,6 +2353,10 @@ bool HisDataReplayer::checkOrderDetails(const char* stdCode, uint32_t uDate)
 		{
 			hasTicks = cacheRawTicksFromCSV(stdCode, stdCode, uDate);
 		}
+		else if (_mode == "db")
+		{
+			hasTicks = cacheRawTicksFromDB(stdCode, stdCode, uDate);
+		}
 		else
 		{
 			hasTicks = cacheRawTicksFromBin(stdCode, stdCode, uDate);
@@ -2300,6 +2390,10 @@ bool HisDataReplayer::checkOrderQueues(const char* stdCode, uint32_t uDate)
 		{
 			hasTicks = cacheRawTicksFromCSV(stdCode, stdCode, uDate);
 		}
+		else if (_mode == "db")
+		{
+			hasTicks = cacheRawTicksFromDB(stdCode, stdCode, uDate);
+		}
 		else
 		{
 			hasTicks = cacheRawTicksFromBin(stdCode, stdCode, uDate);
@@ -2332,6 +2426,10 @@ bool HisDataReplayer::checkTransactions(const char* stdCode, uint32_t uDate)
 		if (_mode == "csv")
 		{
 			hasTicks = cacheRawTicksFromCSV(stdCode, stdCode, uDate);
+		}
+		else if (_mode == "db")
+		{
+			hasTicks = cacheRawTicksFromDB(stdCode, stdCode, uDate);
 		}
 		else
 		{
@@ -2369,6 +2467,10 @@ bool HisDataReplayer::checkTicks(const char* stdCode, uint32_t uDate)
 		if (_mode == "csv")
 		{
 			hasTicks = cacheRawTicksFromCSV(stdCode, stdCode, uDate);
+		}
+		else if (_mode == "db")
+		{
+			hasTicks = cacheRawTicksFromDB(stdCode, stdCode, uDate);
 		}
 		else
 		{
@@ -2907,6 +3009,136 @@ bool HisDataReplayer::cacheRawTicksFromCSV(const std::string& key, const char* s
 	return true;
 }
 
+bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* stdCode, uint32_t uDate)
+{
+	if (strlen(stdCode) == 0)
+		return false;
+
+	WTSLogger::info("in cacheRawTicksFromDB");
+	CodeHelper::CodeInfo cInfo;
+	CodeHelper::extractStdCode(stdCode, cInfo);
+	std::string stdPID = StrUtil::printf("%s.%s", cInfo._exchg, cInfo._product);
+
+	uint32_t curDate = TimeUtils::getCurDate();
+	uint32_t curTime = TimeUtils::getCurMin() / 100;
+
+	uint32_t endTDate = _bd_mgr.calcTradingDate(stdPID.c_str(), curDate, curTime, false);
+	string tbname = "future_tick_1";
+
+	mongocxx::instance instance{};
+	mongocxx::uri uri("mongodb://192.168.214.199:27017");
+	mongocxx::client client(uri);
+	auto db = client["lsqt_quotation"];
+
+	auto& tickList = _ticks_cache[key];
+	int count = 100000;
+	int idx = 0;
+	vector<vector<HisTickBlock>*> ticksSections;
+	if (!cInfo.isFlat()&&cInfo.isFuture())
+	{
+		const char* flag = cInfo.isHot() ? "HOT" : "2ND";
+		HotSections secs;
+
+		if (cInfo.isHot())
+		{
+			if (!_hot_mgr.splitHotSecions(cInfo._exchg, cInfo._product, 19900102, endTDate, secs))
+				return false;
+		}
+		else if (cInfo.isSecond())
+		{
+			if (!_hot_mgr.splitSecondSecions(cInfo._exchg, cInfo._product, 19900102, endTDate, secs))
+				return false;
+		}
+
+		if (secs.empty()) {
+			WTSLogger::info("secs is empty.");
+			return false;
+		}
+
+		string exchgid;
+		string instid;
+		for (auto it = secs.begin(); it != secs.end() && left > 0; it++)
+		{
+			const HotSection& hotSec = *it;
+			ostringstream oss;
+			oss << hotSec._e_date;
+			std::string rightDt = oss.str();	oss.str("");
+			oss << hotSec._s_date;
+			std::string leftDt = oss.str();		oss.str("");
+			exchgid = cInfo._exchg;
+			instid = hotSec._code;
+			tickList._code = stdCode;
+			tickList._date = hotSec._s_date;
+
+			uint64_t barcnt = 0;
+			//20180910转换成2018-09-10
+			long long sTime = timeTransS(leftDt) * 1000;
+			long long eTime = timeTransE(rightDt) * 1000 + 999;
+			/*chrono::time_point<chrono::system_clock> tp_sTime(chrono::milliseconds(sTime));
+			chrono::time_point<chrono::system_clock> tp_eTime(chrono::milliseconds(eTime));*/
+
+			barcnt = db[tbname].count_documents(make_document(kvp("exchange_id", exchgid), kvp("instrument_id", hotSec._code),
+				kvp("trade_time", make_document(kvp("$gte", bsoncxx::types::b_date{ chrono::milliseconds{sTime} }),
+					kvp("$lte", bsoncxx::types::b_date{ chrono::milliseconds{eTime} })))));
+			if (barcnt > 0)
+			{
+				auto cursor_2 = db[tbname].find(make_document(kvp("exchange_id", exchgid), kvp("instrument_id", hotSec._code),
+					kvp("trade_time", make_document(kvp("$gte", bsoncxx::types::b_date{ chrono::milliseconds{sTime} }),
+						kvp("$lte", bsoncxx::types::b_date{ chrono::milliseconds{eTime} })))));
+
+				/*hotAy = new std::vector<WTSTickStruct>();
+				hotAy->resize(barcnt);*/
+
+				for (auto&& doc : cursor_2) {
+					//std::cout << bsoncxx::to_json(doc) << std::endl;
+					rj::Document d;
+					if (d.Parse(bsoncxx::to_json(doc).c_str()).HasParseError()) {
+						WTSLogger::info("Parsing bsoncxx::to_json(doc) failed");
+						return false;
+					}
+
+					else
+					{
+						WTSVariant* cfg = WTSVariant::createObject();
+						jsonToVariant(d, cfg);
+						WTSTickStruct ticks;
+						WTSVariant* cfgBF = cfg->get("trade_time");
+						unsigned long long time = stoll(cfgBF->getCString("$date"));
+						ticks.action_date = StampTimeYmd(time);
+						ticks.action_time = StampTimeHMSms(time);
+						ticks.price = cfg->getDouble("real_price");
+						ticks.volume = cfg->getInt32("volume");
+						tickList._items.emplace_back(ticks);
+						idx++;
+						count--;
+						if (count==0)
+						{
+							tickList._count += idx;
+							WTSLogger::info("%u items of back tick data of hot contract %s.%s directly loaded", tickList._count, exchgid.c_str(), hotSec._code.c_str());
+							WTSLogger::info("first data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(),
+								tickList._items.front().action_date, tickList._items.front().action_time, tickList._items.front().price);
+							WTSLogger::info("last data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(),
+								tickList._items.back().action_date, tickList._items.back().action_time, tickList._items.back().price);
+							return true;
+						}
+					}
+				}
+				tickList._count += idx;
+				WTSLogger::info("%u items of back tick data of hot contract %s.%s directly loaded", tickList._count, exchgid.c_str(),hotSec._code.c_str());
+				WTSLogger::info("first data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(), 
+					tickList._items.front().action_date, tickList._items.front().action_time, tickList._items.front().price);
+				WTSLogger::info("last data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(),
+					tickList._items.back().action_date, tickList._items.back().action_time, tickList._items.back().price);
+			}
+		}
+
+		//WTSLogger::info("数据库表%s全部读取完成, 共%u条", csvfile.c_str(), tickList._items.size());
+		WTSLogger::info("Data file %s all loaded, totally %u items", tbname.c_str(), tickList._count);
+	}
+
+	return true;
+}
+
 bool HisDataReplayer::cacheRawBarsFromCSV(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bForBars/* = true*/)
 {
 	CodeHelper::CodeInfo cInfo;
@@ -3039,7 +3271,7 @@ bool HisDataReplayer::cacheRawBarsFromCSV(const std::string& key, const char* st
 
 bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bForBars/* = true*/)
 {
-	std::cout<<__FUNCTION__<<std::endl;
+	WTSLogger::info("in cacheRawBarsFromDB");
 	CodeHelper::CodeInfo cInfo;
 	CodeHelper::extractStdCode(stdCode, cInfo);
 	std::string stdPID = StrUtil::printf("%s.%s", cInfo._exchg, cInfo._product);
@@ -3053,15 +3285,15 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 	switch (period)
 	{
 	case KP_Minute1:
-		tbname = "futures_min_1";
+		tbname = "future_min_5";
 		pname = "min1";
 		break;
 	case KP_Minute5:
-		tbname = "futures_min_5";
+		tbname = "future_min_1";
 		pname = "min5";
 		break;
 	case KP_DAY:
-		tbname = "futures_day_1";
+		tbname = "future_day_2";
 		pname = "day";
 		break;
 	default:
@@ -3087,123 +3319,144 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		const char* flag = cInfo.isHot() ? "HOT" : "2ND";
 
 		//先按照HOT代码进行读取, 如rb.HOT
-		std::vector<WTSBarStruct>* hotAy = NULL;
-		hotAy = new std::vector<WTSBarStruct>();
-		uint32_t lastHotTime = 0;
-
-		std::string symbol = cInfo._exchg;
-		symbol += ".";
-		std::string code = cInfo._code;
-		symbol += code;
 		
-		auto cursor_1 = db["future_min_5"].find(make_document(kvp("symbol", symbol)));
-		uint32_t barcnt = 0;
-		for (auto&& doc:cursor_1)
+		HotSections secs;
+		if (cInfo.isHot())
 		{
-			barcnt++;
+			if (!_hot_mgr.splitHotSecions(cInfo._exchg, cInfo._product, 19900102, endTDate, secs))
+				return false;
 		}
-		
-		auto cursor_2 = db["future_min_5"].find(make_document(kvp("symbol", symbol)));
-		if (barcnt>0)
+		else if (cInfo.isSecond())
 		{
-			
-			hotAy->resize(barcnt);
+			if (!_hot_mgr.splitSecondSecions(cInfo._exchg, cInfo._product, 19900102, endTDate, secs))
+				return false;
+		}
 
-			uint32_t idx = 0;
-			m_Kline kline;
-			for(auto&& doc:cursor_2){
-				//std::cout << bsoncxx::to_json(doc) << std::endl;
-				rj::Document d;
-				if (d.Parse(bsoncxx::to_json(doc).c_str()).HasParseError()) {
-					WTSLogger::info("Parsing bsoncxx::to_json(doc) failed");
-					return false;
-				}
+		if (secs.empty()) {
+			WTSLogger::info("secs is empty.");
+			return false;
+		}
+			
+
+		uint32_t lastHotTime = 0;
+		std::string symbol;
+		for (auto it = secs.begin(); it != secs.end() && left > 0; it++)
+		{
+			const HotSection& hotSec = *it;
+			symbol = cInfo._exchg;
+			symbol += ".";
+			symbol += hotSec._code;
+			ostringstream oss;
+			oss << hotSec._e_date;
+			std::string rightDt = oss.str();	oss.str("");
+			oss << hotSec._s_date;
+			std::string leftDt = oss.str();		oss.str("");
+
+			uint32_t barcnt = 0;
+			barcnt = db[tbname].count_documents(make_document(kvp("symbol", symbol),
+				kvp("trade_day", make_document(kvp("$gte", leftDt), kvp("$lte", rightDt)))));
+
+			if (barcnt > 0)
+			{
+				auto cursor_2 = db[tbname].find(make_document(kvp("symbol", symbol),
+					kvp("trade_day", make_document(kvp("$gte", leftDt), kvp("$lte", rightDt)))));
 				
-				else
+				std::vector<WTSBarStruct>* hotAy = NULL;
+				hotAy = new std::vector<WTSBarStruct>();
+				hotAy->resize(barcnt);
+
+				uint32_t idx = 0;
+				for (auto&& doc : cursor_2) {
+					//std::cout << bsoncxx::to_json(doc) << std::endl;
+					rj::Document d;
+					if (d.Parse(bsoncxx::to_json(doc).c_str()).HasParseError()) {
+						WTSLogger::info("Parsing bsoncxx::to_json(doc) failed");
+						return false;
+					}
+
+					else
+					{
+						WTSVariant* cfg = WTSVariant::createObject();
+						jsonToVariant(d, cfg);
+						WTSBarStruct& bs = hotAy->at(idx);
+						//kline.m_symbol = cfg->getCString("symol");
+						bs.date = stoi(cfg->getCString("trade_day"));
+						bs.open = cfg->getDouble("open");
+						bs.high = cfg->getDouble("high");
+						bs.low = cfg->getDouble("low");
+						bs.close = cfg->getDouble("close");
+						bs.vol = cfg->getInt32("volume");
+						WTSVariant* cfgBF = cfg->get("datetime");
+						unsigned long long time = stoll(cfgBF->getCString("$date"));
+						bs.time = Get_timeYmdHM(time);
+						idx++;
+					}
+				}
+				WTSLogger::info("%u items of back %s data of hot contract %s directly loaded", barcnt, pname.c_str(), symbol.c_str());
+				WTSLogger::info("first data:inst_id:%s,date:%u,time:%u,open:%f", symbol.c_str(), hotAy->front().date, hotAy->front().time, hotAy->front().open);
+				WTSLogger::info("last data:inst_id:%s,date:%u,time:%u,open:%f", symbol.c_str(), hotAy->back().date, hotAy->back().time, hotAy->back().open);
+
+				if (hotAy)
 				{
-					WTSVariant* cfg = WTSVariant::createObject();
-					jsonToVariant(d, cfg);
-					WTSBarStruct& bs = hotAy->at(idx);
-					//kline.m_symbol = cfg->getCString("symol");
-					bs.date = stoi(cfg->getCString("trade_day"));
-					bs.open = cfg->getDouble("open");
-					bs.high = cfg->getDouble("high");
-					bs.low = cfg->getDouble("low");
-					bs.close = cfg->getDouble("close");
-					bs.vol = cfg->getInt32("volume");
-					WTSVariant* cfgBF = cfg->get("datetime");
-					unsigned long long time=stoll(cfgBF->getCString("$date"));
-					bs.time=Stamp2Time(time);
-					idx++;
+					barsSections.emplace_back(hotAy);
+					realCnt += hotAy->size();
 				}
 			}
-			/*std::cout << "hotAy first:" << hotAy->front().date << std::endl;
-			std::cout << "hotAy last:" << hotAy->back().date << std::endl;*/
-			std::cout << "bs.size()=" << idx << std::endl;
-			if (period != KP_DAY)
+			
+		}
+		//WTSLogger::info("主力合约%s历史%s数据直接缓存%u条", stdCode, pname.c_str(), barcnt);
+		WTSLogger::info("%u items of back %s data of hot contract %s directly loaded", realCnt, pname.c_str(), stdCode);
+			
+			/*if (period != KP_DAY)
 				lastHotTime = hotAy->at(barcnt - 1).time;
 			else
-				lastHotTime = hotAy->at(barcnt - 1).date;
-		}
-
-		//HotSections secs;
-		//if (cInfo.isHot())
-		//{
-		//	if (!_hot_mgr.splitHotSecions(cInfo._exchg, cInfo._product, 19900102, endTDate, secs))
-		//		return false;
-		//}
-		//else if (cInfo.isSecond())
-		//{
-		//	if (!_hot_mgr.splitSecondSecions(cInfo._exchg, cInfo._product, 19900102, endTDate, secs))
-		//		return false;
+				lastHotTime = hotAy->at(barcnt - 1).date;*/
 		//}
 
-		//if (secs.empty())
-		//	return false;
 
-		//bool bAllCovered = false;
-		//for (auto it = secs.rbegin(); it != secs.rend() && left > 0; it++)
-		//{
-		//	const HotSection& hotSec = *it;
-		//	const char* curCode = hotSec._code.c_str();
-		//	uint32_t rightDt = hotSec._e_date;
-		//	uint32_t leftDt = hotSec._s_date;
 
-		//	//要先将日期转换为边界时间
-		//	uint32_t stime, etime;
-		//	if (!isDay)
-		//	{
-		//		uint64_t sTime = _bd_mgr.getBoundaryTime(stdPID.c_str(), leftDt, false, true);
-		//		uint64_t eTime = _bd_mgr.getBoundaryTime(stdPID.c_str(), rightDt, false, false);
+		/*bool bAllCovered = false;
+		for (auto it = secs.begin(); it != secs.end() && left > 0; it++)
+		{
+			const HotSection& hotSec = *it;
+			const char* curCode = hotSec._code.c_str();
+			uint32_t rightDt = hotSec._e_date;
+			uint32_t leftDt = hotSec._s_date;
 
-		//		stime = ((uint32_t)(sTime / 10000) - 19900000) * 10000 + (uint32_t)(sTime % 10000);
+			////要先将日期转换为边界时间
+			//uint32_t stime, etime;
+			//if (!isDay)
+			//{
+			//	uint64_t sTime = _bd_mgr.getBoundaryTime(stdPID.c_str(), leftDt, false, true);
+			//	uint64_t eTime = _bd_mgr.getBoundaryTime(stdPID.c_str(), rightDt, false, false);
 
-		//		if (stime < lastHotTime)	//如果边界时间小于主力的最后一根Bar的时间, 说明已经有交叉了, 则不需要再处理了
-		//		{
-		//			bAllCovered = true;
-		//			stime = lastHotTime + 1;
-		//		}
+			//	stime = ((uint32_t)(sTime / 10000) - 19900000) * 10000 + (uint32_t)(sTime % 10000);
 
-		//		etime = ((uint32_t)(eTime / 10000) - 19900000) * 10000 + (uint32_t)(eTime % 10000);
+			//	if (stime < lastHotTime)	//如果边界时间小于主力的最后一根Bar的时间, 说明已经有交叉了, 则不需要再处理了
+			//	{
+			//		bAllCovered = true;
+			//		stime = lastHotTime + 1;
+			//	}
 
-		//		if (etime <= lastHotTime)	//右边界时间小于最后一条Hot时间, 说明全部交叉了, 没有再找的必要了
-		//			break;
-		//	}
-		//	else
-		//	{
-		//		stime = leftDt;
-		//		if (stime < lastHotTime)	//如果边界时间小于主力的最后一根Bar的时间, 说明已经有交叉了, 则不需要再处理了
-		//		{
-		//			bAllCovered = true;
-		//			stime = lastHotTime + 1;
-		//		}
+			//	etime = ((uint32_t)(eTime / 10000) - 19900000) * 10000 + (uint32_t)(eTime % 10000);
 
-		//		etime = rightDt;
+			//	if (etime <= lastHotTime)	//右边界时间小于最后一条Hot时间, 说明全部交叉了, 没有再找的必要了
+			//		break;
+			//}
+			//else
+			//{
+			//	stime = leftDt;
+			//	if (stime < lastHotTime)	//如果边界时间小于主力的最后一根Bar的时间, 说明已经有交叉了, 则不需要再处理了
+			//	{
+			//		bAllCovered = true;
+			//		stime = lastHotTime + 1;
+			//	}
 
-		//		if (etime <= lastHotTime)
-		//			break;
-		//	}
+			//	etime = rightDt;
 
+			//	if (etime <= lastHotTime)
+			//		break;
+			//}
 			//char sql[256] = { 0 };
 			//if (isDay)
 			//	sprintf(sql, "SELECT `date`,0,open,high,low,close,settle,volume,turnover,interest,diff_interest FROM %s "
@@ -3254,16 +3507,16 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 			//	if (bAllCovered)
 			//		break;
 			//}
-		//}
+		}*/
 
-		if (hotAy)
-		{
-			barsSections.emplace_back(hotAy);
-			realCnt += hotAy->size();
-		}
+		//if (hotAy)
+		//{
+		//	barsSections.emplace_back(hotAy);
+		//	realCnt += hotAy->size();
+		//}
 	}
-	else if (cInfo.isExright() && cInfo.isStock()) {}//如果是读取股票复权数据
-	//{
+	else if (cInfo.isExright() && cInfo.isStock()) {//如果是读取股票复权数据
+	/*//{
 	//	std::vector<WTSBarStruct>* hotAy = NULL;
 	//	uint32_t lastQTime = 0;
 
@@ -3507,7 +3760,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 
 		//		barsSections.emplace_back(tempAy);
 		//	}
-		//}
+		//}*/
 	}
 
 	if (realCnt > 0)
@@ -3515,7 +3768,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		barList._bars.resize(realCnt);
 
 		uint32_t curIdx = 0;
-		for (auto it = barsSections.rbegin(); it != barsSections.rend(); it++)
+		for (auto it = barsSections.begin(); it != barsSections.end(); it++)
 		{
 			std::vector<WTSBarStruct>* tempAy = *it;
 			memcpy(barList._bars.data() + curIdx, tempAy->data(), tempAy->size() * sizeof(WTSBarStruct));
@@ -3524,7 +3777,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		}
 		barsSections.clear();
 	}
-
+	cout << "_bars_cache[key]._bars.size()=" << _bars_cache[key]._bars.size() << std::endl;
 	WTSLogger::info("%u items of back %s data of contract %s cached", realCnt, pname.c_str(), stdCode);
 	return true;
 }

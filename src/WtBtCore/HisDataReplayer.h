@@ -158,6 +158,10 @@ private:
 	 *	从csv文件缓存历史tick数据
 	 */
 	bool		cacheRawTicksFromCSV(const std::string& key, const char* stdCode, uint32_t uDate);
+	/*
+	 *	从mongodb缓存历史tick数据
+	 */
+	bool		cacheRawTicksFromDB(const std::string& key, const char* stdCode, uint32_t uDate);
 
 	void		onMinuteEnd(uint32_t uDate, uint32_t uTime, uint32_t endTDate = 0, bool tickSimulated = true);
 
