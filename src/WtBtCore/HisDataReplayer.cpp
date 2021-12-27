@@ -254,6 +254,7 @@ bool HisDataReplayer::init(WTSVariant* cfg, EventNotifier* notifier /* = NULL */
 			if (_db_conf._active)
 				initDB();
 		}
+		mongocxx::instance instance{};
 	}
 
 	bool bAdjLoaded = false;
@@ -2104,7 +2105,7 @@ WTSKlineSlice* HisDataReplayer::get_kline_slice(const char* stdCode, const char*
 
 WTSTickSlice* HisDataReplayer::get_tick_slice(const char* stdCode, uint32_t count, uint64_t etime)
 {
-	if (!_tick_enabled)//
+	if (!_tick_enabled)
 		return NULL;
 
 	if (!checkTicks(stdCode, _cur_tdate))
@@ -3025,15 +3026,14 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 	uint32_t endTDate = _bd_mgr.calcTradingDate(stdPID.c_str(), curDate, curTime, false);
 	string tbname = "future_tick_1";
 
-	mongocxx::instance instance{};
 	mongocxx::uri uri("mongodb://192.168.214.199:27017");
 	mongocxx::client client(uri);
 	auto db = client["lsqt_quotation"];
 
 	auto& tickList = _ticks_cache[key];
-	int count = 100000;
+	//tickList._items.resize(count);
 	int idx = 0;
-	vector<vector<HisTickBlock>*> ticksSections;
+	//vector<vector<HisTickBlock>*> ticksSections;
 	if (!cInfo.isFlat()&&cInfo.isFuture())
 	{
 		const char* flag = cInfo.isHot() ? "HOT" : "2ND";
@@ -3055,40 +3055,35 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 			return false;
 		}
 
-		string exchgid;
-		string instid;
+		string exchgid, instid;
+		time_t start = clock();
+		time_t end;
 		for (auto it = secs.begin(); it != secs.end() && left > 0; it++)
 		{
 			const HotSection& hotSec = *it;
 			ostringstream oss;
-			oss << hotSec._e_date;
-			std::string rightDt = oss.str();	oss.str("");
-			oss << hotSec._s_date;
-			std::string leftDt = oss.str();		oss.str("");
+			oss << uDate;
+			std::string udate = oss.str();	oss.str("");
 			exchgid = cInfo._exchg;
 			instid = hotSec._code;
 			tickList._code = stdCode;
-			tickList._date = hotSec._s_date;
+			tickList._date = uDate;
+			uint32_t idx = 0;
 
-			uint64_t barcnt = 0;
-			//20180910转换成2018-09-10
-			long long sTime = timeTransS(leftDt) * 1000;
-			long long eTime = timeTransE(rightDt) * 1000 + 999;
-			/*chrono::time_point<chrono::system_clock> tp_sTime(chrono::milliseconds(sTime));
-			chrono::time_point<chrono::system_clock> tp_eTime(chrono::milliseconds(eTime));*/
+			long long sTime = timeTransS(udate) * 1000;
+			long long eTime = timeTransE(udate) * 1000 + 999;
 
-			barcnt = db[tbname].count_documents(make_document(kvp("exchange_id", exchgid), kvp("instrument_id", hotSec._code),
+			uint32_t tickcnt = db[tbname].count_documents(make_document(kvp("exchange_id", exchgid), kvp("instrument_id", hotSec._code),
 				kvp("trade_time", make_document(kvp("$gte", bsoncxx::types::b_date{ chrono::milliseconds{sTime} }),
 					kvp("$lte", bsoncxx::types::b_date{ chrono::milliseconds{eTime} })))));
-			if (barcnt > 0)
+
+			if (tickcnt > 0)
 			{
 				auto cursor_2 = db[tbname].find(make_document(kvp("exchange_id", exchgid), kvp("instrument_id", hotSec._code),
 					kvp("trade_time", make_document(kvp("$gte", bsoncxx::types::b_date{ chrono::milliseconds{sTime} }),
 						kvp("$lte", bsoncxx::types::b_date{ chrono::milliseconds{eTime} })))));
 
-				/*hotAy = new std::vector<WTSTickStruct>();
-				hotAy->resize(barcnt);*/
-
+				
 				for (auto&& doc : cursor_2) {
 					//std::cout << bsoncxx::to_json(doc) << std::endl;
 					rj::Document d;
@@ -3110,32 +3105,31 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 						ticks.volume = cfg->getInt32("volume");
 						tickList._items.emplace_back(ticks);
 						idx++;
-						count--;
-						if (count==0)
-						{
-							tickList._count += idx;
-							WTSLogger::info("%u items of back tick data of hot contract %s.%s directly loaded", tickList._count, exchgid.c_str(), hotSec._code.c_str());
-							WTSLogger::info("first data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(),
-								tickList._items.front().action_date, tickList._items.front().action_time, tickList._items.front().price);
-							WTSLogger::info("last data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(),
-								tickList._items.back().action_date, tickList._items.back().action_time, tickList._items.back().price);
-							return true;
-						}
 					}
 				}
-				tickList._count += idx;
-				WTSLogger::info("%u items of back tick data of hot contract %s.%s directly loaded", tickList._count, exchgid.c_str(),hotSec._code.c_str());
-				WTSLogger::info("first data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(), 
+			}
+
+			tickList._count += idx;
+			if (idx == 0)
+			{
+				WTSLogger::debug("*****%u items of back tick data of hot contract %s.%s uDate:%u directly loaded*****", idx, exchgid.c_str(), hotSec._code.c_str(),uDate);
+			}
+			else
+			{
+				WTSLogger::debug("%u items of back tick data of hot contract %s.%s directly loaded", idx, exchgid.c_str(), hotSec._code.c_str());
+				WTSLogger::debug("first data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(),
 					tickList._items.front().action_date, tickList._items.front().action_time, tickList._items.front().price);
-				WTSLogger::info("last data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(),
+				WTSLogger::debug("last data:inst_id:%s.%s,date:%u,time:%u,open:%f", exchgid.c_str(), hotSec._code.c_str(),
 					tickList._items.back().action_date, tickList._items.back().action_time, tickList._items.back().price);
 			}
 		}
 
-		//WTSLogger::info("数据库表%s全部读取完成, 共%u条", csvfile.c_str(), tickList._items.size());
-		WTSLogger::info("Data file %s all loaded, totally %u items", tbname.c_str(), tickList._count);
+		WTSLogger::debug("_ticks_cache[%s].size=%u", key.c_str(), _ticks_cache[key]._items.size());
+		end = clock();
+		WTSLogger::info("get ticks date consume %fms", double(end - start) * 1000 / CLOCKS_PER_SEC);
 	}
-
+	
+	WTSLogger::info("out cacheRawTicksFromDB");
 	return true;
 }
 
@@ -3302,7 +3296,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		pname = "";
 		break;
 	}
-	mongocxx::instance instance{};
+	//mongocxx::instance instance{};
 	mongocxx::uri uri("mongodb://192.168.214.199:27017");
 	mongocxx::client client(uri);
 	auto db = client["lsqt_quotation"];
@@ -3340,7 +3334,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 
 		uint32_t lastHotTime = 0;
 		std::string symbol;
-		for (auto it = secs.begin(); it != secs.end() && left > 0; it++)
+		for (auto it = secs.rbegin(); it != secs.rend() && left > 0; it++)
 		{
 			const HotSection& hotSec = *it;
 			symbol = cInfo._exchg;
@@ -3392,9 +3386,9 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 						idx++;
 					}
 				}
-				WTSLogger::info("%u items of back %s data of hot contract %s directly loaded", barcnt, pname.c_str(), symbol.c_str());
-				WTSLogger::info("first data:inst_id:%s,date:%u,time:%u,open:%f", symbol.c_str(), hotAy->front().date, hotAy->front().time, hotAy->front().open);
-				WTSLogger::info("last data:inst_id:%s,date:%u,time:%u,open:%f", symbol.c_str(), hotAy->back().date, hotAy->back().time, hotAy->back().open);
+				WTSLogger::debug("%u items of back %s data of hot contract %s directly loaded", barcnt, pname.c_str(), symbol.c_str());
+				WTSLogger::debug("first data:inst_id:%s,date:%u,time:%u,open:%f", symbol.c_str(), hotAy->front().date, hotAy->front().time, hotAy->front().open);
+				WTSLogger::debug("last data:inst_id:%s,date:%u,time:%u,open:%f", symbol.c_str(), hotAy->back().date, hotAy->back().time, hotAy->back().open);
 
 				if (hotAy)
 				{
@@ -3405,7 +3399,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 			
 		}
 		//WTSLogger::info("主力合约%s历史%s数据直接缓存%u条", stdCode, pname.c_str(), barcnt);
-		WTSLogger::info("%u items of back %s data of hot contract %s directly loaded", realCnt, pname.c_str(), stdCode);
+		WTSLogger::debug("%u items of back %s data of hot contract %s directly loaded", realCnt, pname.c_str(), stdCode);
 			
 			/*if (period != KP_DAY)
 				lastHotTime = hotAy->at(barcnt - 1).time;
@@ -3768,7 +3762,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		barList._bars.resize(realCnt);
 
 		uint32_t curIdx = 0;
-		for (auto it = barsSections.begin(); it != barsSections.end(); it++)
+		for (auto it = barsSections.rbegin(); it != barsSections.rend(); it++)
 		{
 			std::vector<WTSBarStruct>* tempAy = *it;
 			memcpy(barList._bars.data() + curIdx, tempAy->data(), tempAy->size() * sizeof(WTSBarStruct));
@@ -3777,8 +3771,8 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		}
 		barsSections.clear();
 	}
-	cout << "_bars_cache[key]._bars.size()=" << _bars_cache[key]._bars.size() << std::endl;
-	WTSLogger::info("%u items of back %s data of contract %s cached", realCnt, pname.c_str(), stdCode);
+	//cout << "_bars_cache[key]._bars.size()=" << _bars_cache[key]._bars.size() << std::endl;
+	WTSLogger::debug("%u items of back %s data of contract %s cached", realCnt, pname.c_str(), stdCode);
 	return true;
 }
 
