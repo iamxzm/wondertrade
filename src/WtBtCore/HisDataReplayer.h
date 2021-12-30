@@ -377,5 +377,14 @@ private:
 
 	EventNotifier*	_notifier;
 
+	//主力合约日期范围
+	typedef struct _DateList
+	{
+		uint32_t _sdate;
+		uint32_t _edate;
+		uint32_t _cnt_date;
+	} DateList;
+
+	std::map<std::string, DateList> _datelistmap;
 };
 

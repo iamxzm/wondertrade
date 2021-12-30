@@ -3061,17 +3061,23 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 		for (auto it = secs.begin(); it != secs.end() && left > 0; it++)
 		{
 			const HotSection& hotSec = *it;
-			ostringstream oss;
-			oss << uDate;
-			std::string udate = oss.str();	oss.str("");
 			exchgid = cInfo._exchg;
 			instid = hotSec._code;
 			tickList._code = stdCode;
 			tickList._date = uDate;
+			auto& datelist = _datelistmap[hotSec._code];
+			datelist._sdate = hotSec._s_date;
+			datelist._edate = hotSec._e_date;
+			if (datelist._cnt_date == 0) {
+				datelist._cnt_date = datelist._sdate;
+			}
+			ostringstream oss;
+			oss << datelist._cnt_date;
+			std::string date = oss.str();	oss.str("");
 			uint32_t idx = 0;
 
-			long long sTime = timeTransS(udate) * 1000;
-			long long eTime = timeTransE(udate) * 1000 + 999;
+			long long sTime = timeTransS(date) * 1000;
+			long long eTime = timeTransE(date) * 1000 + 999;
 
 			uint32_t tickcnt = db[tbname].count_documents(make_document(kvp("exchange_id", exchgid), kvp("instrument_id", hotSec._code),
 				kvp("trade_time", make_document(kvp("$gte", bsoncxx::types::b_date{ chrono::milliseconds{sTime} }),
@@ -3079,9 +3085,11 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 
 			if (tickcnt > 0)
 			{
+				mongocxx::options::find opts;
+				opts.sort(make_document(kvp("trade_time", 1)));
 				auto cursor_2 = db[tbname].find(make_document(kvp("exchange_id", exchgid), kvp("instrument_id", hotSec._code),
 					kvp("trade_time", make_document(kvp("$gte", bsoncxx::types::b_date{ chrono::milliseconds{sTime} }),
-						kvp("$lte", bsoncxx::types::b_date{ chrono::milliseconds{eTime} })))));
+						kvp("$lte", bsoncxx::types::b_date{ chrono::milliseconds{eTime} })))),opts);
 
 				
 				for (auto&& doc : cursor_2) {
@@ -3102,17 +3110,33 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 						ticks.action_date = StampTimeYmd(time);
 						ticks.action_time = StampTimeHMSms(time);
 						ticks.price = cfg->getDouble("real_price");
-						ticks.volume = cfg->getInt32("volume");
+						ticks.open = cfg->getDouble("open_price");
+						ticks.high = cfg->getDouble("highest_price");
+						ticks.low = cfg->getDouble("lowest_price");
+						ticks.bid_prices[0] = cfg->getDouble("bid_price1");
+						ticks.bid_qty[0] = cfg->getInt32("bid_volume1");
+						ticks.ask_prices[0] = cfg->getDouble("ask_price1");
+						ticks.ask_qty[0] = cfg->getInt32("ask_volume1");
+						ticks.total_volume = cfg->getInt32("total_volume");
+						ticks.total_turnover = cfg->getDouble("total_amount");
+						ticks.volume = cfg->getUInt64("volume");
 						tickList._items.emplace_back(ticks);
 						idx++;
 					}
 				}
 			}
-
+			if (datelist._cnt_date < datelist._edate) {
+				datelist._cnt_date += 1;
+			}
+			else
+			{
+				WTSLogger::debug("hot contract &s last day &u tick date load complete", hotSec._code, datelist._cnt_date);
+			}
 			tickList._count += idx;
 			if (idx == 0)
 			{
-				WTSLogger::debug("*****%u items of back tick data of hot contract %s.%s uDate:%u directly loaded*****", idx, exchgid.c_str(), hotSec._code.c_str(),uDate);
+				//不打印数据
+				//WTSLogger::debug("*****%u items of back tick data of hot contract %s.%s uDate:%u directly loaded*****", idx, exchgid.c_str(), hotSec._code.c_str(),datelist._cnt_date);
 			}
 			else
 			{
@@ -3352,8 +3376,10 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 
 			if (barcnt > 0)
 			{
+				mongocxx::options::find opts;
+				opts.sort(make_document(kvp("datetime", 1)));
 				auto cursor_2 = db[tbname].find(make_document(kvp("symbol", symbol),
-					kvp("trade_day", make_document(kvp("$gte", leftDt), kvp("$lte", rightDt)))));
+					kvp("trade_day", make_document(kvp("$gte", leftDt), kvp("$lte", rightDt)))),opts);
 				
 				std::vector<WTSBarStruct>* hotAy = NULL;
 				hotAy = new std::vector<WTSBarStruct>();
