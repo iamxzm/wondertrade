@@ -232,7 +232,7 @@ void CtaStraBaseCtx::load_userdata()
 void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 {
 	std::string filename = WtHelper::getStraDataDir();
-	filename += _name;
+	filename += _name;//²ßÂÔÃû
 	filename += ".json";
 	
 	if (!StdFile::exists(filename.c_str()))

@@ -10,6 +10,7 @@
 #pragma once
 #include <sstream>
 #include <atomic>
+#include <iostream>
 #include "HisDataReplayer.h"
 
 #include "../Includes/FasterDefs.h"
@@ -20,6 +21,20 @@
 #include "../Share/DLLHelper.hpp"
 #include "../Share/StdUtils.hpp"
 
+#include <bsoncxx/builder/stream/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+#include <mongocxx/database.hpp>
+
+
 NS_OTP_BEGIN
 class EventNotifier;
 NS_OTP_END
@@ -29,11 +44,11 @@ USING_NS_OTP;
 class HisDataReplayer;
 class CtaStrategy;
 
-const char COND_ACTION_OL = 0;	//¿ª¶à
-const char COND_ACTION_CL = 1;	//Æ½¶à
-const char COND_ACTION_OS = 2;	//¿ª¿Õ
-const char COND_ACTION_CS = 3;	//Æ½¿Õ
-const char COND_ACTION_SP = 4;	//Ö±½ÓÉèÖÃ²ÖÎ»
+const char COND_ACTION_OL = 0;	//å¼€å¤š
+const char COND_ACTION_CL = 1;	//å¹³å¤š
+const char COND_ACTION_OS = 2;	//å¼€ç©º
+const char COND_ACTION_CS = 3;	//å¹³ç©º
+const char COND_ACTION_SP = 4;	//ç›´æ¥è®¾ç½®ä»“ä½
 
 typedef struct _CondEntrust
 {
@@ -43,7 +58,7 @@ typedef struct _CondEntrust
 
 	double			_qty;
 
-	char			_action;	//0-¿ª¶à,1-Æ½¶à,2-¿ª¿Õ,3-Æ½¿Õ
+	char			_action;	//0-å¼€å¤š,1-å¹³å¤š,2-å¼€ç©º,3-å¹³ç©º
 
 	char			_code[MAX_INSTRUMENT_LENGTH];
 	char			_usertag[32];
@@ -80,6 +95,10 @@ private:
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
 
+	void dealCloseTrade(const char* stdCode, double multiplier, double fee, bool ignoreFrozen);
+	void dealOpenTrade(const char* stdCode, double margin, double fee, bool ignoreFrozen);
+	void addPositions(const char* stdCode, double margin);
+
 public:
 	bool	init_cta_factory(WTSVariant* cfg);
 	void	install_hook();
@@ -103,7 +122,7 @@ public:
 	//ICtaStraCtx
 	virtual uint32_t id() { return _context_id; }
 
-	//»Øµ÷º¯Êı
+	//å›è°ƒå‡½æ•°
 	virtual void on_init() override;
 	virtual void on_session_begin(uint32_t curTDate) override;
 	virtual void on_session_end(uint32_t curTDate) override;
@@ -118,7 +137,7 @@ public:
 
 
 	//////////////////////////////////////////////////////////////////////////
-	//²ßÂÔ½Ó¿Ú
+	//ç­–ç•¥æ¥å£
 	virtual void stra_enter_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
 	virtual void stra_enter_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
 	virtual void stra_exit_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
@@ -164,12 +183,12 @@ protected:
 	uint32_t			_context_id;
 	HisDataReplayer*	_replayer;
 
-	uint64_t		_total_calc_time;	//×Ü¼ÆËãÊ±¼ä
-	uint32_t		_emit_times;		//×Ü¼ÆËã´ÎÊı
+	uint64_t		_total_calc_time;	//æ€»è®¡ç®—æ—¶é—´
+	uint32_t		_emit_times;		//æ€»è®¡ç®—æ¬¡æ•°
 
-	int32_t			_slippage;			//³É½»»¬µã
+	int32_t			_slippage;			//æˆäº¤æ»‘ç‚¹
 
-	uint32_t		_schedule_times;	//µ÷¶È´ÎÊı
+	uint32_t		_schedule_times;	//è°ƒåº¦æ¬¡æ•°
 
 	std::string		_main_key;
 
@@ -254,10 +273,10 @@ protected:
 
 	CondEntrustMap	_condtions;
 
-	//ÊÇ·ñ´¦ÓÚµ÷¶ÈÖĞµÄ±ê¼Ç
-	bool			_is_in_schedule;	//ÊÇ·ñÔÚ×Ô¶¯µ÷¶ÈÖĞ
+	//æ˜¯å¦å¤„äºè°ƒåº¦ä¸­çš„æ ‡è®°
+	bool			_is_in_schedule;	//æ˜¯å¦åœ¨è‡ªåŠ¨è°ƒåº¦ä¸­
 
-	//ÓÃ»§Êı¾İ
+	//ç”¨æˆ·æ•°æ®
 	typedef faster_hashmap<std::string, std::string> StringHashMap;
 	StringHashMap	_user_datas;
 	bool			_ud_modified;
@@ -303,12 +322,15 @@ protected:
 
 	StdUniqueMutex	_mtx_calc;
 	StdCondVariable	_cond_calc;
-	bool			_has_hook;		//ÕâÊÇÈËÎª¿ØÖÆÊÇ·ñÆôÓÃ¹³×Ó
-	bool			_hook_valid;	//ÕâÊÇ¸ù¾İÊÇ·ñÊÇÒì²½»Ø²âÄ£Ê½¶øÈ·¶¨¹³×ÓÊÇ·ñ¿ÉÓÃ
-	std::atomic<uint32_t>		_cur_step;	//ÁÙÊ±±äÁ¿£¬ÓÃÓÚ¿ØÖÆ×´Ì¬
+	bool			_has_hook;		//è¿™æ˜¯äººä¸ºæ§åˆ¶æ˜¯å¦å¯ç”¨é’©å­
+	bool			_hook_valid;	//è¿™æ˜¯æ ¹æ®æ˜¯å¦æ˜¯å¼‚æ­¥å›æµ‹æ¨¡å¼è€Œç¡®å®šé’©å­æ˜¯å¦å¯ç”¨
+	std::atomic<uint32_t>		_cur_step;	//ä¸´æ—¶å˜é‡ï¼Œç”¨äºæ§åˆ¶çŠ¶æ€
 
 	bool			_in_backtest;
 	bool			_wait_calc;
 
 	bool			_persist_data;
+
+	mongocxx::database		_mongodb;		//mongodbæ•°æ®
+	mongocxx::collection	_poscoll;
 };

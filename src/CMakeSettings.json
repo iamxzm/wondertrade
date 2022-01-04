@@ -1,4 +1,4 @@
-﻿{
+{
   "configurations": [
     {
       "name": "x64-Debug",
@@ -13,20 +13,20 @@
     },
     {
       "name": "Linux-GCC-Debug",
-      "generator": "Ninja",
+      "generator": "Unix Makefiles",
       "configurationType": "Debug",
-      "cmakeExecutable": "cmake",
+      "cmakeExecutable": "/usr/bin",
       "remoteCopySourcesExclusionList": [ ".vs", ".git", "out" ],
       "cmakeCommandArgs": "",
       "buildCommandArgs": "",
       "ctestCommandArgs": "",
       "inheritEnvironments": [ "linux_x64" ],
       "remoteMachineName": "${defaultRemoteMachineName}",
-      "remoteCMakeListsRoot": "$HOME/${projectDirName}",
-      "remoteBuildRoot": "$HOME/${projectDirName}/${name}",
-      "remoteInstallRoot": "$HOME/${projectDirName}/out/install/${name}",
+      "remoteCMakeListsRoot": "$HOME/wt",
+      "remoteBuildRoot": "$HOME/wt/${name}",
+      "remoteInstallRoot": "$HOME/wt/out/install/${name}",
       "remoteCopySources": true,
-      "rsyncCommandArgs": "-t --delete --delete-excluded",
+      "rsyncCommandArgs": "-t",
       "remoteCopyBuildOutput": false,
       "remoteCopySourcesMethod": "rsync",
       "variables": []
