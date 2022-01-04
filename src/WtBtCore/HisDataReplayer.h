@@ -158,6 +158,10 @@ private:
 	 *	从csv文件缓存历史tick数据
 	 */
 	bool		cacheRawTicksFromCSV(const std::string& key, const char* stdCode, uint32_t uDate);
+	/*
+	 *	从mongodb缓存历史tick数据
+	 */
+	bool		cacheRawTicksFromDB(const std::string& key, const char* stdCode, uint32_t uDate);
 
 	void		onMinuteEnd(uint32_t uDate, uint32_t uTime, uint32_t endTDate = 0, bool tickSimulated = true);
 
@@ -373,17 +377,14 @@ private:
 
 	EventNotifier*	_notifier;
 
-	struct m_Kline
+	//主力合约日期范围
+	typedef struct _DateList
 	{
-		const char* m_symbol;
-		const char* m_traday;
-		double m_open;
-		double m_high;
-		double m_low;
-		double m_close;
-		int m_volume;
-		const char* m_datetime;
-		const char* m_type;
-	};
+		uint32_t _sdate;
+		uint32_t _edate;
+		uint32_t _cnt_date;
+	} DateList;
+
+	std::map<std::string, DateList> _datelistmap;
 };
 
