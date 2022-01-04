@@ -254,6 +254,14 @@ public:
 	uint32_t get_raw_time() const{ return _cur_time; }
 	uint32_t get_secs() const{ return _cur_secs; }
 	uint32_t get_trading_date() const{ return _cur_tdate; }
+	int StampTimeHM(unsigned long long timestamp);//
+	int StampTimeYmd(unsigned long long timestamp);
+	int StampTimeHMSms(long long timestamp);
+	uint32_t AddTime(int time1, int time2);
+	uint32_t Get_timeYmdHM(long long timestamp);
+	time_t StringToDatetime(std::string str);
+	time_t timeTransS(std::string time);
+	time_t timeTransE(std::string time);
 
 	double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
 	WTSSessionInfo*		get_session_info(const char* sid, bool isCode = false);
