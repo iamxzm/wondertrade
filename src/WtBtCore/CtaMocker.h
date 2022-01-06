@@ -95,9 +95,7 @@ private:
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
 
-	void dealCloseTrade(const char* stdCode, double multiplier, double fee, bool ignoreFrozen);
-	void dealOpenTrade(const char* stdCode, double margin, double fee, bool ignoreFrozen);
-	void addPositions(const char* stdCode, double margin);
+	time_t StringToDatetime(uint64_t curTm);
 
 public:
 	bool	init_cta_factory(WTSVariant* cfg);
@@ -186,6 +184,15 @@ protected:
 	uint64_t		_total_calc_time;	//总计算时间
 	uint32_t		_emit_times;		//总计算次数
 
+	const double init_money = 100000;
+	double		_total_money = init_money;		//总资金账户
+	double		_yest_money = 0;					//昨总资金
+	double		_close_price = 0;				//昨结算价
+	double        _frozen_margin = 0;			//冻结保证金
+	double        _margin_rate = 0.5;			//保证金比例
+	uint64_t		_cur_multiplier = 100;		//当前合约乘数
+
+
 	int32_t			_slippage;			//成交滑点
 
 	uint32_t		_schedule_times;	//调度次数
@@ -217,6 +224,7 @@ protected:
 		double		_profit;
 		char		_opentag[32];
 		uint32_t	_open_barno;
+		double		_margin;
 
 		_DetailInfo()
 		{

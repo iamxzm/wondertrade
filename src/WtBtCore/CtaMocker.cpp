@@ -949,7 +949,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		curPx = _price_map[stdCode];
 	uint64_t curTm = (uint64_t)_replayer->get_date() * 10000 + _replayer->get_min_time();
 	uint32_t curTDate = _replayer->get_trading_date();
-	uint32_t curSecs = _replayer->get_secs();
+	uint64_t curDay = (uint64_t)_replayer->get_date();
 
 	//手数相等则不用操作了
 	if (decimal::eq(pInfo._volume, qty))
@@ -957,12 +957,16 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
 
-
 	//成交价
 	double trdPx = curPx;
 
 	double diff = qty - pInfo._volume;
 	bool isBuy = decimal::gt(diff, 0.0);
+
+	//保证金计算
+	//_frozen_margin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
+	//_total_money -= _frozen_margin;
+
 	if (decimal::gt(pInfo._volume*diff, 0))//当前持仓和仓位变化方向一致, 增加一条明细, 增加数量即可
 	{
 		pInfo._volume = qty;
@@ -978,6 +982,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		dInfo._volume = abs(diff);
 		dInfo._opentime = curTm;
 		dInfo._opentdate = curTDate;
+		dInfo._margin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
 		strcpy(dInfo._opentag, userTag);
 		dInfo._open_barno = _schedule_times;
 		pInfo._details.emplace_back(dInfo);
@@ -986,62 +991,8 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
 		_fund_info._total_fees += fee;
 
-		//mongo 增加一条明细
-		auto builder = bsoncxx::builder::stream::document{};
-
-		builder <<
-				"position_profit" << 0.0 <<
-				"available" << 0.0 <<
-				"frozen_premium" << 0.0 <<
-				"close_profit" << pInfo._closeprofit <<
-				"day_profit" << 0.0 <<
-				"premium" << 0.0 <<
-				"balance" << 0.0 <<
-				"static_balance" << 0.0 <<
-				"currency" << "CNY" <<
-				"commission" << 0.0 <<
-				"frozen_margin" << 0.0 <<
-				"pre_balance" << 0.0 <<
-				"benchmark_rate_of_return" << 0.0 <<
-				"float_profit" << 0.0 <<
-				"timestamp" << pInfo._last_entertime <<
-				"margin" << 0.0 <<
-				"risk_ratio" << 0.0 <<
-				"trade_day" << "20200604" <<
-				"frozen_commission" << 0.0 <<
-				"abnormal_rate_of_return" << 0.0 <<
-				"daily_rate_of_return" << 0.0 <<
-				"win_or_lose_flag" << 1 <<
-				"strategy_id" << "1283634220584927232" <<
-				"deposit" << 0.0 <<
-				"accounts" << open_document <<
-					"1283634220790448128" << open_document <<
-						"position_profit" << 0.0 <<
-						"margin" << 0.0 <<
-						"risk_ratio" << 0.0 <<
-						"frozen_commission" << 0.0 <<
-						"frozen_premium" << 0.0 <<
-						"available" << 0.0 <<
-						"close_profit" << 0.0 <<
-						"account_id" << "1283634220790448128" <<
-						"premium" << 0.0 <<
-						"static_balance" << 0.0 <<
-						"balance" << 0.0 <<
-						"deposit" << 0.0 <<
-						"currency" << "rmb" <<
-						"pre_balance" << 0.0 <<
-						"commission" << 0.0 <<
-						"frozen_margin" << 0.0 <<
-						"float_profit" << 0.0 <<
-						"withdraw" << 0.0 <<
-					close_document <<
-				close_document <<
-				"withdraw" : 0.0 <<
-		finalize;
-
-		auto result = _poscoll.insert_one(builder.view());
-		bsoncxx::oid oid = result->inserted_id().get_oid().value;
-		std::cout << "insert one: " << " _id : " << result->inserted_id().get_oid().value.to_string() << "\n" << std::endl;
+		_total_money -= dInfo._margin;
+		_total_money -= fee;
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
@@ -1084,32 +1035,32 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
 			_fund_info._total_fees += fee;
 
+			//释放保证金
+			double cur_margin = _margin_rate * _cur_multiplier * _close_price * maxQty;
+
+			_total_money += profit;
+			_total_money -= fee;
+			_total_money += cur_margin;
+
+			dInfo._margin -= cur_margin;
+
 			//这里写成交记录
 			//mongo
-			long long startTime;
-			long long endTime;
+			//long long startTime = StringToDatetime(curTime);
+			//long long endTime = StringToDatetime(curTime);
 
-			auto filter = document{} << "timestamp" << open_document <<
-				"$gt" << bsoncxx::types::b_date{ chromo::milliseconds(startTime) } 
-				<< "$lte" << bsoncxx::types::b_date{ chromo::milliseconds(endTime) } << close_document << finalize;
+			//auto filter = document{} << "timestamp" << open_document
+			//	<< "$gt" << bsoncxx::types::b_date{ chromo::milliseconds(startTime) } 
+			//	<< "$lte" << bsoncxx::types::b_date{ chromo::milliseconds(endTime) } << close_document << finalize;
 
-			mongocxx::cursor cursor = _poscoll.find(filter.view());
+			//mongocxx::cursor cursor = _poscoll.find(filter.view());
+			//for (auto doc : cursor) {
+			//}
 
-			for (auto doc : cursor) {
-				doc["timestamp"]
-				std::stoi();
-				time_t tick = bsoncxx::to_json(doc).;
-				struct tm tm;
-				tm = *localtime(&tick);
-			}
-
-			
-			
-
-			_poscoll.update_one(document{} << "timestamp" << curSecs << finalize,
-				document{} << "$set" << open_document <<
-				"day_profit" << pInfo._closeprofit <<
-				close_document << finalize);
+			//_poscoll.update_one(document{} << "timestamp" << curSecs << finalize,
+			//	document{} << "$set" << open_document <<
+			//	"day_profit" << pInfo._closeprofit <<
+			//	close_document << finalize);
 
 
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee, _schedule_times);
@@ -1145,31 +1096,16 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			pInfo._details.emplace_back(dInfo);
  
 			//这里还需要写一笔成交记录
-			//mongo
 
-			//_poscoll.replace_one(
-			//	make_document(kvp("position", stdCode)),
-			//	make_document(kvp(stdCode, make_document(
-			//				  kvp("open_price_long",dInfo._price),
-			//				  kvp("volume_long",dInfo._volume),
-			//	)))
-			//
-			//);
-			//_poscoll.update_one(
-			//	make_document(kvp("position", stdCode)),
-			//	make_document(kvp("$set", make_document(kvp("position."+ stdCode + ".open_price_long", dInfo._price),
-			//											kvp("position." + stdCode + ".volume_long", dInfo._volume),
-			//		))));
-			
 			//mongo 使用bulk_write更新数据，线程锁
-			auto fliter = make_document(kvp("accounts", "1283634220584927232"));
-			auto updatedoc = make_document(kvp("$set", make_document(kvp("position_profit", dInfo._profit))));
+			//auto fliter = make_document(kvp("accounts", "1283634220584927232"));
+			//auto updatedoc = make_document(kvp("$set", make_document(kvp("position_profit", dInfo._profit))));
 
-			mongocxx::model::update_one upsert_op{fliter.view(), updatedoc.view()};
-			upsert_op.upsert(true);
-			auto bulk = _poscoll.create_bulk_write();
-			bulk.append(upsert_op);
-			auto result = bulk.execute();
+			//mongocxx::model::update_one upsert_op{fliter.view(), updatedoc.view()};
+			//upsert_op.upsert(true);
+			//auto bulk = _poscoll.create_bulk_write();
+			//bulk.append(upsert_op);
+			//auto result = bulk.execute();
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
@@ -1179,289 +1115,6 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			pInfo._last_entertime = curTm;
 		}
 	}
-}
-
-void dealCloseTrade(const char* stdCode, double multiplier, double fee, bool ignoreFrozen)
-{
-	//TradeBeans.Account oldAccount = getAccount(trade.getAccountId());
-
-	//TradeBeans.Position oldPosi = getPosi(trade.getAccountId(), trade.getInstrumentId());
-
-	////扣除持仓
-	//Assert.notNull(oldPosi, new TradeDataException(TradeDataErrorEnum.ERROR_NO_ENOUGH_POSI));
-	//TradeBeans.Position.Builder posiBuilder = TradeBeans.Position.newBuilder(oldPosi);
-
-	////开仓成本
-	//TwoTuple<BigDecimal, OpenRecordWrapper> releaseOpenCost = releaseOpenCost(trade);
-	//BigDecimal openCost = releaseOpenCost.first;
-	////成交额
-	//BigDecimal tradeAmount = BigDecimal.valueOf(trade.getVolume())
-	//	.multiply(BigDecimal.valueOf(trade.getPrice()))
-	//	.multiply(multiplier);
-	////平仓持仓方向取反
-	//String direction = DirectionEnum.getOppositeDirection(trade.getDirection());
-	//BigDecimal margin;
-	//if (DirectionEnum.DIRECTION_BUY.getCode().equals(direction)) {
-	//	//按比例计算保证金
-	//	margin = BigDecimal.valueOf(oldPosi.getMarginLong()).multiply(
-	//		BigDecimal.valueOf(trade.getVolume())
-	//		.divide(BigDecimal.valueOf(oldPosi.getVolumeLong()), 2, BigDecimal.ROUND_HALF_DOWN));
-	//	//平仓盈亏 多仓（买开 -> 卖平） = 成交额 - 开仓成本
-	//	trade = trade.toBuilder().setCloseProfit(tradeAmount.subtract(openCost).doubleValue()).build();
-	//	int volume = oldPosi.getVolumeLong() - trade.getVolume();
-	//	//多头持仓成本
-	//	BigDecimal posiCost = BigDecimal.valueOf(oldPosi.getPositionCostLong()).subtract(openCost);
-	//	//多头持仓均价
-	//	BigDecimal posiPrice = volume == 0 ? BigDecimal.ZERO
-	//		: posiCost.divide(BigDecimal.valueOf(volume), 4, RoundingMode.HALF_DOWN)
-	//		.divide(multiplier, 4, RoundingMode.HALF_DOWN);
-	//	//多头保证金
-	//	BigDecimal marginLong = BigDecimal.valueOf(oldPosi.getMarginLong()).subtract(margin);
-	//	posiBuilder.setVolumeLong(volume)
-	//		.setPositionCostLong(posiCost.doubleValue())
-	//		.setPositionPriceLong(posiPrice.doubleValue())
-	//		.setMarginLong(marginLong.doubleValue());
-	//	if (OffsetEnum.FLAG_CLOSE.getCode().equals(trade.getOffset())) {
-	//		posiBuilder.setVolumeLongHis(oldPosi.getVolumeLongHis() - trade.getVolume());
-	//		if (!ignoreFrozen) {
-	//			posiBuilder.setVolumeLongFrozenHis(oldPosi.getVolumeLongFrozenHis() - trade.getVolume());
-	//		}
-
-	//	}
-	//	else {
-	//		posiBuilder.setVolumeLongToday(oldPosi.getVolumeLongToday() - trade.getVolume());
-	//		if (!ignoreFrozen) {
-	//			posiBuilder.setVolumeLongFrozenToday(oldPosi.getVolumeLongFrozenToday() - trade.getVolume());
-	//		}
-	//	}
-	//}
-	//else {
-	//	//按比例计算保证金
-	//	margin = BigDecimal.valueOf(oldPosi.getMarginShort()).multiply(
-	//		BigDecimal.valueOf(trade.getVolume())
-	//		.divide(BigDecimal.valueOf(oldPosi.getVolumeShort()), 2, BigDecimal.ROUND_HALF_DOWN));
-	//	//平仓盈亏 空仓(卖开 -> 买平)= 开仓成本 - 成交额
-	//	trade = trade.toBuilder().setCloseProfit(openCost.subtract(tradeAmount).doubleValue()).build();
-	//	int volume = oldPosi.getVolumeShort() - trade.getVolume();
-	//	//空头持仓成本
-	//	BigDecimal posiCost = BigDecimal.valueOf(oldPosi.getPositionCostShort()).subtract(openCost);
-	//	//空头持仓均价
-	//	BigDecimal posiPrice = volume == 0 ? BigDecimal.ZERO
-	//		: posiCost.divide(BigDecimal.valueOf(volume), 4, RoundingMode.HALF_DOWN)
-	//		.divide(multiplier, 4, RoundingMode.HALF_DOWN);
-	//	//空头保证金
-	//	BigDecimal marginShort = BigDecimal.valueOf(oldPosi.getMarginShort()).subtract(margin);
-	//	posiBuilder.setVolumeShort(volume)
-	//		.setPositionCostShort(posiCost.doubleValue())
-	//		.setPositionPriceShort(posiPrice.doubleValue())
-	//		.setMarginShort(marginShort.doubleValue());
-	//	if (OffsetEnum.FLAG_CLOSE.getCode().equals(trade.getOffset())) {
-	//		posiBuilder.setVolumeShortHis(oldPosi.getVolumeShortHis() - trade.getVolume());
-	//		if (!ignoreFrozen) {
-	//			posiBuilder.setVolumeShortFrozenHis(oldPosi.getVolumeShortFrozenHis() - trade.getVolume());
-	//		}
-
-	//	}
-	//	else {
-	//		posiBuilder.setVolumeShortToday(oldPosi.getVolumeShortToday() - trade.getVolume());
-	//		if (!ignoreFrozen) {
-	//			posiBuilder.setVolumeShortFrozenToday(oldPosi.getVolumeShortFrozenToday() - trade.getVolume());
-	//		}
-	//	}
-	//}
-	////持仓占用保证金
-	//posiBuilder.setMargin(BigDecimal.valueOf(oldPosi.getMargin()).subtract(margin).doubleValue());
-	//TradeBeans.Position position = posiBuilder.build();
-
-
-	//// 股票平仓成交 加钱
-	//BigDecimal money = BigDecimal.ZERO;
-	//if (TradeAccountTypeEnum.BROKERAGE_FUND_ACCOUNT.getCode().equals(
-	//	accountInfoService.getVirtualAccount(trade.getAccountId()).getTradeAccountType())) {
-	//	money = BigDecimal.valueOf(trade.getPrice()).multiply(BigDecimal.valueOf(trade.getVolume()));
-	//}
-	////修改资金记录
-	//TradeBeans.Account.Builder builder = TradeBeans.Account.newBuilder(oldAccount);
-	////计算平仓盈亏（逐日）
-	//BigDecimal closeProfit;
-	//if (DirectionEnum.DIRECTION_BUY.getCode().equals(trade.getDirection())) {
-	//	//买平：平仓盈亏＝（开仓价－平仓价）* 平仓手数 * 合约乘数 = 开仓成本 - 平仓价* 平仓手数*合约乘数
-	//	closeProfit = openCost.subtract(BigDecimal.valueOf(trade.getPrice())
-	//		.multiply(BigDecimal.valueOf(trade.getVolume()))
-	//		.multiply(multiplier));
-	//}
-	//else {
-	//	//卖平：平仓盈亏＝（平仓价－开仓价）* 平仓手数 * 合约乘数 = 平仓价* 平仓手数*合约乘数 - 开仓成本
-	//	closeProfit = BigDecimal.valueOf(trade.getPrice())
-	//		.multiply(BigDecimal.valueOf(trade.getVolume()))
-	//		.multiply(multiplier).subtract(openCost);
-	//}
-
-	//TradeBeans.Account account = builder.setCloseProfit(closeProfit.doubleValue())
-	//	.setCommission(BigDecimal.valueOf(oldAccount.getCommission()).add(fee).doubleValue())
-	//	.setMargin(BigDecimal.valueOf(oldAccount.getMargin()).subtract(margin).doubleValue())
-	//	.setAvailable(BigDecimal.valueOf(oldAccount.getAvailable())
-	//		.add(money).add(margin).subtract(fee).doubleValue())
-	//	.build();
-	//tradeDataDao.batchOperate(TwoTuple.of(DataType.OPEN_RECORD_LIST, releaseOpenCost.second),
-	//	TwoTuple.of(DataType.POSITION, position),
-	//	TwoTuple.of(DataType.ACCOUNT, account),
-	//	TwoTuple.of(DataType.TRADE, trade));
-}
-
-
-void dealOpenTrade(const char* stdCode, double margin, double fee, bool ignoreFrozen)
-{
-	//TradeBeans.Account oldAccount = getAccount(trade.getAccountId());
-	//TradeBeans.Order order = getOrderInfo(trade.getOrderId());
-	//log.info("dealOpenTrade orderStatus:{}", order.getStatus());
-
-	////开仓记录
-	//TradeBeans.OpenPositionRecord record = generateOpenPositionRecord(trade);
-
-	////增加持仓
-	//TwoTuple< DataType, Object> addPosiOperate = addPositions(trade, margin, record);
-
-	////修改资金记录
-	//BigDecimal money = BigDecimal.ZERO;
-	////股票成交扣钱
-	//if (TradeAccountTypeEnum.BROKERAGE_FUND_ACCOUNT.getCode().equals(
-	//	accountInfoService.getVirtualAccount(trade.getAccountId()).getTradeAccountType())) {
-	//	money = BigDecimal.valueOf(trade.getPrice()).multiply(BigDecimal.valueOf(trade.getVolume()));
-	//}
-
-	//TradeBeans.Account.Builder builder = TradeBeans.Account.newBuilder(oldAccount);
-	//BigDecimal available = BigDecimal.valueOf(oldAccount.getAvailable());
-
-	//// 按比例释放冻结
-	//if (!ignoreFrozen) {
-	//	BigDecimal rate = BigDecimal.valueOf(trade.getVolume())
-	//		.divide(BigDecimal.valueOf(order.getVolumeOrign()), 4, RoundingMode.HALF_DOWN);
-	//	//释放冻结手续费
-	//	BigDecimal freeFee = BigDecimal.valueOf(order.getFrozenFee()).multiply(rate);
-	//	//释放冻结保证金
-	//	BigDecimal freeMargin = BigDecimal.valueOf(order.getFrozenMargin()).multiply(rate);
-	//	//释放冻结保资金
-	//	BigDecimal freeMoney = BigDecimal.valueOf(order.getFrozenMoney()).multiply(rate);
-	//	available = available.add(freeFee).add(freeMargin).add(freeMoney);
-	//	builder.setFrozenMargin(BigDecimal.valueOf(oldAccount.getFrozenMargin()).subtract(freeMargin).doubleValue())
-	//		.setFrozenCommission(BigDecimal.valueOf(oldAccount.getFrozenCommission()).subtract(freeFee).doubleValue())
-	//		.setFrozenMoney(BigDecimal.valueOf(oldAccount.getFrozenMoney()).subtract(freeMoney).doubleValue());
-	//}
-
-	////并扣除成交的保证金、手续费、资金
-	//available = available.subtract(fee).subtract(margin).subtract(money);
-
-	//TradeBeans.Account account = builder
-	//	.setCommission(BigDecimal.valueOf(oldAccount.getCommission()).add(fee).doubleValue())
-	//	.setMargin(BigDecimal.valueOf(oldAccount.getMargin()).add(margin).doubleValue())
-	//	.setAvailable(available.doubleValue())
-	//	.build();
-	//String key = tradeDataDao.generateOpenRecordKey(record);
-	//LinkedList<TradeBeans.OpenPositionRecord> records = tradeDataDao.getOpenRecords(key);
-	//records.addLast(record);
-	//tradeDataDao.batchOperate(TwoTuple.of(DataType.TRADE, trade),
-	//	TwoTuple.of(DataType.ACCOUNT, account),
-	//	addPosiOperate,
-	//	TwoTuple.of(DataType.OPEN_RECORD_LIST, new OpenRecordWrapper(key, records)));
-}
-
-void addPositions(const char* stdCode, double margin)
-{
-	//TradeBeans.Position oldPosi = getPosi(trade.getAccountId(), trade.getInstrumentId());
-	//BigDecimal multiplier = baseInfoService.getMultiplier(trade.getInstrumentId());
-	////添加/修改持仓记录
-	//TradeBeans.Position newPosi;
-	//if (oldPosi == null) {
-	//	newPosi = buildPosition(trade, record.getOpenCost(), margin);
-	//}
-	//else {
-	//	TradeBeans.Position.Builder builder = TradeBeans.Position.newBuilder(oldPosi);
-	//	//持仓占用保证金
-	//	builder.setMargin(BigDecimal.valueOf(oldPosi.getMargin()).add(margin).doubleValue());
-	//	if (DirectionEnum.DIRECTION_BUY.getCode().equals(trade.getDirection())) {
-	//		//开仓总数量  用于计算开仓成本
-	//		BigDecimal openVolume;
-	//		if (BigDecimal.valueOf(oldPosi.getOpenCostLong()).compareTo(BigDecimal.ZERO) == 0) {
-	//			openVolume = BigDecimal.valueOf(trade.getVolume());
-	//		}
-	//		else {
-	//			openVolume = BigDecimal.valueOf(oldPosi.getOpenCostLong())
-	//				.divide(BigDecimal.valueOf(oldPosi.getOpenPriceLong()), 4, RoundingMode.HALF_DOWN)
-	//				.divide(multiplier, 4, RoundingMode.HALF_DOWN)
-	//				.add(BigDecimal.valueOf(trade.getVolume()));
-	//		}
-	//		//多头持仓手数
-	//		int volume = oldPosi.getVolumeLong() + trade.getVolume();
-	//		//多头开仓成本
-	//		BigDecimal openCost = BigDecimal.valueOf(oldPosi.getOpenCostLong())
-	//			.add(BigDecimal.valueOf(record.getOpenCost()));
-	//		//多头开仓均价
-	//		BigDecimal openPrice = openCost.divide(openVolume, 4, RoundingMode.HALF_DOWN)
-	//			.divide(multiplier, 4, RoundingMode.HALF_DOWN);
-	//		//多头持仓成本
-	//		BigDecimal posiCost = BigDecimal.valueOf(oldPosi.getPositionCostLong())
-	//			.add(BigDecimal.valueOf(record.getOpenCost()));
-	//		//多头持仓均价
-	//		BigDecimal posiPrice = posiCost.divide(BigDecimal.valueOf(volume), 4, RoundingMode.HALF_DOWN)
-	//			.divide(multiplier, 4, RoundingMode.HALF_DOWN);
-	//		//多头保证金
-	//		BigDecimal marginLong = BigDecimal.valueOf(oldPosi.getMarginLong()).add(margin);
-	//		builder.setVolumeLongToday(oldPosi.getVolumeLongToday() + trade.getVolume())
-	//			.setVolumeLong(volume)
-	//			.setOpenCostLong(openCost.doubleValue())
-	//			.setOpenPriceLong(openPrice.doubleValue())
-	//			.setPositionCostLong(posiCost.doubleValue())
-	//			.setPositionPriceLong(posiPrice.doubleValue())
-	//			.setMarginLong(marginLong.doubleValue());
-	//	}
-	//	else {
-	//		BigDecimal openVolume;
-	//		if (BigDecimal.valueOf(oldPosi.getOpenCostShort()).compareTo(BigDecimal.ZERO) == 0) {
-	//			openVolume = BigDecimal.valueOf(trade.getVolume());
-	//		}
-	//		else {
-	//			openVolume = BigDecimal.valueOf(oldPosi.getOpenCostShort())
-	//				.divide(BigDecimal.valueOf(oldPosi.getOpenPriceShort()), 4, RoundingMode.HALF_DOWN)
-	//				.divide(multiplier, 4, RoundingMode.HALF_DOWN)
-	//				.add(BigDecimal.valueOf(trade.getVolume()));
-	//		}
-	//		//空头持仓手数
-	//		int volume = oldPosi.getVolumeShort() + trade.getVolume();
-	//		//空头开仓成本
-	//		BigDecimal openCost = BigDecimal.valueOf(oldPosi.getOpenCostShort())
-	//			.add(BigDecimal.valueOf(record.getOpenCost()));
-	//		//空头开仓均价
-	//		BigDecimal openPrice = openCost.divide(openVolume, 4, RoundingMode.HALF_DOWN)
-	//			.divide(multiplier, 4, RoundingMode.HALF_DOWN);
-	//		//空头持仓成本
-	//		BigDecimal posiCost = BigDecimal.valueOf(oldPosi.getPositionCostShort())
-	//			.add(BigDecimal.valueOf(record.getOpenCost()));
-	//		//空头持仓均价
-	//		BigDecimal posiPrice = posiCost.divide(BigDecimal.valueOf(volume), 4, RoundingMode.HALF_DOWN)
-	//			.divide(multiplier, 4, RoundingMode.HALF_DOWN);
-	//		//空头保证金
-	//		BigDecimal marginShort = BigDecimal.valueOf(oldPosi.getMarginShort()).add(margin);
-	//		builder.setVolumeShortToday(oldPosi.getVolumeShortToday() + trade.getVolume())
-	//			.setVolumeShort(volume)
-	//			.setOpenCostShort(openCost.doubleValue())
-	//			.setOpenPriceShort(openPrice.doubleValue())
-	//			.setPositionCostShort(posiCost.doubleValue())
-	//			.setPositionPriceShort(posiPrice.doubleValue())
-	//			.setMarginShort(marginShort.doubleValue());
-	//	}
-	//	newPosi = builder.build();
-
-	//}
-	////股票(t+1) 开仓成交冻结成交的今仓
-	//if (TradeAccountTypeEnum.BROKERAGE_FUND_ACCOUNT.getCode().equals(
-	//	accountInfoService.getVirtualAccount(trade.getAccountId()).getTradeAccountType())) {
-	//	int longFrozenToday = newPosi.getVolumeLongFrozenToday() + trade.getVolume();
-	//	newPosi = TradeBeans.Position.newBuilder(newPosi)
-	//		.setVolumeLongFrozenToday(longFrozenToday)
-	//		.build();
-	//}
-	//return TwoTuple.of(DataType.POSITION, newPosi);
 }
 
 
@@ -1765,6 +1418,30 @@ double CtaMocker::stra_get_detail_profit(const char* stdCode, const char* userTa
 	}
 
 	return 0.0;
+}
+
+time_t CtaMocker::StringToDatetime(uint64_t curTm)
+{
+	std::string str = std::tostring(curTm);
+	tm tm_;												// 定义tm结构体。
+	int year, month, day, hour, minute, second;			// 定义时间的各个int临时变量。
+	year = atoi((str.substr(0, 4)).c_str());
+	month = atoi((str.substr(4, 2)).c_str());
+	day = atoi((str.substr(6, 2)).c_str());
+	hour = atoi((str.substr(8, 2)).c_str());
+	minute = atoi((str.substr(10, 2)).c_str());
+	second = atoi((str.substr(12, 2)).c_str());
+	//milsecond = atoi((str.substr(14, 3)).c_str());
+
+	tm_.tm_year = year - 1900;                 // 年，由于tm结构体存储的是从1900年开始的时间，所以tm_year为int临时变量减去1900。      
+	tm_.tm_mon = month - 1;                    // 月，由于tm结构体的月份存储范围为0-11，所以tm_mon为int临时变量减去1。
+	tm_.tm_mday = day;                         // 日。
+	tm_.tm_hour = hour;                        // 时。
+	tm_.tm_min = minute;                       // 分。
+	tm_.tm_sec = second;                       // 秒。
+	tm_.tm_isdst = 0;                          // 非夏令时。
+	time_t t_ = mktime(&tm_);                  // 将tm结构体转换成time_t格式。
+	return t_;						           // 返回值。
 }
 
 
