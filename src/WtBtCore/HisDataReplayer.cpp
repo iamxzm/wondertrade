@@ -36,7 +36,6 @@
 #include <rapidjson/prettywriter.h>
 
 #include <cstdlib>
-#include <iostream>
 #include <chrono>
 #include <string>
 
@@ -1522,7 +1521,7 @@ uint64_t HisDataReplayer::replayHftDatasByDay(uint32_t curTDate)
 			{
 				update_price(stdCode, nextTick.price);
 				WTSTickData* newTick = WTSTickData::create(nextTick);
-				newTick->setCode(stdCode);
+				newTick->setCode(stdCode);//
 				_listener->handle_tick(stdCode, newTick);
 				newTick->release();
 
@@ -3103,6 +3102,8 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 						WTSVariant* cfg = WTSVariant::createObject();
 						jsonToVariant(d, cfg);
 						WTSTickStruct ticks;
+						//exchgid.copy(ticks.exchg, exchgid.length(), 0);	//*(ticks.exchg + exchgid.length()) = '/0';
+						//instid.copy(ticks.code, instid.length(), 0);	//*(ticks.code + instid.length()) = '/0';
 						WTSVariant* cfgBF = cfg->get("trade_time");
 						unsigned long long time = stoll(cfgBF->getCString("$date"));
 						ticks.action_date = StampTimeYmd(time);
@@ -3368,6 +3369,12 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 			oss << hotSec._s_date;
 			std::string leftDt = oss.str();		oss.str("");
 
+			auto& barinstdate = _barinstdate[stdCode];
+			if (barinstdate[hotSec._code]._s_date == 0)
+			{
+				barinstdate[hotSec._code]._s_date = hotSec._s_date;
+				barinstdate[hotSec._code]._e_date = hotSec._e_date;
+			}
 			uint32_t barcnt = 0;
 			barcnt = db[tbname].count_documents(make_document(kvp("symbol", symbol),
 				kvp("trade_day", make_document(kvp("$gte", leftDt), kvp("$lte", rightDt)))));

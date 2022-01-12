@@ -20,6 +20,7 @@
 #include "../WTSTools/WTSBaseDataMgr.h"
 #include <rapidjson/document.h>
 #include <numeric>
+#include <iostream>
 namespace rj = rapidjson;
 
 NS_OTP_BEGIN
@@ -394,5 +395,19 @@ private:
 	} DateList;
 
 	std::map<std::string, DateList> _datelistmap;
+
+	//主力合约K线日期
+	typedef struct _BarInstDate
+	{
+		uint32_t _s_date;
+		uint32_t _e_date;
+	} BarInstDate;
+
+public:
+	typedef std::map<std::string, std::map<std::string, BarInstDate>> _barinstdate_map;
+	_barinstdate_map* get_barinstdate() { return &_barinstdate; }
+	
+private:
+	_barinstdate_map _barinstdate;
 };
 

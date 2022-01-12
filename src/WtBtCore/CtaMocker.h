@@ -20,6 +20,18 @@
 #include "../Share/DLLHelper.hpp"
 #include "../Share/StdUtils.hpp"
 
+#include <bsoncxx/builder/stream/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+#include <mongocxx/database.hpp>
+
 NS_OTP_BEGIN
 class EventNotifier;
 NS_OTP_END
@@ -75,7 +87,7 @@ private:
 
 	void	update_dyn_profit(const char* stdCode, double price);
 
-	void	do_set_position(const char* stdCode, double qty, double price = 0.0, const char* userTag = "", bool bTriggered = false);
+	void	do_set_position(const char* stdCode, double qty, double price = 0.0, std::string instid = "",const char* userTag = "", bool bTriggered = false);//
 	void	append_signal(const char* stdCode, double qty, const char* userTag = "", double price = 0.0);
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
@@ -311,4 +323,9 @@ protected:
 	bool			_wait_calc;
 
 	bool			_persist_data;
+
+	mongocxx::database		_mongodb;		//mongodbÊý¾Ý
+	mongocxx::collection	_poscoll_1;
+	mongocxx::collection	_poscoll_2;
+	mongocxx::collection	_poscoll_3;
 };

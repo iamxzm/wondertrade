@@ -26,7 +26,20 @@
 
 #include "../WTSTools/WTSLogger.h"
 
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::to_json;
+
+using bsoncxx::builder::stream::close_array;
+using bsoncxx::builder::stream::close_document;
+using bsoncxx::builder::stream::document;
+using bsoncxx::builder::stream::finalize;
+using bsoncxx::builder::stream::open_array;
+using bsoncxx::builder::stream::open_document;
+
 namespace rj = rapidjson;
+using namespace std;
 
 const char* CMP_ALG_NAMES[] =
 {
@@ -259,6 +272,9 @@ void CtaMocker::on_init()
 	if (_strategy)
 		_strategy->on_init(this);
 
+
+	
+
 	WTSLogger::info("CTA Strategy initialized, with slippage: %d", _slippage);
 }
 
@@ -307,7 +323,25 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 	double last_px = _price_map[stdCode];
 	double cur_px = newTick->price();
 	_price_map[stdCode] = cur_px;
-
+	std::string exch_inst = "";
+	auto barinstdate = _replayer->get_barinstdate();
+	for (auto it = barinstdate->begin(); it != barinstdate->end(); it++)
+	{
+		bool quit = false;
+		for (auto iit=it->second.begin();iit!=it->second.end();iit++)
+		{
+			if (iit->second._s_date <= newTick->actiondate() && iit->second._e_date >= newTick->actiondate())
+			{
+				exch_inst = iit->first;
+				quit = true;
+				break;
+			}
+		}
+		if (quit) break;
+	}
+	do_set_position("SHFE.ag.HOT", 100.0, 30.0, exch_inst, "", false);//测试使用
+	/*do_set_position("SHFE.al.HOT", 100.0, 30, "userTag");
+	do_set_position("SHFE.ag.HOT", 100.0, 30, "userTag");*/
 	//先检查是否要信号要触发
 	{
 		auto it = _sig_map.find(stdCode);
@@ -321,7 +355,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 					price = newTick->price();
 				else
 					price = sInfo._desprice;
-				do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str(), sInfo._triggered);
+				do_set_position(stdCode, sInfo._volume, price, exch_inst,sInfo._usertag.c_str(), sInfo._triggered);
 				_sig_map.erase(it);
 			}
 
@@ -921,14 +955,22 @@ void CtaMocker::append_signal(const char* stdCode, double qty, const char* userT
 	//save_data();
 }
 
-void CtaMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, const char* userTag /* = "" */, bool bTriggered /* = false */)
+void CtaMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, std::string instid /*=""*/,const char* userTag /* = "" */, bool bTriggered /* = false */)
 {
+	//mongocxx::instance instance{};
+	mongocxx::uri uri("mongodb://192.168.214.199:27017");
+	mongocxx::client client(uri);
+	_mongodb = client["lsqt_db"];
+	_poscoll_1 = _mongodb["test_positions"];
+	_poscoll_2 = _mongodb["his_trades"];
+	_poscoll_3 = _mongodb["his_orders"];
 	PosInfo& pInfo = _pos_map[stdCode];
 	double curPx = price;
 	if (decimal::eq(price, 0.0))
 		curPx = _price_map[stdCode];
 	uint64_t curTm = (uint64_t)_replayer->get_date() * 10000 + _replayer->get_min_time();
 	uint32_t curTDate = _replayer->get_trading_date();
+	uint64_t curTime = (uint64_t)_replayer->get_date() * 1000000 + _replayer->get_min_time() * 100 + _replayer->get_secs();
 
 	//手数相等则不用操作了
 	if (decimal::eq(pInfo._volume, qty))
@@ -936,18 +978,21 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
 
+	std::string exchid = commInfo->getExchg();
+	std::string exch_inst = exchid + "::";
+	exch_inst += instid;
 	//成交价
 	double trdPx = curPx;
 
 	double diff = qty - pInfo._volume;
 	bool isBuy = decimal::gt(diff, 0.0);
-	if (decimal::gt(pInfo._volume*diff, 0))//当前持仓和仓位变化方向一致, 增加一条明细, 增加数量即可
+	if (decimal::gt(pInfo._volume * diff, 0))//当前持仓和仓位变化方向一致, 增加一条明细, 增加数量即可
 	{
 		pInfo._volume = qty;
-		
+
 		if (_slippage != 0)
 		{
-			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+			trdPx += _slippage * commInfo->getPriceTick() * (isBuy ? 1 : -1);
 		}
 
 		DetailInfo dInfo;
@@ -964,6 +1009,100 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
 		_fund_info._total_fees += fee;
 
+
+		//mongo 增加一条明细
+		bsoncxx::document::value position_doc = document{} << finalize;
+		if (dInfo._long)
+		{
+			position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+				"strategy_id" << 0 <<//
+				"position" << open_document <<
+				exch_inst << open_document <<
+				"position_profit" << dInfo._profit <<
+				"float_profit_short" << 0.0 <<
+				"open_price_short" << 0.0 <<
+				"volume_long_frozen_today" << 0 <<//
+				"open_cost_long" << fee <<
+				"position_price_short" << 0.0 <<
+				"float_profit_long" << pInfo._dynprofit <<
+				"open_price_long" << dInfo._price <<
+				"exchange_id" << exchid <<
+				"volume_short_frozen_today" << 0 <<//
+				"position_price_long" << dInfo._price <<
+				"position_profit_long" << dInfo._profit <<
+				"volume_short_today" << 0 <<
+				"position_profit_short" << 0.0 <<
+				"volume_long" << dInfo._volume <<
+				"margin_short" << 0.0 <<//
+				"volume_long_frozen_his" << 0 <<//
+				"float_profit" << 0.0 <<//
+				"open_cost_short" << 0.0 <<
+				"margin" << 0.0 <<//
+				"position_cost_short" << 0.0 <<//
+				"volume_short_frozen_his" << 0 <<//
+				"instrument_id" << instid <<
+				"volume_short" << 0 <<
+				"account_id" << "" <<
+				"volume_long_today" << dInfo._volume <<
+				"position_cost_long" << 0.0 <<//
+				"volume_long_his" << 0 <<//
+				"hedge_flag" << " " <<//
+				"margin_long" << 0.0 <<//
+				"volume_short_his" << 0 <<//
+				"last_price" << 0.0 << //
+				close_document <<
+				close_document <<
+				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+				finalize;
+		}
+		else
+		{
+			position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+				"strategy_id" << 0 <<//
+				"position" << open_document <<
+				exch_inst << open_document <<
+				"position_profit" << dInfo._profit <<
+				"float_profit_short" << pInfo._dynprofit <<
+				"open_price_short" << dInfo._price <<
+				"volume_long_frozen_today" << 0 <<//
+				"open_cost_long" << 0.0 <<
+				"position_price_short" << dInfo._price <<
+				"float_profit_long" << 0.0 <<
+				"open_price_long" << 0.0 <<
+				"exchange_id" << exchid <<
+				"volume_short_frozen_today" << 0 <<//
+				"position_price_long" << 0.0 <<
+				"position_profit_long" << 0.0 <<
+				"volume_short_today" << dInfo._volume <<
+				"position_profit_short" << dInfo._profit <<
+				"volume_long" << 0 <<
+				"margin_short" << 0.0 <<//
+				"volume_long_frozen_his" << 0 <<//
+				"float_profit" << 0.0 <<//
+				"open_cost_short" << fee <<
+				"margin" << 0.0 <<//
+				"position_cost_short" << 0.0 <<//
+				"volume_short_frozen_his" << 0 <<//
+				"instrument_id" << instid <<
+				"volume_short" << dInfo._volume <<
+				"account_id" << "" <<
+				"volume_long_today" << 0.0 <<
+				"position_cost_long" << fee <<//
+				"volume_long_his" << 0 <<//
+				"hedge_flag" << " " <<//
+				"margin_long" << 0.0 <<//
+				"volume_short_his" << 0 <<//
+				"last_price" << 0.0 << //
+				close_document <<
+				close_document <<
+				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+				finalize;
+		}
+
+		auto result = _poscoll_1.insert_one(move(position_doc));
+		bsoncxx::oid oid = result->inserted_id().get_oid().value;
+		std::cout << "insert one:" << oid.to_string() << std::endl;
+
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
 	else
@@ -971,7 +1110,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		double left = abs(diff);
 		bool isBuy = decimal::gt(diff, 0.0);
 		if (_slippage != 0)
-			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+			trdPx += _slippage * commInfo->getPriceTick() * (isBuy ? 1 : -1);
 
 		pInfo._volume = qty;
 		if (decimal::eq(pInfo._volume, 0))
@@ -998,16 +1137,63 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				profit *= -1;
 			pInfo._closeprofit += profit;
 			_total_closeprofit += profit;
-			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//浮盈也要做等比缩放
+			pInfo._dynprofit = pInfo._dynprofit * dInfo._volume / (dInfo._volume + maxQty);//浮盈也要做等比缩放
 			pInfo._last_exittime = curTm;
 			_fund_info._total_profit += profit;
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
 			_fund_info._total_fees += fee;
 			//这里写成交记录
+
+			bsoncxx::document::value position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+				"strategy_id" << 0 <<//
+				"position" << open_document <<
+				exch_inst << open_document <<
+				"position_profit" << dInfo._profit <<
+				"float_profit_short" << pInfo._dynprofit <<
+				"open_price_short" << dInfo._price <<
+				"volume_long_frozen_today" << 0 <<//
+				"open_cost_long" << 0.0 <<
+				"position_price_short" << dInfo._price <<
+				"float_profit_long" << 0.0 <<
+				"open_price_long" << 0.0 <<
+				"exchange_id" << exchid <<
+				"volume_short_frozen_today" << 0 <<//
+				"position_price_long" << 0.0 <<
+				"position_profit_long" << 0.0 <<
+				"volume_short_today" << dInfo._volume <<
+				"position_profit_short" << dInfo._profit <<
+				"volume_long" << 0 <<
+				"margin_short" << 0.0 <<//
+				"volume_long_frozen_his" << 0 <<//
+				"float_profit" << 0.0 <<//
+				"open_cost_short" << fee <<
+				"margin" << 0.0 <<//
+				"position_cost_short" << 0.0 <<//
+				"volume_short_frozen_his" << 0 <<//
+				"instrument_id" << instid <<
+				"volume_short" << dInfo._volume <<
+				"account_id" << "" <<
+				"volume_long_today" << 0.0 <<
+				"position_cost_long" << fee <<//
+				"volume_long_his" << 0 <<//
+				"hedge_flag" << " " <<//
+				"margin_long" << 0.0 <<//
+				"volume_short_his" << 0 <<//
+				"last_price" << 0.0 << //
+				close_document <<
+				close_document <<
+				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+				finalize;
+
+			auto result = _poscoll_1.insert_one(move(position_doc));
+			bsoncxx::oid oid = result->inserted_id().get_oid().value;
+			std::cout << "insert one:" << oid.to_string() << std::endl;
+
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee, _schedule_times);
+
 			//这里写平仓记录
-			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, trdPx, maxQty, profit, maxProf, maxLoss, 
+			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, trdPx, maxQty, profit, maxProf, maxLoss,
 				_total_closeprofit - _fund_info._total_fees, dInfo._opentag, userTag, dInfo._open_barno, _schedule_times);
 
 			if (left == 0)
@@ -1036,11 +1222,108 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			dInfo._open_barno = _schedule_times;
 			strcpy(dInfo._opentag, userTag);
 			pInfo._details.emplace_back(dInfo);
- 
+
 			//这里还需要写一笔成交记录
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
 			//_engine->mutate_fund(fee, FFT_Fee);
+
+			bsoncxx::document::value position_doc = document{} << finalize;
+			if (dInfo._long)
+			{
+				position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+					"strategy_id" << 0 <<//
+					"position" << open_document <<
+					exch_inst << open_document <<
+					"position_profit" << dInfo._profit <<
+					"float_profit_short" << 0.0 <<
+					"open_price_short" << 0.0 <<
+					"volume_long_frozen_today" << 0 <<//
+					"open_cost_long" << fee <<
+					"position_price_short" << 0.0 <<
+					"float_profit_long" << pInfo._dynprofit <<
+					"open_price_long" << dInfo._price <<
+					"exchange_id" << exchid <<
+					"volume_short_frozen_today" << 0 <<//
+					"position_price_long" << dInfo._price <<
+					"position_profit_long" << dInfo._profit <<
+					"volume_short_today" << 0 <<
+					"position_profit_short" << 0.0 <<
+					"volume_long" << dInfo._volume <<
+					"margin_short" << 0.0 <<//
+					"volume_long_frozen_his" << 0 <<//
+					"float_profit" << 0.0 <<//
+					"open_cost_short" << 0.0 <<
+					"margin" << 0.0 <<//
+					"position_cost_short" << 0.0 <<//
+					"volume_short_frozen_his" << 0 <<//
+					"instrument_id" << instid <<
+					"volume_short" << 0 <<
+					"account_id" << "" <<
+					"volume_long_today" << dInfo._volume <<
+					"position_cost_long" << 0.0 <<//
+					"volume_long_his" << 0 <<//
+					"hedge_flag" << " " <<//
+					"margin_long" << 0.0 <<//
+					"volume_short_his" << 0 <<//
+					"last_price" << 0.0 << //
+					close_document <<
+					close_document <<
+					"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+					finalize;
+				auto result = _poscoll_1.insert_one(std::move(position_doc));
+				bsoncxx::oid oid = result->inserted_id().get_oid().value;
+				std::cout << "insert one:" << oid.to_string() << std::endl;
+			}
+			else
+			{
+				bsoncxx::document::value position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+					"strategy_id" << 0 <<//
+					"position" << open_document <<
+					exch_inst << open_document <<
+					"position_profit" << dInfo._profit <<
+					"float_profit_short" << pInfo._dynprofit <<
+					"open_price_short" << dInfo._price <<
+					"volume_long_frozen_today" << 0 <<//
+					"open_cost_long" << 0.0 <<
+					"position_price_short" << dInfo._price <<
+					"float_profit_long" << 0.0 <<
+					"open_price_long" << 0.0 <<
+					"exchange_id" << exchid <<
+					"volume_short_frozen_today" << 0 <<//
+					"position_price_long" << 0.0 <<
+					"position_profit_long" << 0.0 <<
+					"volume_short_today" << dInfo._volume <<
+					"position_profit_short" << dInfo._profit <<
+					"volume_long" << 0 <<
+					"margin_short" << 0.0 <<//
+					"volume_long_frozen_his" << 0 <<//
+					"float_profit" << 0.0 <<//
+					"open_cost_short" << fee <<
+					"margin" << 0.0 <<//
+					"position_cost_short" << 0.0 <<//
+					"volume_short_frozen_his" << 0 <<//
+					"instrument_id" << instid <<
+					"volume_short" << dInfo._volume <<
+					"account_id" << "" <<
+					"volume_long_today" << 0.0 <<
+					"position_cost_long" << fee <<//
+					"volume_long_his" << 0 <<//
+					"hedge_flag" << " " <<//
+					"margin_long" << 0.0 <<//
+					"volume_short_his" << 0 <<//
+					"last_price" << 0.0 << //
+					close_document <<
+					close_document <<
+					"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+					finalize;
+				auto result = _poscoll_1.insert_one(move(position_doc));
+				bsoncxx::oid oid = result->inserted_id().get_oid().value;
+				std::cout << "insert one:" << oid.to_string() << std::endl;
+			}
+
+
+
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), userTag, fee, _schedule_times);
 
 			pInfo._last_entertime = curTm;
