@@ -20,6 +20,7 @@
 #include "../WTSTools/WTSBaseDataMgr.h"
 #include <rapidjson/document.h>
 #include <numeric>
+#include <iostream>
 namespace rj = rapidjson;
 
 NS_OTP_BEGIN
@@ -254,6 +255,14 @@ public:
 	uint32_t get_raw_time() const{ return _cur_time; }
 	uint32_t get_secs() const{ return _cur_secs; }
 	uint32_t get_trading_date() const{ return _cur_tdate; }
+	int StampTimeHM(unsigned long long timestamp);//
+	int StampTimeYmd(unsigned long long timestamp);
+	int StampTimeHMSms(long long timestamp);
+	uint32_t AddTime(int time1, int time2);
+	uint32_t Get_timeYmdHM(long long timestamp);
+	time_t StringToDatetime(std::string str);
+	time_t timeTransS(std::string time);
+	time_t timeTransE(std::string time);
 
 	double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
 	WTSSessionInfo*		get_session_info(const char* sid, bool isCode = false);
@@ -386,5 +395,19 @@ private:
 	} DateList;
 
 	std::map<std::string, DateList> _datelistmap;
+
+	//主力合约K线日期
+	typedef struct _BarInstDate
+	{
+		uint32_t _s_date;
+		uint32_t _e_date;
+	} BarInstDate;
+
+public:
+	typedef std::map<std::string, std::map<std::string, BarInstDate>> _barinstdate_map;
+	_barinstdate_map* get_barinstdate() { return &_barinstdate; }
+	
+private:
+	_barinstdate_map _barinstdate;
 };
 

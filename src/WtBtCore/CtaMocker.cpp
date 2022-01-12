@@ -273,11 +273,8 @@ void CtaMocker::on_init()
 	if (_strategy)
 		_strategy->on_init(this);
 
-	mongocxx::instance instance{};
-	mongocxx::uri uri("mongodb://192.168.214.199:27017");
-	mongocxx::client client(uri);
-	_mongodb = client["lsqt_db"];
-	_poscoll = _mongodb["day_account"];
+	//mongocxx::instance instance{};
+	
 
 	WTSLogger::info("CTA Strategy initialized, with slippage: %d", _slippage);
 }
@@ -320,6 +317,87 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 	}
 
 	_fund_info._total_dynprofit = total_dynprofit;
+
+	//计算期初权益
+	if (_new_trade_day)
+	{
+		_static_balance = _total_money + _used_margin + _fund_info._total_fees - _fund_info._total_dynprofit - _fund_info._total_profit;
+		_new_trade_day = false;
+	}
+	//今日资产 = 期初权益 + 持仓盈亏 + 平仓盈亏 - 手续费
+	_balance = _static_balance + _fund_info._total_dynprofit + _total_closeprofit - _fund_info._total_fees;
+	//当日盈亏
+	_day_profit = _balance - _static_balance;
+	//策略收益
+	_total_profit = _balance - init_money;
+	//收益率公式 = (当前净值/最初净值) -1
+
+	//基准收益率
+	double benchmarkPrePrice = _close_price;//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //昨收价
+	double benchmarkEndPrice = _settlepx;//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
+	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
+
+	//(dailyRateOfReturn + 1) / (benchmarkRateOfReturn + 1) - 1
+}
+
+void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
+{
+	mongocxx::uri uri("mongodb://192.168.214.199:27017");
+	mongocxx::client client(uri);
+	_mongodb = client["lsqt_db"];
+	_acccoll = _mongodb["day_account"];
+
+	bsoncxx::document::value position_doc = document{} <<
+			"position_profit" << 187419.886<<
+			"available" << 1203347283.835<<
+			"frozen_premium" << 0.0<<
+			"close_profit" << 380.0<<
+			"day_profit" << _day_profit <<
+			"premium" << 0.0<<
+			"balance" << 1203426049.915<<
+			"static_balance" << _static_balance <<
+			"currency" << "CNY"<<
+			"commission" << 52390.9437451164<<
+			"frozen_margin" << 0.0<<
+			"pre_balance" << 1203290260.972<<
+			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
+			"float_profit" << 0.0<<
+			"timestamp" << _replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000  <<
+			"margin" << 69946.4849999992<<
+			"risk_ratio" << 0.0001<<
+			"trade_day" << std::to_string(_traderday) <<
+			"frozen_commission" << 0.0<<
+			"abnormal_rate_of_return" << 0.0277<<
+			"daily_rate_of_return" << _total_profit <<
+			"win_or_lose_flag" << 1<<
+			"strategy_id" << "1283634220584927232"<<
+			"deposit" << 0.0<<
+			"accounts" << open_document <<
+			"1283634220790448128" << open_document <<
+				"position_profit" << 187419.886<<
+					"margin" << 69946.4849999992<<
+					"risk_ratio" << 0.0<<
+					"frozen_commission" << 0.0<<
+					"frozen_premium" << 0.0<<
+					"available" << 1203347283.835<<
+					"close_profit" << 380.0<<
+					"account_id" << "1283634220790448128"<<
+					"premium" << 0.0<<
+					"static_balance" << 1203290260.972<<
+					"balance" << 1203426049.915<<
+					"deposit" << 0.0<<
+					"currency" << "rmb"<<
+					"pre_balance" << 1203290260.972<<
+					"commission" << 52390.9437451164<<
+					"frozen_margin" << 0.0<<
+					"float_profit" << 0.0<<
+					"withdraw" << 0.0 <<
+					close_document <<
+			close_document <<
+			"withdraw" << 0.0 <<
+		finalize;
+
+	_acccoll.insert_one(std::move(position_doc));
 }
 
 void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
@@ -327,6 +405,17 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 	double last_px = _price_map[stdCode];
 	double cur_px = newTick->price();
 	_price_map[stdCode] = cur_px;
+	//交易日
+	if (_traderday < newTick->tradingdate())
+	{
+		_new_trade_day = true;
+		_traderday = newTick->tradingdate();
+	}
+
+	//昨结
+	_close_price = newTick->presettle();
+	//结算价
+	_settlepx = newTick->settlepx();
 
 	//先检查是否要信号要触发
 	{
@@ -341,7 +430,9 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 					price = newTick->price();
 				else
 					price = sInfo._desprice;
+
 				do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str(), sInfo._triggered);
+				_changepos = true;
 				_sig_map.erase(it);
 			}
 
@@ -349,6 +440,15 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 	}
 
 	update_dyn_profit(stdCode, newTick->price());
+
+	//持仓变化更新数据
+	if (_changepos)
+	{
+		_changepos = false;
+		set_dayaccount(stdCode, newTick, bEmitStrategy);
+	}
+
+	
 
 	//////////////////////////////////////////////////////////////////////////
 	//检查条件单
@@ -949,7 +1049,6 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		curPx = _price_map[stdCode];
 	uint64_t curTm = (uint64_t)_replayer->get_date() * 10000 + _replayer->get_min_time();
 	uint32_t curTDate = _replayer->get_trading_date();
-	uint64_t curDay = (uint64_t)_replayer->get_date();
 
 	//手数相等则不用操作了
 	if (decimal::eq(pInfo._volume, qty))
@@ -963,14 +1062,10 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 	double diff = qty - pInfo._volume;
 	bool isBuy = decimal::gt(diff, 0.0);
 
-	//保证金计算
-	//_frozen_margin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
-	//_total_money -= _frozen_margin;
-
 	if (decimal::gt(pInfo._volume*diff, 0))//当前持仓和仓位变化方向一致, 增加一条明细, 增加数量即可
 	{
 		pInfo._volume = qty;
-		
+
 		if (_slippage != 0)
 		{
 			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
@@ -991,8 +1086,18 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
 		_fund_info._total_fees += fee;
 
-		_total_money -= dInfo._margin;
-		_total_money -= fee;
+		//保证金计算
+		if (decimal::gt(_total_money - (dInfo._margin + fee), 0))
+		{
+			_total_money -= dInfo._margin;
+			_total_money -= fee;
+		}
+		else
+		{
+			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:资金账户不足");
+		}
+
+		_used_margin += dInfo._margin;
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
@@ -1042,6 +1147,8 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			_total_money -= fee;
 			_total_money += cur_margin;
 
+			_used_margin -= cur_margin;
+
 			dInfo._margin -= cur_margin;
 
 			//这里写成交记录
@@ -1053,11 +1160,11 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			//	<< "$gt" << bsoncxx::types::b_date{ chromo::milliseconds(startTime) } 
 			//	<< "$lte" << bsoncxx::types::b_date{ chromo::milliseconds(endTime) } << close_document << finalize;
 
-			//mongocxx::cursor cursor = _poscoll.find(filter.view());
+			//mongocxx::cursor cursor = _acccoll.find(filter.view());
 			//for (auto doc : cursor) {
 			//}
 
-			//_poscoll.update_one(document{} << "timestamp" << curSecs << finalize,
+			//_acccoll.update_one(document{} << "timestamp" << curSecs << finalize,
 			//	document{} << "$set" << open_document <<
 			//	"day_profit" << pInfo._closeprofit <<
 			//	close_document << finalize);
@@ -1100,21 +1207,28 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			//mongo 使用bulk_write更新数据，线程锁
 			//auto fliter = make_document(kvp("accounts", "1283634220584927232"));
 			//auto updatedoc = make_document(kvp("$set", make_document(kvp("position_profit", dInfo._profit))));
-
 			//mongocxx::model::update_one upsert_op{fliter.view(), updatedoc.view()};
 			//upsert_op.upsert(true);
-			//auto bulk = _poscoll.create_bulk_write();
+			//auto bulk = _acccoll.create_bulk_write();
 			//bulk.append(upsert_op);
 			//auto result = bulk.execute();
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
 			//_engine->mutate_fund(fee, FFT_Fee);
+
+			_total_money -= fee;
+
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), userTag, fee, _schedule_times);
 
 			pInfo._last_entertime = curTm;
 		}
 	}
+}
+
+void CtaMocker::change_traderday()
+{
+	_new_trade_day = true;
 }
 
 
@@ -1418,30 +1532,6 @@ double CtaMocker::stra_get_detail_profit(const char* stdCode, const char* userTa
 	}
 
 	return 0.0;
-}
-
-time_t CtaMocker::StringToDatetime(uint64_t curTm)
-{
-	std::string str = std::tostring(curTm);
-	tm tm_;												// 定义tm结构体。
-	int year, month, day, hour, minute, second;			// 定义时间的各个int临时变量。
-	year = atoi((str.substr(0, 4)).c_str());
-	month = atoi((str.substr(4, 2)).c_str());
-	day = atoi((str.substr(6, 2)).c_str());
-	hour = atoi((str.substr(8, 2)).c_str());
-	minute = atoi((str.substr(10, 2)).c_str());
-	second = atoi((str.substr(12, 2)).c_str());
-	//milsecond = atoi((str.substr(14, 3)).c_str());
-
-	tm_.tm_year = year - 1900;                 // 年，由于tm结构体存储的是从1900年开始的时间，所以tm_year为int临时变量减去1900。      
-	tm_.tm_mon = month - 1;                    // 月，由于tm结构体的月份存储范围为0-11，所以tm_mon为int临时变量减去1。
-	tm_.tm_mday = day;                         // 日。
-	tm_.tm_hour = hour;                        // 时。
-	tm_.tm_min = minute;                       // 分。
-	tm_.tm_sec = second;                       // 秒。
-	tm_.tm_isdst = 0;                          // 非夏令时。
-	time_t t_ = mktime(&tm_);                  // 将tm结构体转换成time_t格式。
-	return t_;						           // 返回值。
 }
 
 

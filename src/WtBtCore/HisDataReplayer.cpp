@@ -36,7 +36,6 @@
 #include <rapidjson/prettywriter.h>
 
 #include <cstdlib>
-#include <iostream>
 #include <chrono>
 #include <string>
 
@@ -78,7 +77,7 @@ uint64_t readFileContent(const char* filename, std::string& content)
 	return length;
 }
 
-int StampTimeHM(unsigned long long timestamp)
+int HisDataReplayer::StampTimeHM(unsigned long long timestamp)
 {
 	//int ms = timestamp % 1000;//取毫秒
 	time_t tick = (time_t)(timestamp / 1000);//转换时间
@@ -92,7 +91,7 @@ int StampTimeHM(unsigned long long timestamp)
 	return stoi(str);
 }
 
-int StampTimeYmd(unsigned long long timestamp)
+int HisDataReplayer::StampTimeYmd(unsigned long long timestamp)
 {
 	//int ms = timestamp % 1000;//取毫秒
 	time_t tick = (time_t)(timestamp / 1000);//转换时间
@@ -106,7 +105,7 @@ int StampTimeYmd(unsigned long long timestamp)
 	return stoi(str);
 }
 
-int StampTimeHMSms(long long timestamp)
+int HisDataReplayer::StampTimeHMSms(long long timestamp)
 {
 	int ms = timestamp % 1000;//取毫秒
 	time_t tick = (time_t)(timestamp / 1000);//转换时间
@@ -133,13 +132,13 @@ int StampTimeHMSms(long long timestamp)
 	return stoi(str);
 }
 
-uint32_t AddTime(int time1, int time2)
+uint32_t HisDataReplayer::AddTime(int time1, int time2)
 {
 	uint32_t time = (time1 - 19900000) * 10000 + time2;
 	return time;
 }
 
-uint32_t Get_timeYmdHM(long long timestamp)
+uint32_t HisDataReplayer::Get_timeYmdHM(long long timestamp)
 {
 	int time1 = StampTimeYmd(timestamp);
 	int time2 = StampTimeHM(timestamp);
@@ -148,21 +147,7 @@ uint32_t Get_timeYmdHM(long long timestamp)
 	return ymdhm;
 }
 
-time_t StringToDatetime(std::string str);
-
-time_t timeTransS(string time) {//time=20191230
-	time += "000000000";
-	//cout << "time=" << time << endl;
-	return StringToDatetime(time);
-}
-
-time_t timeTransE(string time) {//time=20191230
-	time += "235959999";
-	//cout << "time=" << time << endl;
-	return StringToDatetime(time);
-}
-
-time_t StringToDatetime(std::string str)
+time_t HisDataReplayer::StringToDatetime(std::string str)
 {
 	tm tm_;												// 定义tm结构体。
 	int year, month, day, hour, minute, second;			// 定义时间的各个int临时变量。
@@ -172,7 +157,7 @@ time_t StringToDatetime(std::string str)
 	hour = atoi((str.substr(8, 2)).c_str());
 	minute = atoi((str.substr(10, 2)).c_str());
 	second = atoi((str.substr(12, 2)).c_str());
-	//milsecond = atoi((str.substr(14, 3)).c_str());
+	//milsecond = atoi((str.substr(14, 3)).c_str());	//不取毫秒
 
 	tm_.tm_year = year - 1900;                 // 年，由于tm结构体存储的是从1900年开始的时间，所以tm_year为int临时变量减去1900。      
 	tm_.tm_mon = month - 1;                    // 月，由于tm结构体的月份存储范围为0-11，所以tm_mon为int临时变量减去1。
@@ -183,6 +168,18 @@ time_t StringToDatetime(std::string str)
 	tm_.tm_isdst = 0;                          // 非夏令时。
 	time_t t_ = mktime(&tm_);                  // 将tm结构体转换成time_t格式。
 	return t_;						           // 返回值。
+}
+
+time_t HisDataReplayer::timeTransS(std::string time) {//time=20191230
+	time += "000000000";
+	//cout << "time=" << time << endl;
+	return StringToDatetime(time);
+}
+
+time_t HisDataReplayer::timeTransE(std::string time) {//time=20191230
+	time += "235959999";
+	//cout << "time=" << time << endl;
+	return StringToDatetime(time);
 }
 
 HisDataReplayer::HisDataReplayer()
@@ -1524,7 +1521,7 @@ uint64_t HisDataReplayer::replayHftDatasByDay(uint32_t curTDate)
 			{
 				update_price(stdCode, nextTick.price);
 				WTSTickData* newTick = WTSTickData::create(nextTick);
-				newTick->setCode(stdCode);
+				newTick->setCode(stdCode);//
 				_listener->handle_tick(stdCode, newTick);
 				newTick->release();
 
@@ -3105,6 +3102,8 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 						WTSVariant* cfg = WTSVariant::createObject();
 						jsonToVariant(d, cfg);
 						WTSTickStruct ticks;
+						//exchgid.copy(ticks.exchg, exchgid.length(), 0);	//*(ticks.exchg + exchgid.length()) = '/0';
+						//instid.copy(ticks.code, instid.length(), 0);	//*(ticks.code + instid.length()) = '/0';
 						WTSVariant* cfgBF = cfg->get("trade_time");
 						unsigned long long time = stoll(cfgBF->getCString("$date"));
 						ticks.action_date = StampTimeYmd(time);
@@ -3370,6 +3369,12 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 			oss << hotSec._s_date;
 			std::string leftDt = oss.str();		oss.str("");
 
+			auto& barinstdate = _barinstdate[stdCode];
+			if (barinstdate[hotSec._code]._s_date == 0)
+			{
+				barinstdate[hotSec._code]._s_date = hotSec._s_date;
+				barinstdate[hotSec._code]._e_date = hotSec._e_date;
+			}
 			uint32_t barcnt = 0;
 			barcnt = db[tbname].count_documents(make_document(kvp("symbol", symbol),
 				kvp("trade_day", make_document(kvp("$gte", leftDt), kvp("$lte", rightDt)))));

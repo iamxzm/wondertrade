@@ -95,13 +95,14 @@ private:
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
 
-	time_t StringToDatetime(uint64_t curTm);
+	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true );
 
 public:
 	bool	init_cta_factory(WTSVariant* cfg);
 	void	install_hook();
 	void	enable_hook(bool bEnabled = true);
 	bool	step_calc();
+	void	change_traderday();
 
 public:
 	//////////////////////////////////////////////////////////////////////////
@@ -184,13 +185,23 @@ protected:
 	uint64_t		_total_calc_time;	//总计算时间
 	uint32_t		_emit_times;		//总计算次数
 
-	const double init_money = 100000;
-	double		_total_money = init_money;		//总资金账户
-	double		_yest_money = 0;					//昨总资金
+	const double init_money = 100000;			//初始资金
+	double      _balance = 0;					//今总资产
+	double		_total_money = init_money;		//剩余资金
+	double		_static_balance = init_money;			//期初资产
 	double		_close_price = 0;				//昨结算价
-	double        _frozen_margin = 0;			//冻结保证金
+	double		_settlepx;						//今结算价
+	double        _used_margin = 0;			//占用保证金
 	double        _margin_rate = 0.5;			//保证金比例
 	uint64_t		_cur_multiplier = 100;		//当前合约乘数
+
+	double		_day_profit;
+	double		_total_profit;	//策略收益
+	double		_benchmark_rate_of_return; //基准收益率
+
+	bool			_new_trade_day = true;
+	bool		_changepos = false;
+	uint32_t    _traderday = 0;
 
 
 	int32_t			_slippage;			//成交滑点
@@ -340,5 +351,5 @@ protected:
 	bool			_persist_data;
 
 	mongocxx::database		_mongodb;		//mongodb数据
-	mongocxx::collection	_poscoll;
+	mongocxx::collection	_acccoll;
 };
