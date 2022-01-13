@@ -324,8 +324,10 @@ protected:
 
 	bool			_persist_data;
 
-	mongocxx::database		_mongodb;		//mongodbÊý¾Ý
-	mongocxx::collection	_poscoll_1;
-	mongocxx::collection	_poscoll_2;
-	mongocxx::collection	_poscoll_3;
+	//mongocxx::uri _uri;
+	//mongocxx::client _client;
+	/*mongocxx::database _db;
+	mongocxx::collection	_poscoll_1;*/
+	/*mongocxx::collection	_poscoll_2;
+	mongocxx::collection	_poscoll_3;*/
 };

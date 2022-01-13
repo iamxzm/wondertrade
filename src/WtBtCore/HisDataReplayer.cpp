@@ -39,22 +39,6 @@
 #include <chrono>
 #include <string>
 
-#include <bsoncxx/builder/basic/array.hpp>
-#include <bsoncxx/builder/basic/document.hpp>
-#include <bsoncxx/builder/basic/kvp.hpp>
-#include <bsoncxx/json.hpp>
-#include <bsoncxx/types.hpp>
-
-#include <mongocxx/client.hpp>
-#include <mongocxx/instance.hpp>
-#include <mongocxx/uri.hpp>
-
-using bsoncxx::builder::basic::kvp;
-using bsoncxx::builder::basic::make_array;
-using bsoncxx::builder::basic::make_document;
-using bsoncxx::to_json;
-using namespace mongocxx;
-
 #ifdef _WIN32
 #pragma comment(lib, "libmysql.lib")
 #endif
@@ -64,6 +48,8 @@ using namespace mongocxx;
 #else
 #define my_stricmp strcasecmp
 #endif
+
+//mongocxx::instance inst{};
 
 uint64_t readFileContent(const char* filename, std::string& content)
 {
@@ -193,7 +179,10 @@ HisDataReplayer::HisDataReplayer()
 	, _closed_tdate(0)
 	, _tick_simulated(true)
 	, _running(false)
+	,_uri("mongodb://192.168.214.199:27017")
+	,_client(_uri)
 {
+	//mongocxx::instance instance{};
 }
 
 
@@ -251,7 +240,6 @@ bool HisDataReplayer::init(WTSVariant* cfg, EventNotifier* notifier /* = NULL */
 			if (_db_conf._active)
 				initDB();
 		}
-		mongocxx::instance instance{};
 	}
 
 	bool bAdjLoaded = false;
@@ -3023,9 +3011,9 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 	uint32_t endTDate = _bd_mgr.calcTradingDate(stdPID.c_str(), curDate, curTime, false);
 	string tbname = "future_tick_1";
 
-	mongocxx::uri uri("mongodb://192.168.214.199:27017");
-	mongocxx::client client(uri);
-	auto db = client["lsqt_quotation"];
+	/*mongocxx::uri uri("mongodb://192.168.214.199:27017");
+	mongocxx::client client(uri);*/
+	auto db = _client["lsqt_quotation"];
 
 	auto& tickList = _ticks_cache[key];
 	//tickList._items.resize(count);
@@ -3320,9 +3308,9 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 		break;
 	}
 	//mongocxx::instance instance{};
-	mongocxx::uri uri("mongodb://192.168.214.199:27017");
-	mongocxx::client client(uri);
-	auto db = client["lsqt_quotation"];
+	/*mongocxx::uri uri("mongodb://192.168.214.199:27017");
+	mongocxx::client client(uri);*/
+	auto db = _client["lsqt_quotation"];
 	BarsList& barList = bForBars ? _bars_cache[key] : _unbars_cache[key];
 	barList._code = stdCode;
 	barList._period = period;

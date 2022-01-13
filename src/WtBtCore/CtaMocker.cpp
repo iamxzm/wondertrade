@@ -38,6 +38,8 @@ using bsoncxx::builder::stream::finalize;
 using bsoncxx::builder::stream::open_array;
 using bsoncxx::builder::stream::open_document;
 
+std::mutex c1_mtx{};
+
 namespace rj = rapidjson;
 using namespace std;
 
@@ -85,8 +87,15 @@ CtaMocker::CtaMocker(HisDataReplayer* replayer, const char* name, int32_t slippa
 	, _wait_calc(false)
 	, _in_backtest(false)
 	, _persist_data(persistData)
+	/*, _client(mongocxx::uri{ "mongodb://192.168.214.199:27017" })
+	, _db(_client["lsqt_db"])*/
+    //,_poscoll_1(_mongodb["test_positions"])
+	//,_poscoll_2(_mongodb["his_trade"])
+	//,_poscoll_3(_mongodb["his_order"])//
 {
 	_context_id = makeCtxId();
+	/*_uri = mongocxx::uri("mongodb://192.168.214.199:27017");
+	_client = mongocxx::client(_uri);*/
 }
 
 
@@ -271,8 +280,6 @@ void CtaMocker::on_init()
 	_in_backtest = true;
 	if (_strategy)
 		_strategy->on_init(this);
-
-
 	
 
 	WTSLogger::info("CTA Strategy initialized, with slippage: %d", _slippage);
@@ -339,9 +346,8 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 		}
 		if (quit) break;
 	}
-	do_set_position("SHFE.ag.HOT", 100.0, 30.0, exch_inst, "", false);//测试使用
-	/*do_set_position("SHFE.al.HOT", 100.0, 30, "userTag");
-	do_set_position("SHFE.ag.HOT", 100.0, 30, "userTag");*/
+	//do_set_position("SHFE.ag.HOT", 100.0, 30.0, exch_inst, "", false);//测试使用
+	
 	//先检查是否要信号要触发
 	{
 		auto it = _sig_map.find(stdCode);
@@ -958,12 +964,12 @@ void CtaMocker::append_signal(const char* stdCode, double qty, const char* userT
 void CtaMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, std::string instid /*=""*/,const char* userTag /* = "" */, bool bTriggered /* = false */)
 {
 	//mongocxx::instance instance{};
-	mongocxx::uri uri("mongodb://192.168.214.199:27017");
-	mongocxx::client client(uri);
-	_mongodb = client["lsqt_db"];
-	_poscoll_1 = _mongodb["test_positions"];
-	_poscoll_2 = _mongodb["his_trades"];
-	_poscoll_3 = _mongodb["his_orders"];
+	/*mongocxx::uri _uri("mongodb://192.168.214.199:27017");
+	mongocxx::client _client(_uri);*/
+	auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["test_positions"];
+	//_poscoll_2 = db["his_trades"];
+	//_poscoll_3 = db["his_orders"];//
 	PosInfo& pInfo = _pos_map[stdCode];
 	double curPx = price;
 	if (decimal::eq(price, 0.0))
@@ -1099,9 +1105,11 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				finalize;
 		}
 
+		c1_mtx.lock();
 		auto result = _poscoll_1.insert_one(move(position_doc));
 		bsoncxx::oid oid = result->inserted_id().get_oid().value;
 		std::cout << "insert one:" << oid.to_string() << std::endl;
+		c1_mtx.unlock();
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
@@ -1186,9 +1194,11 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
 				finalize;
 
+			c1_mtx.lock();
 			auto result = _poscoll_1.insert_one(move(position_doc));
 			bsoncxx::oid oid = result->inserted_id().get_oid().value;
 			std::cout << "insert one:" << oid.to_string() << std::endl;
+			c1_mtx.unlock();
 
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee, _schedule_times);
 
@@ -1271,9 +1281,12 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 					close_document <<
 					"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
 					finalize;
+
+				c1_mtx.lock();
 				auto result = _poscoll_1.insert_one(std::move(position_doc));
 				bsoncxx::oid oid = result->inserted_id().get_oid().value;
 				std::cout << "insert one:" << oid.to_string() << std::endl;
+				c1_mtx.unlock();
 			}
 			else
 			{
@@ -1317,12 +1330,13 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 					close_document <<
 					"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
 					finalize;
+
+				c1_mtx.lock();
 				auto result = _poscoll_1.insert_one(move(position_doc));
 				bsoncxx::oid oid = result->inserted_id().get_oid().value;
 				std::cout << "insert one:" << oid.to_string() << std::endl;
+				c1_mtx.unlock();
 			}
-
-
 
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), userTag, fee, _schedule_times);
 
