@@ -45,11 +45,11 @@ using namespace std;
 
 const char* CMP_ALG_NAMES[] =
 {
-	"£½",
-	"£¾",
-	"£¼",
-	"¡İ",
-	"¡Ü"
+	"ï¼",
+	"ï¼",
+	"ï¼œ",
+	"â‰¥",
+	"â‰¤"
 };
 
 const char* ACTION_NAMES[] =
@@ -256,7 +256,7 @@ void CtaMocker::handle_tick(const char* stdCode, WTSTickData* curTick)
 
 
 //////////////////////////////////////////////////////////////////////////
-//»Øµ÷º¯Êı
+//å›è°ƒå‡½æ•°
 void CtaMocker::on_bar(const char* stdCode, const char* period, uint32_t times, WTSBarStruct* newBar)
 {
 	if (newBar == NULL)
@@ -346,9 +346,9 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 		}
 		if (quit) break;
 	}
-	//do_set_position("SHFE.ag.HOT", 100.0, 30.0, exch_inst, "", false);//²âÊÔÊ¹ÓÃ
+	//do_set_position("SHFE.ag.HOT", 100.0, 30.0, exch_inst, "", false);//æµ‹è¯•ä½¿ç”¨
 	
-	//ÏÈ¼ì²éÊÇ·ñÒªĞÅºÅÒª´¥·¢
+	//å…ˆæ£€æŸ¥æ˜¯å¦è¦ä¿¡å·è¦è§¦å‘
 	{
 		auto it = _sig_map.find(stdCode);
 		if (it != _sig_map.end())
@@ -371,7 +371,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 	update_dyn_profit(stdCode, newTick->price());
 
 	//////////////////////////////////////////////////////////////////////////
-	//¼ì²éÌõ¼şµ¥
+	//æ£€æŸ¥æ¡ä»¶å•
 	if (!_condtions.empty())
 	{
 		auto it = _condtions.find(stdCode);
@@ -383,14 +383,14 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 		for (const CondEntrust& entrust : condList)
 		{
 			/*
-			 * Èç¹û¿ªÆôÁËtickÄ£Ê½£¬¾ÍÕı³£±È½Ï
-			 * µ«ÊÇÈç¹ûÃ»ÓĞ¿ªÆôtickÄ£Ê½£¬Âß¼­¾Í·Ç³£¸´ÔÓ
-			 * ÒòÎª²»¿ª»Ø²âµÄÊ±ºòtickÊÇÓÃ¿ª¸ßµÍÊÕÄ£Äâ³öÀ´µÄ£¬Èç¹ûÖ±½Ó°´ÕÕÄ¿±ê¼Û¸ñ´¥·¢£¬¿ÉÄÜÊÇÓĞÎÊÌâµÄ
-			 * Ê×ÏÈÒªÄÃµ½ÉÏÒ»±Ê¼Û¸ñ£¬ºÍµ±Ç°×îĞÂ¼Û¸ñ×öÒ»¸ö±È¼Û£¬µÃµ½×ó±ß½çºÍÓÒ±ß½ç
-			 * ÕâÀïÖ»ÄÜ¼ÙÉèÇ°ºóÁ½±Ê¼Û¸ñÖ®¼äÊÇÁ¬ĞøµÄ£¬ÕâÑùĞèÒª½«Á½±Ê¼Û¸ñ¶¼¼ÓÈëÅĞ¶Ï
-			 * µ±Ìõ¼şÊÇµÈÓÚÊ±£¬Èç¹ûÄ¿±ê¼Û¸ñÔÚ×óÓÒ±ß½çÖ®¼ä£¬ËµÃ÷Ä¿±ê¼Û¸ñÔÚÕâÆÚ¼äÊÇ³öÏÖ¹ıµÄ£¬ÔòÈÏÎª¼Û¸ñÆ¥Åä
-			 * µ±Ìõ¼şÊÇ´óÓÚµÄÊ±ºò£¬ÎÒÃÇĞèÒªÅĞ¶ÏÓÒ±ß½ç£¬¼´ÉÔ´óµÄÖµÊÇ·ñÂú×ãÌõ¼ş£¬²¢È¡×ó±ß½çÓëÄ¿±ê¼ÛÖĞÉÔ´óµÄ×÷Îªµ±Ç°¼Û
-			 * µ±Ìõ¼şÊÇĞ¡ÓÚµÄÊ±ºò£¬ÎÒÃÇĞèÒªÅĞ¶Ï×ó±ß½ç£¬¼´ÉÔĞ¡µÄÖµÊÇ·ñÂú×ãÌõ¼ş£¬²¢È¡ÓÒ±ß½çÓëÄ¿±ê¼ÛÖĞÉÔĞ¡µÄ×÷Îªµ±Ç°¼Û
+			 * å¦‚æœå¼€å¯äº†tickæ¨¡å¼ï¼Œå°±æ­£å¸¸æ¯”è¾ƒ
+			 * ä½†æ˜¯å¦‚æœæ²¡æœ‰å¼€å¯tickæ¨¡å¼ï¼Œé€»è¾‘å°±éå¸¸å¤æ‚
+			 * å› ä¸ºä¸å¼€å›æµ‹çš„æ—¶å€™tickæ˜¯ç”¨å¼€é«˜ä½æ”¶æ¨¡æ‹Ÿå‡ºæ¥çš„ï¼Œå¦‚æœç›´æ¥æŒ‰ç…§ç›®æ ‡ä»·æ ¼è§¦å‘ï¼Œå¯èƒ½æ˜¯æœ‰é—®é¢˜çš„
+			 * é¦–å…ˆè¦æ‹¿åˆ°ä¸Šä¸€ç¬”ä»·æ ¼ï¼Œå’Œå½“å‰æœ€æ–°ä»·æ ¼åšä¸€ä¸ªæ¯”ä»·ï¼Œå¾—åˆ°å·¦è¾¹ç•Œå’Œå³è¾¹ç•Œ
+			 * è¿™é‡Œåªèƒ½å‡è®¾å‰åä¸¤ç¬”ä»·æ ¼ä¹‹é—´æ˜¯è¿ç»­çš„ï¼Œè¿™æ ·éœ€è¦å°†ä¸¤ç¬”ä»·æ ¼éƒ½åŠ å…¥åˆ¤æ–­
+			 * å½“æ¡ä»¶æ˜¯ç­‰äºæ—¶ï¼Œå¦‚æœç›®æ ‡ä»·æ ¼åœ¨å·¦å³è¾¹ç•Œä¹‹é—´ï¼Œè¯´æ˜ç›®æ ‡ä»·æ ¼åœ¨è¿™æœŸé—´æ˜¯å‡ºç°è¿‡çš„ï¼Œåˆ™è®¤ä¸ºä»·æ ¼åŒ¹é…
+			 * å½“æ¡ä»¶æ˜¯å¤§äºçš„æ—¶å€™ï¼Œæˆ‘ä»¬éœ€è¦åˆ¤æ–­å³è¾¹ç•Œï¼Œå³ç¨å¤§çš„å€¼æ˜¯å¦æ»¡è¶³æ¡ä»¶ï¼Œå¹¶å–å·¦è¾¹ç•Œä¸ç›®æ ‡ä»·ä¸­ç¨å¤§çš„ä½œä¸ºå½“å‰ä»·
+			 * å½“æ¡ä»¶æ˜¯å°äºçš„æ—¶å€™ï¼Œæˆ‘ä»¬éœ€è¦åˆ¤æ–­å·¦è¾¹ç•Œï¼Œå³ç¨å°çš„å€¼æ˜¯å¦æ»¡è¶³æ¡ä»¶ï¼Œå¹¶å–å³è¾¹ç•Œä¸ç›®æ ‡ä»·ä¸­ç¨å°çš„ä½œä¸ºå½“å‰ä»·
 			 */
 
 			double left_px = min(last_px, cur_px);
@@ -399,7 +399,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 			bool isMatched = false;	
 			if(!_replayer->is_tick_simulated())
 			{
-				//Èç¹ûtickÊı¾İ²»ÊÇÄ£ÄâµÄ£¬ÔòÊ¹ÓÃ×îĞÂ¼Û¸ñ
+				//å¦‚æœtickæ•°æ®ä¸æ˜¯æ¨¡æ‹Ÿçš„ï¼Œåˆ™ä½¿ç”¨æœ€æ–°ä»·æ ¼
 				switch (entrust._alg)
 				{
 				case WCT_Equal:
@@ -423,7 +423,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 			}
 			else
 			{
-				//Èç¹ûtickÊı¾İÊÇÄ£ÄâµÄ£¬ÔòÒª´¦ÀíÒ»ÏÂ
+				//å¦‚æœtickæ•°æ®æ˜¯æ¨¡æ‹Ÿçš„ï¼Œåˆ™è¦å¤„ç†ä¸€ä¸‹
 				switch (entrust._alg)
 				{
 				case WCT_Equal:
@@ -456,7 +456,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 			{
 				double price = curPrice;
 				double curQty = stra_get_position(stdCode);
-				//_replayer->is_tick_enabled() ? newTick->price() : entrust._target;	//Èç¹û¿ªÆôÁËtick»Ø²â,ÔòÓÃtickÊı¾İµÄ¼Û¸ñ,Èç¹ûÃ»ÓĞ¿ªÆô,ÔòÖ»ÄÜÓÃÌõ¼şµ¥¼Û¸ñ
+				//_replayer->is_tick_enabled() ? newTick->price() : entrust._target;	//å¦‚æœå¼€å¯äº†tickå›æµ‹,åˆ™ç”¨tickæ•°æ®çš„ä»·æ ¼,å¦‚æœæ²¡æœ‰å¼€å¯,åˆ™åªèƒ½ç”¨æ¡ä»¶å•ä»·æ ¼
 				WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_INFO, fmt::format("Condition order triggered[newprice: {}{}{}], instrument: {}, {} {}", cur_px, CMP_ALG_NAMES[entrust._alg], entrust._target, stdCode, ACTION_NAMES[entrust._action], entrust._qty).c_str());
 				switch (entrust._action)
 				{
@@ -495,8 +495,8 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 				default: break;
 				}
 
-				//Í¬Ò»¸öbarÉèÖÃÕë¶ÔÍ¬Ò»¸öºÏÔ¼µÄÌõ¼şµ¥,Ö»¿ÉÄÜ´¥·¢Ò»Ìõ
-				//ËùÒÔÕâÀïÖ±½ÓÇåÀíµô¼´¿É
+				//åŒä¸€ä¸ªbarè®¾ç½®é’ˆå¯¹åŒä¸€ä¸ªåˆçº¦çš„æ¡ä»¶å•,åªå¯èƒ½è§¦å‘ä¸€æ¡
+				//æ‰€ä»¥è¿™é‡Œç›´æ¥æ¸…ç†æ‰å³å¯
 				_condtions.erase(it);
 				break;
 			}
@@ -546,9 +546,9 @@ bool CtaMocker::step_calc()
 		return false;
 	}
 
-	//×Ü¹²·ÖÎª4¸ö×´Ì¬
-	//0-³õÊ¼×´Ì¬£¬1-oncalc£¬2-oncalc½áÊø£¬3-oncalcdone
-	//ËùÒÔ£¬Èç¹û³öÓÚ0/2£¬ÔòËµÃ÷Ã»ÓĞÔÚÖ´ĞĞÖĞ£¬ĞèÒªnotify
+	//æ€»å…±åˆ†ä¸º4ä¸ªçŠ¶æ€
+	//0-åˆå§‹çŠ¶æ€ï¼Œ1-oncalcï¼Œ2-oncalcç»“æŸï¼Œ3-oncalcdone
+	//æ‰€ä»¥ï¼Œå¦‚æœå‡ºäº0/2ï¼Œåˆ™è¯´æ˜æ²¡æœ‰åœ¨æ‰§è¡Œä¸­ï¼Œéœ€è¦notify
 	bool bNotify = false;
 	while (_in_backtest && (_cur_step == 0 || _cur_step == 2))
 	{
@@ -580,7 +580,7 @@ bool CtaMocker::step_calc()
 
 bool CtaMocker::on_schedule(uint32_t curDate, uint32_t curTime)
 {
-	_is_in_schedule = true;//¿ªÊ¼µ÷¶È,ĞŞ¸Ä±ê¼Ç
+	_is_in_schedule = true;//å¼€å§‹è°ƒåº¦,ä¿®æ”¹æ ‡è®°
 
 	_schedule_times++;
 
@@ -664,7 +664,7 @@ bool CtaMocker::on_schedule(uint32_t curDate, uint32_t curTime)
 		}
 	}
 
-	_is_in_schedule = false;//µ÷¶È½áÊø,ĞŞ¸Ä±ê¼Ç
+	_is_in_schedule = false;//è°ƒåº¦ç»“æŸ,ä¿®æ”¹æ ‡è®°
 	return emmited;
 }
 
@@ -730,11 +730,11 @@ CondList& CtaMocker::get_cond_entrusts(const char* stdCode)
 }
 
 //////////////////////////////////////////////////////////////////////////
-//²ßÂÔ½Ó¿Ú
+//ç­–ç•¥æ¥å£
 void CtaMocker::stra_enter_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
 	_replayer->sub_tick(_context_id, stdCode);
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
 	{
 		double curQty = stra_get_position(stdCode);
 		//if (curQty < 0)
@@ -775,7 +775,7 @@ void CtaMocker::stra_enter_long(const char* stdCode, double qty, const char* use
 void CtaMocker::stra_enter_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
 	_replayer->sub_tick(_context_id, stdCode);
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
 	{
 		double curQty = stra_get_position(stdCode);
 		//if (curQty > 0)
@@ -816,7 +816,7 @@ void CtaMocker::stra_enter_short(const char* stdCode, double qty, const char* us
 
 void CtaMocker::stra_exit_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
 	{
 		double curQty = stra_get_position(stdCode);
 		//if (curQty <= 0)
@@ -856,7 +856,7 @@ void CtaMocker::stra_exit_long(const char* stdCode, double qty, const char* user
 
 void CtaMocker::stra_exit_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
 	{
 		double curQty = stra_get_position(stdCode);
 		//if (curQty >= 0)
@@ -905,7 +905,7 @@ double CtaMocker::stra_get_price(const char* stdCode)
 void CtaMocker::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
 {
 	_replayer->sub_tick(_context_id, stdCode);
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
 	{
 		//do_set_position(stdCode, qty, userTag, !_is_in_schedule);
 		append_signal(stdCode, qty, userTag);
@@ -915,7 +915,7 @@ void CtaMocker::stra_set_position(const char* stdCode, double qty, const char* u
 		CondList& condList = get_cond_entrusts(stdCode);
 
 		double curQty = stra_get_position(stdCode);
-		//Èç¹ûÄ¿±ê²ÖÎ»ºÍµ±Ç°²ÖÎ»ÊÇÒ»ÖÂµÄ£¬Ôò²»ÔÙÉèÖÃÌõ¼şµ¥
+		//å¦‚æœç›®æ ‡ä»“ä½å’Œå½“å‰ä»“ä½æ˜¯ä¸€è‡´çš„ï¼Œåˆ™ä¸å†è®¾ç½®æ¡ä»¶å•
 		if (decimal::eq(curQty, qty))
 			return;
 
@@ -978,7 +978,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 	uint32_t curTDate = _replayer->get_trading_date();
 	uint64_t curTime = (uint64_t)_replayer->get_date() * 1000000 + _replayer->get_min_time() * 100 + _replayer->get_secs();
 
-	//ÊÖÊıÏàµÈÔò²»ÓÃ²Ù×÷ÁË
+	//æ‰‹æ•°ç›¸ç­‰åˆ™ä¸ç”¨æ“ä½œäº†
 	if (decimal::eq(pInfo._volume, qty))
 		return;
 
@@ -987,12 +987,12 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 	std::string exchid = commInfo->getExchg();
 	std::string exch_inst = exchid + "::";
 	exch_inst += instid;
-	//³É½»¼Û
+	//æˆäº¤ä»·
 	double trdPx = curPx;
 
 	double diff = qty - pInfo._volume;
 	bool isBuy = decimal::gt(diff, 0.0);
-	if (decimal::gt(pInfo._volume * diff, 0))//µ±Ç°³Ö²ÖºÍ²ÖÎ»±ä»¯·½ÏòÒ»ÖÂ, Ôö¼ÓÒ»ÌõÃ÷Ï¸, Ôö¼ÓÊıÁ¿¼´¿É
+	if (decimal::gt(pInfo._volume * diff, 0))//å½“å‰æŒä»“å’Œä»“ä½å˜åŒ–æ–¹å‘ä¸€è‡´, å¢åŠ ä¸€æ¡æ˜ç»†, å¢åŠ æ•°é‡å³å¯
 	{
 		pInfo._volume = qty;
 
@@ -1016,7 +1016,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		_fund_info._total_fees += fee;
 
 
-		//mongo Ôö¼ÓÒ»ÌõÃ÷Ï¸
+		//mongo å¢åŠ ä¸€æ¡æ˜ç»†
 		bsoncxx::document::value position_doc = document{} << finalize;
 		if (dInfo._long)
 		{
@@ -1108,13 +1108,13 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		c1_mtx.lock();
 		auto result = _poscoll_1.insert_one(move(position_doc));
 		bsoncxx::oid oid = result->inserted_id().get_oid().value;
-		std::cout << "insert one:" << oid.to_string() << std::endl;
+		//std::cout << "insert one:" << oid.to_string() << std::endl;
 		c1_mtx.unlock();
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
 	else
-	{//³Ö²Ö·½ÏòºÍ²ÖÎ»±ä»¯·½Ïò²»Ò»ÖÂ,ĞèÒªÆ½²Ö
+	{//æŒä»“æ–¹å‘å’Œä»“ä½å˜åŒ–æ–¹å‘ä¸ä¸€è‡´,éœ€è¦å¹³ä»“
 		double left = abs(diff);
 		bool isBuy = decimal::gt(diff, 0.0);
 		if (_slippage != 0)
@@ -1145,13 +1145,13 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				profit *= -1;
 			pInfo._closeprofit += profit;
 			_total_closeprofit += profit;
-			pInfo._dynprofit = pInfo._dynprofit * dInfo._volume / (dInfo._volume + maxQty);//¸¡Ó¯Ò²Òª×öµÈ±ÈËõ·Å
+			pInfo._dynprofit = pInfo._dynprofit * dInfo._volume / (dInfo._volume + maxQty);//æµ®ç›ˆä¹Ÿè¦åšç­‰æ¯”ç¼©æ”¾
 			pInfo._last_exittime = curTm;
 			_fund_info._total_profit += profit;
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
 			_fund_info._total_fees += fee;
-			//ÕâÀïĞ´³É½»¼ÇÂ¼
+			//è¿™é‡Œå†™æˆäº¤è®°å½•
 
 			bsoncxx::document::value position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
 				"strategy_id" << 0 <<//
@@ -1197,12 +1197,12 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			c1_mtx.lock();
 			auto result = _poscoll_1.insert_one(move(position_doc));
 			bsoncxx::oid oid = result->inserted_id().get_oid().value;
-			std::cout << "insert one:" << oid.to_string() << std::endl;
+			//std::cout << "insert one:" << oid.to_string() << std::endl;
 			c1_mtx.unlock();
 
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee, _schedule_times);
 
-			//ÕâÀïĞ´Æ½²Ö¼ÇÂ¼
+			//è¿™é‡Œå†™å¹³ä»“è®°å½•
 			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, trdPx, maxQty, profit, maxProf, maxLoss,
 				_total_closeprofit - _fund_info._total_fees, dInfo._opentag, userTag, dInfo._open_barno, _schedule_times);
 
@@ -1210,7 +1210,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				break;
 		}
 
-		//ĞèÒªÇåÀíµôÒÑ¾­Æ½²ÖÍêµÄÃ÷Ï¸
+		//éœ€è¦æ¸…ç†æ‰å·²ç»å¹³ä»“å®Œçš„æ˜ç»†
 		while (count > 0)
 		{
 			auto it = pInfo._details.begin();
@@ -1218,7 +1218,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			count--;
 		}
 
-		//×îºó,Èç¹û»¹ÓĞÊ£ÓàµÄ,ÔòĞèÒª·´ÊÖÁË
+		//æœ€å,å¦‚æœè¿˜æœ‰å‰©ä½™çš„,åˆ™éœ€è¦åæ‰‹äº†
 		if (left > 0)
 		{
 			left = left * qty / abs(qty);
@@ -1233,7 +1233,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			strcpy(dInfo._opentag, userTag);
 			pInfo._details.emplace_back(dInfo);
 
-			//ÕâÀï»¹ĞèÒªĞ´Ò»±Ê³É½»¼ÇÂ¼
+			//è¿™é‡Œè¿˜éœ€è¦å†™ä¸€ç¬”æˆäº¤è®°å½•
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
 			//_engine->mutate_fund(fee, FFT_Fee);
@@ -1285,7 +1285,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				c1_mtx.lock();
 				auto result = _poscoll_1.insert_one(std::move(position_doc));
 				bsoncxx::oid oid = result->inserted_id().get_oid().value;
-				std::cout << "insert one:" << oid.to_string() << std::endl;
+				//std::cout << "insert one:" << oid.to_string() << std::endl;
 				c1_mtx.unlock();
 			}
 			else
@@ -1334,7 +1334,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				c1_mtx.lock();
 				auto result = _poscoll_1.insert_one(move(position_doc));
 				bsoncxx::oid oid = result->inserted_id().get_oid().value;
-				std::cout << "insert one:" << oid.to_string() << std::endl;
+				//std::cout << "insert one:" << oid.to_string() << std::endl;
 				c1_mtx.unlock();
 			}
 
