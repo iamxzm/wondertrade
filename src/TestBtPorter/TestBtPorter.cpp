@@ -23,9 +23,7 @@ void on_gettick(CtxHandler ctxid, const char* code, WTSTickStruct* tick, WtUInt3
 void on_init(CtxHandler ctxid)
 {
 	//cta_get_bars(ctxid, "CFFEX.IF.HOT", "d1", 30, true, on_getbar);
-	printf("test init start");
 	cta_get_bars(ctxid, "SHFE.ag.HOT", "m1", 30, true, on_getbar);
-	printf("test init end");
 	//cta_sub_ticks(ctxid, "SHFE.ag.HOT");
 	//cta_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
 	//hft_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
@@ -34,25 +32,25 @@ void on_init(CtxHandler ctxid)
 
 void on_tick(CtxHandler ctxid, const char* stdCode, WTSTickStruct* newTick)
 {
-	//printf("on_tick newTick:%u %u %f\r\n",newTick->action_date,newTick->action_time,newTick->price);
+	printf("on_tick newTick:%u %u %f\r\n",newTick->action_date,newTick->action_time,newTick->price);
 }
 
 void on_calc(CtxHandler ctxid, WtUInt32 curDate, WtUInt32 curTime)
 {
-	//printf("on_calc @ %u.%u\r\n", curDate, curTime);
+	printf("on_calc @ %u.%u\r\n", curDate, curTime);
 	//cta_get_ticks(ctxid, "CFFEX.IF.HOT", 100, on_gettick);
 }
 
 void on_calc_done(CtxHandler ctxid, WtUInt32 curDate, WtUInt32 curTime)
 {
-	//printf("on_calc_done @ %u.%u\r\n", curDate, curTime);
+	printf("on_calc_done @ %u.%u\r\n", curDate, curTime);
 	//cta_get_ticks(ctxid, "CFFEX.IF.HOT", 100, on_gettick);
 }
 
 
 void on_bar(CtxHandler ctxid, const char* code, const char* period, WTSBarStruct* newBar)
 {
-	//printf("on_bar%u\r\n",newBar->time);
+	printf("on_bar%u\r\n",newBar->time);
 }
 
 void on_session_event(CtxHandler cHandle, WtUInt32 curTDate, bool isBegin)

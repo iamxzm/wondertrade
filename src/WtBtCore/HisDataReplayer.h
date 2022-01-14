@@ -21,7 +21,6 @@
 #include <rapidjson/document.h>
 #include <numeric>
 #include <iostream>
-
 #include <bsoncxx/builder/basic/array.hpp>
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/builder/basic/kvp.hpp>
@@ -32,7 +31,14 @@
 #include <mongocxx/instance.hpp>
 #include <mongocxx/uri.hpp>
 
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::to_json;
+using namespace mongocxx;
 namespace rj = rapidjson;
+
+//extern mongocxx::instance inst;
 
 NS_OTP_BEGIN
 class WTSTickData;

@@ -10,7 +10,6 @@
 #pragma once
 #include <sstream>
 #include <atomic>
-#include <iostream>
 #include "HisDataReplayer.h"
 
 #include "../Includes/FasterDefs.h"
@@ -28,12 +27,10 @@
 #include <bsoncxx/json.hpp>
 #include <bsoncxx/types.hpp>
 
-
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
 #include <mongocxx/uri.hpp>
 #include <mongocxx/database.hpp>
-
 
 NS_OTP_BEGIN
 class EventNotifier;
@@ -44,11 +41,11 @@ USING_NS_OTP;
 class HisDataReplayer;
 class CtaStrategy;
 
-const char COND_ACTION_OL = 0;	//å¼€å¤š
-const char COND_ACTION_CL = 1;	//å¹³å¤š
-const char COND_ACTION_OS = 2;	//å¼€ç©º
-const char COND_ACTION_CS = 3;	//å¹³ç©º
-const char COND_ACTION_SP = 4;	//ç›´æ¥è®¾ç½®ä»“ä½
+const char COND_ACTION_OL = 0;	//¿ª¶à
+const char COND_ACTION_CL = 1;	//Æ½¶à
+const char COND_ACTION_OS = 2;	//¿ª¿Õ
+const char COND_ACTION_CS = 3;	//Æ½¿Õ
+const char COND_ACTION_SP = 4;	//Ö±½ÓÉèÖÃ²ÖÎ»
 
 typedef struct _CondEntrust
 {
@@ -58,7 +55,7 @@ typedef struct _CondEntrust
 
 	double			_qty;
 
-	char			_action;	//0-å¼€å¤š,1-å¹³å¤š,2-å¼€ç©º,3-å¹³ç©º
+	char			_action;	//0-¿ª¶à,1-Æ½¶à,2-¿ª¿Õ,3-Æ½¿Õ
 
 	char			_code[MAX_INSTRUMENT_LENGTH];
 	char			_usertag[32];
@@ -90,14 +87,13 @@ private:
 
 	void	update_dyn_profit(const char* stdCode, double price);
 
-	void	do_set_position(const char* stdCode, double qty, double price = 0.0, const char* userTag = "", bool bTriggered = false);
+	void	do_set_position(const char* stdCode, double qty, double price = 0.0, std::string instid = "",const char* userTag = "", bool bTriggered = false);//
 	void	append_signal(const char* stdCode, double qty, const char* userTag = "", double price = 0.0);
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
 
-	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true );
+	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true);
 
-	
 public:
 	bool	init_cta_factory(WTSVariant* cfg);
 	void	install_hook();
@@ -121,7 +117,7 @@ public:
 	//ICtaStraCtx
 	virtual uint32_t id() { return _context_id; }
 
-	//å›è°ƒå‡½æ•°
+	//»Øµ÷º¯Êı
 	virtual void on_init() override;
 	virtual void on_session_begin(uint32_t curTDate) override;
 	virtual void on_session_end(uint32_t curTDate) override;
@@ -136,7 +132,7 @@ public:
 
 
 	//////////////////////////////////////////////////////////////////////////
-	//ç­–ç•¥æ¥å£
+	//²ßÂÔ½Ó¿Ú
 	virtual void stra_enter_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
 	virtual void stra_enter_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
 	virtual void stra_exit_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
@@ -180,42 +176,36 @@ public:
 
 protected:
 	uint32_t			_context_id;
-
-	//mongocxx::instance _instance;
-	//mongocxx::uri _uri;
-	//mongocxx::client _client;
-
-
 	HisDataReplayer*	_replayer;
 
-	uint64_t		_total_calc_time;	//æ€»è®¡ç®—æ—¶é—´
-	uint32_t		_emit_times;		//æ€»è®¡ç®—æ¬¡æ•°
+	uint64_t		_total_calc_time;	//×Ü¼ÆËãÊ±¼ä
+	uint32_t		_emit_times;		//×Ü¼ÆËã´ÎÊı
 
-	const double init_money = 100000;			//åˆå§‹èµ„é‡‘
-	double      _balance = 0;					//ä»Šæ€»èµ„äº§
-	double		_total_money = init_money;		//å‰©ä½™èµ„é‡‘
-	double		_static_balance = init_money;			//æœŸåˆèµ„äº§
-	double		_close_price = 0;				//æ˜¨ç»“ç®—ä»·
-	double		_settlepx;						//ä»Šç»“ç®—ä»·
-	double        _used_margin = 0;			//å ç”¨ä¿è¯é‡‘
-	double        _margin_rate = 0.5;			//ä¿è¯é‡‘æ¯”ä¾‹
-	uint64_t		_cur_multiplier = 100;		//å½“å‰åˆçº¦ä¹˜æ•°
+	int32_t			_slippage;			//³É½»»¬µã
+
+	uint32_t		_schedule_times;	//µ÷¶È´ÎÊı
+
+	const double init_money = 100000;			//³õÊ¼×Ê½ğ
+	double      _balance = 0;					//½ñ×Ü×Ê²ú
+	double		_total_money = init_money;		//Ê£Óà×Ê½ğ
+	double		_static_balance = init_money;			//ÆÚ³õ×Ê²ú
+	double		_close_price = 0;				//×ò½áËã¼Û
+	double		_settlepx;						//½ñ½áËã¼Û
+	double        _used_margin = 0;			//Õ¼ÓÃ±£Ö¤½ğ
+	double        _margin_rate = 0.5;			//±£Ö¤½ğ±ÈÀı
+	uint64_t		_cur_multiplier = 100;		//µ±Ç°ºÏÔ¼³ËÊı
 
 	double		_day_profit = 0;
-	double		_total_profit = 0;	//ç­–ç•¥æ”¶ç›Š
-	double		_benchmark_rate_of_return = 0; //åŸºå‡†æ”¶ç›Šç‡
-	double		_daily_rate_of_return = 0;//ç­–ç•¥æ”¶ç›Šç‡
-	double		_abnormal_rate_of_return = 0;//æ—¥è¶…é¢æ”¶ç›Šç‡
+	double		_total_profit = 0;	//²ßÂÔÊÕÒæ
+	double		_benchmark_rate_of_return = 0; //»ù×¼ÊÕÒæÂÊ
+	double		_daily_rate_of_return = 0;//²ßÂÔÊÕÒæÂÊ
+	double		_abnormal_rate_of_return = 0;//ÈÕ³¬¶îÊÕÒæÂÊ
 	int			_win_or_lose_flag;
 
 	bool			_new_trade_day = true;
 	bool		_changepos = true;
 	uint32_t    _traderday = 0;
 
-
-	int32_t			_slippage;			//æˆäº¤æ»‘ç‚¹
-
-	uint32_t		_schedule_times;	//è°ƒåº¦æ¬¡æ•°
 
 	std::string		_main_key;
 
@@ -301,10 +291,10 @@ protected:
 
 	CondEntrustMap	_condtions;
 
-	//æ˜¯å¦å¤„äºè°ƒåº¦ä¸­çš„æ ‡è®°
-	bool			_is_in_schedule;	//æ˜¯å¦åœ¨è‡ªåŠ¨è°ƒåº¦ä¸­
+	//ÊÇ·ñ´¦ÓÚµ÷¶ÈÖĞµÄ±ê¼Ç
+	bool			_is_in_schedule;	//ÊÇ·ñÔÚ×Ô¶¯µ÷¶ÈÖĞ
 
-	//ç”¨æˆ·æ•°æ®
+	//ÓÃ»§Êı¾İ
 	typedef faster_hashmap<std::string, std::string> StringHashMap;
 	StringHashMap	_user_datas;
 	bool			_ud_modified;
@@ -350,12 +340,19 @@ protected:
 
 	StdUniqueMutex	_mtx_calc;
 	StdCondVariable	_cond_calc;
-	bool			_has_hook;		//è¿™æ˜¯äººä¸ºæ§åˆ¶æ˜¯å¦å¯ç”¨é’©å­
-	bool			_hook_valid;	//è¿™æ˜¯æ ¹æ®æ˜¯å¦æ˜¯å¼‚æ­¥å›æµ‹æ¨¡å¼è€Œç¡®å®šé’©å­æ˜¯å¦å¯ç”¨
-	std::atomic<uint32_t>		_cur_step;	//ä¸´æ—¶å˜é‡ï¼Œç”¨äºæ§åˆ¶çŠ¶æ€
+	bool			_has_hook;		//ÕâÊÇÈËÎª¿ØÖÆÊÇ·ñÆôÓÃ¹³×Ó
+	bool			_hook_valid;	//ÕâÊÇ¸ù¾İÊÇ·ñÊÇÒì²½»Ø²âÄ£Ê½¶øÈ·¶¨¹³×ÓÊÇ·ñ¿ÉÓÃ
+	std::atomic<uint32_t>		_cur_step;	//ÁÙÊ±±äÁ¿£¬ÓÃÓÚ¿ØÖÆ×´Ì¬
 
 	bool			_in_backtest;
 	bool			_wait_calc;
 
 	bool			_persist_data;
+
+	//mongocxx::uri _uri;
+	//mongocxx::client _client;
+	/*mongocxx::database _db;
+	mongocxx::collection	_poscoll_1;*/
+	/*mongocxx::collection	_poscoll_2;
+	mongocxx::collection	_poscoll_3;*/
 };

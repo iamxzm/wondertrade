@@ -40,15 +40,18 @@ using bsoncxx::builder::stream::open_document;
 
 using namespace mongocxx;
 
+std::mutex c1_mtx{};
+
 namespace rj = rapidjson;
+using namespace std;
 
 const char* CMP_ALG_NAMES[] =
 {
-	"ï¼",
-	"ï¼",
-	"ï¼œ",
-	"â‰¥",
-	"â‰¤"
+	"£½",
+	"£¾",
+	"£¼",
+	"¡İ",
+	"¡Ü"
 };
 
 const char* ACTION_NAMES[] =
@@ -86,8 +89,6 @@ CtaMocker::CtaMocker(HisDataReplayer* replayer, const char* name, int32_t slippa
 	, _wait_calc(false)
 	, _in_backtest(false)
 	, _persist_data(persistData)
-	//,_uri("mongodb://192.168.214.199:27017")
-	//, _client(_uri)
 {
 	_context_id = makeCtxId();	
 }
@@ -250,7 +251,7 @@ void CtaMocker::handle_tick(const char* stdCode, WTSTickData* curTick)
 
 
 //////////////////////////////////////////////////////////////////////////
-//å›è°ƒå‡½æ•°
+//»Øµ÷º¯Êı
 void CtaMocker::on_bar(const char* stdCode, const char* period, uint32_t times, WTSBarStruct* newBar)
 {
 	if (newBar == NULL)
@@ -274,6 +275,7 @@ void CtaMocker::on_init()
 	_in_backtest = true;
 	if (_strategy)
 		_strategy->on_init(this);
+	
 
 	//mongocxx::instance instance{};
 	
@@ -320,28 +322,28 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 
 	_fund_info._total_dynprofit = total_dynprofit;
 
-	//è®¡ç®—æœŸåˆæƒç›Š
+	//¼ÆËãÆÚ³õÈ¨Òæ
 	if (_new_trade_day)
 	{
 		_static_balance = _total_money + _used_margin + _fund_info._total_fees - _fund_info._total_dynprofit - _fund_info._total_profit;
 		_new_trade_day = false;
 	}
-	//ä»Šæ—¥èµ„äº§ = æœŸåˆæƒç›Š + æŒä»“ç›ˆäº + å¹³ä»“ç›ˆäº - æ‰‹ç»­è´¹
+	//½ñÈÕ×Ê²ú = ÆÚ³õÈ¨Òæ + ³Ö²ÖÓ¯¿÷ + Æ½²ÖÓ¯¿÷ - ÊÖĞø·Ñ
 	_balance = _static_balance + _fund_info._total_dynprofit + _total_closeprofit - _fund_info._total_fees;
-	//å½“æ—¥ç›ˆäº
+	//µ±ÈÕÓ¯¿÷
 	_day_profit = _balance - _static_balance;
-	//ç­–ç•¥æ”¶ç›Š
+	//²ßÂÔÊÕÒæ
 	_total_profit = _balance - init_money;
 
-	//æ”¶ç›Šç‡å…¬å¼ = (å½“å‰å‡€å€¼/æœ€åˆå‡€å€¼) -1
+	//ÊÕÒæÂÊ¹«Ê½ = (µ±Ç°¾»Öµ/×î³õ¾»Öµ) -1
 	_daily_rate_of_return = (_day_profit / _static_balance) - 1;
 
-	//åŸºå‡†æ”¶ç›Šç‡
-	double benchmarkPrePrice = _close_price;		//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //æ˜¨æ”¶ä»·
-	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //ä»Šæ”¶ä»·
+	//»ù×¼ÊÕÒæÂÊ
+	double benchmarkPrePrice = _close_price;		//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //×òÊÕ¼Û
+	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //½ñÊÕ¼Û
 	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
 
-	//æ—¥è¶…é¢æ”¶ç›Šç‡
+	//ÈÕ³¬¶îÊÕÒæÂÊ
 	_abnormal_rate_of_return = (_daily_rate_of_return + 1) / (_benchmark_rate_of_return + 1) - 1;
 
 	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
@@ -373,7 +375,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"pre_balance" << 0.0 <<
 			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
 			"float_profit" << 0.0<<
-			"timestamp" << newTick->actiontime() <<
+			"timestamp" << 0 <<
 			"margin" << 0.0 <<
 			"risk_ratio" << 0.0 <<
 			"trade_day" << day <<
@@ -417,19 +419,39 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 	double last_px = _price_map[stdCode];
 	double cur_px = newTick->price();
 	_price_map[stdCode] = cur_px;
-	//äº¤æ˜“æ—¥
+
+	//½»Ò×ÈÕ
 	if (_traderday < newTick->tradingdate())
 	{
 		_new_trade_day = true;
 		_traderday = newTick->tradingdate();
 	}
 
-	//æ˜¨ç»“
+	//×ò½á
 	_close_price = newTick->presettle();
-	//ç»“ç®—ä»·
+	//½áËã¼Û
 	_settlepx = newTick->settlepx();
 
-	//å…ˆæ£€æŸ¥æ˜¯å¦è¦ä¿¡å·è¦è§¦å‘
+	//ÏÈ¼ì²éÊÇ·ñÒªĞÅºÅÒª´¥·¢
+
+	std::string exch_inst = "";
+	auto barinstdate = _replayer->get_barinstdate();
+	for (auto it = barinstdate->begin(); it != barinstdate->end(); it++)
+	{
+		bool quit = false;
+		for (auto iit=it->second.begin();iit!=it->second.end();iit++)
+		{
+			if (iit->second._s_date <= newTick->actiondate() && iit->second._e_date >= newTick->actiondate())
+			{
+				exch_inst = iit->first;
+				quit = true;
+				break;
+			}
+		}
+		if (quit) break;
+	}
+	//do_set_position("SHFE.ag.HOT", 100.0, 30.0, exch_inst, "", false);//???????
+	
 	{
 		auto it = _sig_map.find(stdCode);
 		if (it != _sig_map.end())
@@ -443,7 +465,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 				else
 					price = sInfo._desprice;
 
-				do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str(), sInfo._triggered);
+				do_set_position(stdCode, sInfo._volume, price, exch_inst, sInfo._usertag.c_str(), sInfo._triggered);
 				_changepos = true;
 				_sig_map.erase(it);
 			}
@@ -453,7 +475,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 
 	update_dyn_profit(stdCode, newTick->price());
 
-	//æŒä»“å˜åŒ–æ›´æ–°æ•°æ®
+	//³Ö²Ö±ä»¯¸üĞÂÊı¾İ
 	if (_changepos)
 	{
 		_changepos = false;
@@ -463,7 +485,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 	
 
 	//////////////////////////////////////////////////////////////////////////
-	//æ£€æŸ¥æ¡ä»¶å•
+	//¼ì²éÌõ¼şµ¥
 	if (!_condtions.empty())
 	{
 		auto it = _condtions.find(stdCode);
@@ -475,14 +497,14 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 		for (const CondEntrust& entrust : condList)
 		{
 			/*
-			 * å¦‚æœå¼€å¯äº†tickæ¨¡å¼ï¼Œå°±æ­£å¸¸æ¯”è¾ƒ
-			 * ä½†æ˜¯å¦‚æœæ²¡æœ‰å¼€å¯tickæ¨¡å¼ï¼Œé€»è¾‘å°±éå¸¸å¤æ‚
-			 * å› ä¸ºä¸å¼€å›æµ‹çš„æ—¶å€™tickæ˜¯ç”¨å¼€é«˜ä½æ”¶æ¨¡æ‹Ÿå‡ºæ¥çš„ï¼Œå¦‚æœç›´æ¥æŒ‰ç…§ç›®æ ‡ä»·æ ¼è§¦å‘ï¼Œå¯èƒ½æ˜¯æœ‰é—®é¢˜çš„
-			 * é¦–å…ˆè¦æ‹¿åˆ°ä¸Šä¸€ç¬”ä»·æ ¼ï¼Œå’Œå½“å‰æœ€æ–°ä»·æ ¼åšä¸€ä¸ªæ¯”ä»·ï¼Œå¾—åˆ°å·¦è¾¹ç•Œå’Œå³è¾¹ç•Œ
-			 * è¿™é‡Œåªèƒ½å‡è®¾å‰åä¸¤ç¬”ä»·æ ¼ä¹‹é—´æ˜¯è¿ç»­çš„ï¼Œè¿™æ ·éœ€è¦å°†ä¸¤ç¬”ä»·æ ¼éƒ½åŠ å…¥åˆ¤æ–­
-			 * å½“æ¡ä»¶æ˜¯ç­‰äºæ—¶ï¼Œå¦‚æœç›®æ ‡ä»·æ ¼åœ¨å·¦å³è¾¹ç•Œä¹‹é—´ï¼Œè¯´æ˜ç›®æ ‡ä»·æ ¼åœ¨è¿™æœŸé—´æ˜¯å‡ºç°è¿‡çš„ï¼Œåˆ™è®¤ä¸ºä»·æ ¼åŒ¹é…
-			 * å½“æ¡ä»¶æ˜¯å¤§äºçš„æ—¶å€™ï¼Œæˆ‘ä»¬éœ€è¦åˆ¤æ–­å³è¾¹ç•Œï¼Œå³ç¨å¤§çš„å€¼æ˜¯å¦æ»¡è¶³æ¡ä»¶ï¼Œå¹¶å–å·¦è¾¹ç•Œä¸ç›®æ ‡ä»·ä¸­ç¨å¤§çš„ä½œä¸ºå½“å‰ä»·
-			 * å½“æ¡ä»¶æ˜¯å°äºçš„æ—¶å€™ï¼Œæˆ‘ä»¬éœ€è¦åˆ¤æ–­å·¦è¾¹ç•Œï¼Œå³ç¨å°çš„å€¼æ˜¯å¦æ»¡è¶³æ¡ä»¶ï¼Œå¹¶å–å³è¾¹ç•Œä¸ç›®æ ‡ä»·ä¸­ç¨å°çš„ä½œä¸ºå½“å‰ä»·
+			 * Èç¹û¿ªÆôÁËtickÄ£Ê½£¬¾ÍÕı³£±È½Ï
+			 * µ«ÊÇÈç¹ûÃ»ÓĞ¿ªÆôtickÄ£Ê½£¬Âß¼­¾Í·Ç³£¸´ÔÓ
+			 * ÒòÎª²»¿ª»Ø²âµÄÊ±ºòtickÊÇÓÃ¿ª¸ßµÍÊÕÄ£Äâ³öÀ´µÄ£¬Èç¹ûÖ±½Ó°´ÕÕÄ¿±ê¼Û¸ñ´¥·¢£¬¿ÉÄÜÊÇÓĞÎÊÌâµÄ
+			 * Ê×ÏÈÒªÄÃµ½ÉÏÒ»±Ê¼Û¸ñ£¬ºÍµ±Ç°×îĞÂ¼Û¸ñ×öÒ»¸ö±È¼Û£¬µÃµ½×ó±ß½çºÍÓÒ±ß½ç
+			 * ÕâÀïÖ»ÄÜ¼ÙÉèÇ°ºóÁ½±Ê¼Û¸ñÖ®¼äÊÇÁ¬ĞøµÄ£¬ÕâÑùĞèÒª½«Á½±Ê¼Û¸ñ¶¼¼ÓÈëÅĞ¶Ï
+			 * µ±Ìõ¼şÊÇµÈÓÚÊ±£¬Èç¹ûÄ¿±ê¼Û¸ñÔÚ×óÓÒ±ß½çÖ®¼ä£¬ËµÃ÷Ä¿±ê¼Û¸ñÔÚÕâÆÚ¼äÊÇ³öÏÖ¹ıµÄ£¬ÔòÈÏÎª¼Û¸ñÆ¥Åä
+			 * µ±Ìõ¼şÊÇ´óÓÚµÄÊ±ºò£¬ÎÒÃÇĞèÒªÅĞ¶ÏÓÒ±ß½ç£¬¼´ÉÔ´óµÄÖµÊÇ·ñÂú×ãÌõ¼ş£¬²¢È¡×ó±ß½çÓëÄ¿±ê¼ÛÖĞÉÔ´óµÄ×÷Îªµ±Ç°¼Û
+			 * µ±Ìõ¼şÊÇĞ¡ÓÚµÄÊ±ºò£¬ÎÒÃÇĞèÒªÅĞ¶Ï×ó±ß½ç£¬¼´ÉÔĞ¡µÄÖµÊÇ·ñÂú×ãÌõ¼ş£¬²¢È¡ÓÒ±ß½çÓëÄ¿±ê¼ÛÖĞÉÔĞ¡µÄ×÷Îªµ±Ç°¼Û
 			 */
 
 			double left_px = min(last_px, cur_px);
@@ -491,7 +513,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 			bool isMatched = false;	
 			if(!_replayer->is_tick_simulated())
 			{
-				//å¦‚æœtickæ•°æ®ä¸æ˜¯æ¨¡æ‹Ÿçš„ï¼Œåˆ™ä½¿ç”¨æœ€æ–°ä»·æ ¼
+				//Èç¹ûtickÊı¾İ²»ÊÇÄ£ÄâµÄ£¬ÔòÊ¹ÓÃ×îĞÂ¼Û¸ñ
 				switch (entrust._alg)
 				{
 				case WCT_Equal:
@@ -515,7 +537,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 			}
 			else
 			{
-				//å¦‚æœtickæ•°æ®æ˜¯æ¨¡æ‹Ÿçš„ï¼Œåˆ™è¦å¤„ç†ä¸€ä¸‹
+				//Èç¹ûtickÊı¾İÊÇÄ£ÄâµÄ£¬ÔòÒª´¦ÀíÒ»ÏÂ
 				switch (entrust._alg)
 				{
 				case WCT_Equal:
@@ -548,7 +570,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 			{
 				double price = curPrice;
 				double curQty = stra_get_position(stdCode);
-				//_replayer->is_tick_enabled() ? newTick->price() : entrust._target;	//å¦‚æœå¼€å¯äº†tickå›æµ‹,åˆ™ç”¨tickæ•°æ®çš„ä»·æ ¼,å¦‚æœæ²¡æœ‰å¼€å¯,åˆ™åªèƒ½ç”¨æ¡ä»¶å•ä»·æ ¼
+				//_replayer->is_tick_enabled() ? newTick->price() : entrust._target;	//Èç¹û¿ªÆôÁËtick»Ø²â,ÔòÓÃtickÊı¾İµÄ¼Û¸ñ,Èç¹ûÃ»ÓĞ¿ªÆô,ÔòÖ»ÄÜÓÃÌõ¼şµ¥¼Û¸ñ
 				WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_INFO, fmt::format("Condition order triggered[newprice: {}{}{}], instrument: {}, {} {}", cur_px, CMP_ALG_NAMES[entrust._alg], entrust._target, stdCode, ACTION_NAMES[entrust._action], entrust._qty).c_str());
 				switch (entrust._action)
 				{
@@ -587,8 +609,8 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 				default: break;
 				}
 
-				//åŒä¸€ä¸ªbarè®¾ç½®é’ˆå¯¹åŒä¸€ä¸ªåˆçº¦çš„æ¡ä»¶å•,åªå¯èƒ½è§¦å‘ä¸€æ¡
-				//æ‰€ä»¥è¿™é‡Œç›´æ¥æ¸…ç†æ‰å³å¯
+				//Í¬Ò»¸öbarÉèÖÃÕë¶ÔÍ¬Ò»¸öºÏÔ¼µÄÌõ¼şµ¥,Ö»¿ÉÄÜ´¥·¢Ò»Ìõ
+				//ËùÒÔÕâÀïÖ±½ÓÇåÀíµô¼´¿É
 				_condtions.erase(it);
 				break;
 			}
@@ -638,9 +660,9 @@ bool CtaMocker::step_calc()
 		return false;
 	}
 
-	//æ€»å…±åˆ†ä¸º4ä¸ªçŠ¶æ€
-	//0-åˆå§‹çŠ¶æ€ï¼Œ1-oncalcï¼Œ2-oncalcç»“æŸï¼Œ3-oncalcdone
-	//æ‰€ä»¥ï¼Œå¦‚æœå‡ºäº0/2ï¼Œåˆ™è¯´æ˜æ²¡æœ‰åœ¨æ‰§è¡Œä¸­ï¼Œéœ€è¦notify
+	//×Ü¹²·ÖÎª4¸ö×´Ì¬
+	//0-³õÊ¼×´Ì¬£¬1-oncalc£¬2-oncalc½áÊø£¬3-oncalcdone
+	//ËùÒÔ£¬Èç¹û³öÓÚ0/2£¬ÔòËµÃ÷Ã»ÓĞÔÚÖ´ĞĞÖĞ£¬ĞèÒªnotify
 	bool bNotify = false;
 	while (_in_backtest && (_cur_step == 0 || _cur_step == 2))
 	{
@@ -672,7 +694,7 @@ bool CtaMocker::step_calc()
 
 bool CtaMocker::on_schedule(uint32_t curDate, uint32_t curTime)
 {
-	_is_in_schedule = true;//å¼€å§‹è°ƒåº¦,ä¿®æ”¹æ ‡è®°
+	_is_in_schedule = true;//¿ªÊ¼µ÷¶È,ĞŞ¸Ä±ê¼Ç
 
 	_schedule_times++;
 
@@ -756,7 +778,7 @@ bool CtaMocker::on_schedule(uint32_t curDate, uint32_t curTime)
 		}
 	}
 
-	_is_in_schedule = false;//è°ƒåº¦ç»“æŸ,ä¿®æ”¹æ ‡è®°
+	_is_in_schedule = false;//µ÷¶È½áÊø,ĞŞ¸Ä±ê¼Ç
 	return emmited;
 }
 
@@ -822,11 +844,11 @@ CondList& CtaMocker::get_cond_entrusts(const char* stdCode)
 }
 
 //////////////////////////////////////////////////////////////////////////
-//ç­–ç•¥æ¥å£
+//²ßÂÔ½Ó¿Ú
 void CtaMocker::stra_enter_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
 	_replayer->sub_tick(_context_id, stdCode);
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
 	{
 		double curQty = stra_get_position(stdCode);
 		//if (curQty < 0)
@@ -867,7 +889,7 @@ void CtaMocker::stra_enter_long(const char* stdCode, double qty, const char* use
 void CtaMocker::stra_enter_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
 	_replayer->sub_tick(_context_id, stdCode);
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
 	{
 		double curQty = stra_get_position(stdCode);
 		//if (curQty > 0)
@@ -908,7 +930,7 @@ void CtaMocker::stra_enter_short(const char* stdCode, double qty, const char* us
 
 void CtaMocker::stra_exit_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
 	{
 		double curQty = stra_get_position(stdCode);
 		//if (curQty <= 0)
@@ -948,7 +970,7 @@ void CtaMocker::stra_exit_long(const char* stdCode, double qty, const char* user
 
 void CtaMocker::stra_exit_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
 	{
 		double curQty = stra_get_position(stdCode);
 		//if (curQty >= 0)
@@ -997,7 +1019,7 @@ double CtaMocker::stra_get_price(const char* stdCode)
 void CtaMocker::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
 {
 	_replayer->sub_tick(_context_id, stdCode);
-	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//å¦‚æœä¸æ˜¯åŠ¨æ€ä¸‹å•æ¨¡å¼,åˆ™ç›´æ¥è§¦å‘
+	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//Èç¹û²»ÊÇ¶¯Ì¬ÏÂµ¥Ä£Ê½,ÔòÖ±½Ó´¥·¢
 	{
 		//do_set_position(stdCode, qty, userTag, !_is_in_schedule);
 		append_signal(stdCode, qty, userTag);
@@ -1007,7 +1029,7 @@ void CtaMocker::stra_set_position(const char* stdCode, double qty, const char* u
 		CondList& condList = get_cond_entrusts(stdCode);
 
 		double curQty = stra_get_position(stdCode);
-		//å¦‚æœç›®æ ‡ä»“ä½å’Œå½“å‰ä»“ä½æ˜¯ä¸€è‡´çš„ï¼Œåˆ™ä¸å†è®¾ç½®æ¡ä»¶å•
+		//Èç¹ûÄ¿±ê²ÖÎ»ºÍµ±Ç°²ÖÎ»ÊÇÒ»ÖÂµÄ£¬Ôò²»ÔÙÉèÖÃÌõ¼şµ¥
 		if (decimal::eq(curQty, qty))
 			return;
 
@@ -1053,34 +1075,47 @@ void CtaMocker::append_signal(const char* stdCode, double qty, const char* userT
 	//save_data();
 }
 
-void CtaMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, const char* userTag /* = "" */, bool bTriggered /* = false */)
+void CtaMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, std::string instid /*=""*/,const char* userTag /* = "" */, bool bTriggered /* = false */)
 {
+	//mongocxx::instance instance{};
+	/*mongocxx::uri _uri("mongodb://192.168.214.199:27017");
+	mongocxx::client _client(_uri);*/
+	auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["test_positions"];
+	//_poscoll_2 = db["his_trades"];
+	//_poscoll_3 = db["his_orders"];//
 	PosInfo& pInfo = _pos_map[stdCode];
 	double curPx = price;
 	if (decimal::eq(price, 0.0))
 		curPx = _price_map[stdCode];
 	uint64_t curTm = (uint64_t)_replayer->get_date() * 10000 + _replayer->get_min_time();
 	uint32_t curTDate = _replayer->get_trading_date();
+	uint64_t curTime = (uint64_t)_replayer->get_date() * 1000000 + _replayer->get_min_time() * 100 + _replayer->get_secs();
 
-	//æ‰‹æ•°ç›¸ç­‰åˆ™ä¸ç”¨æ“ä½œäº†
+	//ÊÖÊıÏàµÈÔò²»ÓÃ²Ù×÷ÁË
 	if (decimal::eq(pInfo._volume, qty))
 		return;
 
 	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
 
-	//æˆäº¤ä»·
+	//³É½»¼Û
+	std::string exchid = commInfo->getExchg();
+	std::string exch_inst = exchid + "::";
+	exch_inst += instid;
+
 	double trdPx = curPx;
 
 	double diff = qty - pInfo._volume;
 	bool isBuy = decimal::gt(diff, 0.0);
 
-	if (decimal::gt(pInfo._volume*diff, 0))//å½“å‰æŒä»“å’Œä»“ä½å˜åŒ–æ–¹å‘ä¸€è‡´, å¢åŠ ä¸€æ¡æ˜ç»†, å¢åŠ æ•°é‡å³å¯
+
+	if (decimal::gt(pInfo._volume*diff, 0))//µ±Ç°³Ö²ÖºÍ²ÖÎ»±ä»¯·½ÏòÒ»ÖÂ, Ôö¼ÓÒ»ÌõÃ÷Ï¸, Ôö¼ÓÊıÁ¿¼´¿É
 	{
 		pInfo._volume = qty;
 
 		if (_slippage != 0)
 		{
-			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+			trdPx += _slippage * commInfo->getPriceTick() * (isBuy ? 1 : -1);
 		}
 
 		DetailInfo dInfo;
@@ -1098,7 +1133,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
 		_fund_info._total_fees += fee;
 
-		//ä¿è¯é‡‘è®¡ç®—
+		//±£Ö¤½ğ¼ÆËã
 		if (decimal::gt(_total_money - (dInfo._margin + fee), 0))
 		{
 			_total_money -= dInfo._margin;
@@ -1106,19 +1141,114 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		}
 		else
 		{
-			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:èµ„é‡‘è´¦æˆ·ä¸è¶³");
+			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:×Ê½ğÕË»§²»×ã");
 		}
 
 		_used_margin += dInfo._margin;
 
+		//mongo ??????????
+		bsoncxx::document::value position_doc = document{} << finalize;
+		if (dInfo._long)
+		{
+			position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+				"strategy_id" << 0 <<//
+				"position" << open_document <<
+				exch_inst << open_document <<
+				"position_profit" << dInfo._profit <<
+				"float_profit_short" << 0.0 <<
+				"open_price_short" << 0.0 <<
+				"volume_long_frozen_today" << 0 <<//
+				"open_cost_long" << fee <<
+				"position_price_short" << 0.0 <<
+				"float_profit_long" << pInfo._dynprofit <<
+				"open_price_long" << dInfo._price <<
+				"exchange_id" << exchid <<
+				"volume_short_frozen_today" << 0 <<//
+				"position_price_long" << dInfo._price <<
+				"position_profit_long" << dInfo._profit <<
+				"volume_short_today" << 0 <<
+				"position_profit_short" << 0.0 <<
+				"volume_long" << dInfo._volume <<
+				"margin_short" << 0.0 <<//
+				"volume_long_frozen_his" << 0 <<//
+				"float_profit" << 0.0 <<//
+				"open_cost_short" << 0.0 <<
+				"margin" << 0.0 <<//
+				"position_cost_short" << 0.0 <<//
+				"volume_short_frozen_his" << 0 <<//
+				"instrument_id" << instid <<
+				"volume_short" << 0 <<
+				"account_id" << "" <<
+				"volume_long_today" << dInfo._volume <<
+				"position_cost_long" << 0.0 <<//
+				"volume_long_his" << 0 <<//
+				"hedge_flag" << " " <<//
+				"margin_long" << 0.0 <<//
+				"volume_short_his" << 0 <<//
+				"last_price" << 0.0 << //
+				close_document <<
+				close_document <<
+				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+				finalize;
+		}
+		else
+		{
+			position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+				"strategy_id" << 0 <<//
+				"position" << open_document <<
+				exch_inst << open_document <<
+				"position_profit" << dInfo._profit <<
+				"float_profit_short" << pInfo._dynprofit <<
+				"open_price_short" << dInfo._price <<
+				"volume_long_frozen_today" << 0 <<//
+				"open_cost_long" << 0.0 <<
+				"position_price_short" << dInfo._price <<
+				"float_profit_long" << 0.0 <<
+				"open_price_long" << 0.0 <<
+				"exchange_id" << exchid <<
+				"volume_short_frozen_today" << 0 <<//
+				"position_price_long" << 0.0 <<
+				"position_profit_long" << 0.0 <<
+				"volume_short_today" << dInfo._volume <<
+				"position_profit_short" << dInfo._profit <<
+				"volume_long" << 0 <<
+				"margin_short" << 0.0 <<//
+				"volume_long_frozen_his" << 0 <<//
+				"float_profit" << 0.0 <<//
+				"open_cost_short" << fee <<
+				"margin" << 0.0 <<//
+				"position_cost_short" << 0.0 <<//
+				"volume_short_frozen_his" << 0 <<//
+				"instrument_id" << instid <<
+				"volume_short" << dInfo._volume <<
+				"account_id" << "" <<
+				"volume_long_today" << 0.0 <<
+				"position_cost_long" << fee <<//
+				"volume_long_his" << 0 <<//
+				"hedge_flag" << " " <<//
+				"margin_long" << 0.0 <<//
+				"volume_short_his" << 0 <<//
+				"last_price" << 0.0 << //
+				close_document <<
+				close_document <<
+				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+				finalize;
+		}
+
+		c1_mtx.lock();
+		auto result = _poscoll_1.insert_one(move(position_doc));
+		bsoncxx::oid oid = result->inserted_id().get_oid().value;
+		std::cout << "insert one:" << oid.to_string() << std::endl;
+		c1_mtx.unlock();
+
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
 	else
-	{//æŒä»“æ–¹å‘å’Œä»“ä½å˜åŒ–æ–¹å‘ä¸ä¸€è‡´,éœ€è¦å¹³ä»“
+	{//³Ö²Ö·½ÏòºÍ²ÖÎ»±ä»¯·½Ïò²»Ò»ÖÂ,ĞèÒªÆ½²Ö
 		double left = abs(diff);
 		bool isBuy = decimal::gt(diff, 0.0);
 		if (_slippage != 0)
-			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+			trdPx += _slippage * commInfo->getPriceTick() * (isBuy ? 1 : -1);
 
 		pInfo._volume = qty;
 		if (decimal::eq(pInfo._volume, 0))
@@ -1145,14 +1275,14 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				profit *= -1;
 			pInfo._closeprofit += profit;
 			_total_closeprofit += profit;
-			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//æµ®ç›ˆä¹Ÿè¦åšç­‰æ¯”ç¼©æ”¾
+
 			pInfo._last_exittime = curTm;
 			_fund_info._total_profit += profit;
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
 			_fund_info._total_fees += fee;
 
-			//é‡Šæ”¾ä¿è¯é‡‘
+			//ÊÍ·Å±£Ö¤½ğ
 			double cur_margin = _margin_rate * _cur_multiplier * _close_price * maxQty;
 
 			_total_money += profit;
@@ -1163,35 +1293,65 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 			dInfo._margin -= cur_margin;
 
-			//è¿™é‡Œå†™æˆäº¤è®°å½•
-			//mongo
-			//long long startTime = StringToDatetime(curTime);
-			//long long endTime = StringToDatetime(curTime);
 
-			//auto filter = document{} << "timestamp" << open_document
-			//	<< "$gt" << bsoncxx::types::b_date{ chromo::milliseconds(startTime) } 
-			//	<< "$lte" << bsoncxx::types::b_date{ chromo::milliseconds(endTime) } << close_document << finalize;
+			bsoncxx::document::value position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+				"strategy_id" << 0 <<//
+				"position" << open_document <<
+				exch_inst << open_document <<
+				"position_profit" << dInfo._profit <<
+				"float_profit_short" << pInfo._dynprofit <<
+				"open_price_short" << dInfo._price <<
+				"volume_long_frozen_today" << 0 <<//
+				"open_cost_long" << 0.0 <<
+				"position_price_short" << dInfo._price <<
+				"float_profit_long" << 0.0 <<
+				"open_price_long" << 0.0 <<
+				"exchange_id" << exchid <<
+				"volume_short_frozen_today" << 0 <<//
+				"position_price_long" << 0.0 <<
+				"position_profit_long" << 0.0 <<
+				"volume_short_today" << dInfo._volume <<
+				"position_profit_short" << dInfo._profit <<
+				"volume_long" << 0 <<
+				"margin_short" << 0.0 <<//
+				"volume_long_frozen_his" << 0 <<//
+				"float_profit" << 0.0 <<//
+				"open_cost_short" << fee <<
+				"margin" << 0.0 <<//
+				"position_cost_short" << 0.0 <<//
+				"volume_short_frozen_his" << 0 <<//
+				"instrument_id" << instid <<
+				"volume_short" << dInfo._volume <<
+				"account_id" << "" <<
+				"volume_long_today" << 0.0 <<
+				"position_cost_long" << fee <<//
+				"volume_long_his" << 0 <<//
+				"hedge_flag" << " " <<//
+				"margin_long" << 0.0 <<//
+				"volume_short_his" << 0 <<//
+				"last_price" << 0.0 << //
+				close_document <<
+				close_document <<
+				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+				finalize;
 
-			//mongocxx::cursor cursor = _acccoll.find(filter.view());
-			//for (auto doc : cursor) {
-			//}
+			c1_mtx.lock();
+			auto result = _poscoll_1.insert_one(move(position_doc));
+			bsoncxx::oid oid = result->inserted_id().get_oid().value;
+			std::cout << "insert one:" << oid.to_string() << std::endl;
+			c1_mtx.unlock();
 
-			//_acccoll.update_one(document{} << "timestamp" << curSecs << finalize,
-			//	document{} << "$set" << open_document <<
-			//	"day_profit" << pInfo._closeprofit <<
-			//	close_document << finalize);
-
-
+			//ÕâÀïĞ´³É½»¼ÇÂ¼
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee, _schedule_times);
-			//è¿™é‡Œå†™å¹³ä»“è®°å½•
-			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, trdPx, maxQty, profit, maxProf, maxLoss, 
+			//ÕâÀïĞ´Æ½²Ö¼ÇÂ¼
+			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, trdPx, maxQty, profit, maxProf, maxLoss,
 				_total_closeprofit - _fund_info._total_fees, dInfo._opentag, userTag, dInfo._open_barno, _schedule_times);
 
 			if (left == 0)
 				break;
 		}
 
-		//éœ€è¦æ¸…ç†æ‰å·²ç»å¹³ä»“å®Œçš„æ˜ç»†
+		//ĞèÒªÇåÀíµôÒÑ¾­Æ½²ÖÍêµÄÃ÷Ï¸
 		while (count > 0)
 		{
 			auto it = pInfo._details.begin();
@@ -1199,7 +1359,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			count--;
 		}
 
-		//æœ€å,å¦‚æœè¿˜æœ‰å‰©ä½™çš„,åˆ™éœ€è¦åæ‰‹äº†
+		//×îºó,Èç¹û»¹ÓĞÊ£ÓàµÄ,ÔòĞèÒª·´ÊÖÁË
 		if (left > 0)
 		{
 			left = left * qty / abs(qty);
@@ -1213,23 +1373,113 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			dInfo._open_barno = _schedule_times;
 			strcpy(dInfo._opentag, userTag);
 			pInfo._details.emplace_back(dInfo);
- 
-			//è¿™é‡Œè¿˜éœ€è¦å†™ä¸€ç¬”æˆäº¤è®°å½•
-
-			//mongo ä½¿ç”¨bulk_writeæ›´æ–°æ•°æ®ï¼Œçº¿ç¨‹é”
-			//auto fliter = make_document(kvp("accounts", "1283634220584927232"));
-			//auto updatedoc = make_document(kvp("$set", make_document(kvp("position_profit", dInfo._profit))));
-			//mongocxx::model::update_one upsert_op{fliter.view(), updatedoc.view()};
-			//upsert_op.upsert(true);
-			//auto bulk = _acccoll.create_bulk_write();
-			//bulk.append(upsert_op);
-			//auto result = bulk.execute();
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
 			//_engine->mutate_fund(fee, FFT_Fee);
-
+			
+			//Ìí¼Ó¼õÈ¥·ÑÂÊ
 			_total_money -= fee;
+
+			bsoncxx::document::value position_doc = document{} << finalize;
+			if (dInfo._long)
+			{
+				position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+					"strategy_id" << 0 <<//
+					"position" << open_document <<
+					exch_inst << open_document <<
+					"position_profit" << dInfo._profit <<
+					"float_profit_short" << 0.0 <<
+					"open_price_short" << 0.0 <<
+					"volume_long_frozen_today" << 0 <<//
+					"open_cost_long" << fee <<
+					"position_price_short" << 0.0 <<
+					"float_profit_long" << pInfo._dynprofit <<
+					"open_price_long" << dInfo._price <<
+					"exchange_id" << exchid <<
+					"volume_short_frozen_today" << 0 <<//
+					"position_price_long" << dInfo._price <<
+					"position_profit_long" << dInfo._profit <<
+					"volume_short_today" << 0 <<
+					"position_profit_short" << 0.0 <<
+					"volume_long" << dInfo._volume <<
+					"margin_short" << 0.0 <<//
+					"volume_long_frozen_his" << 0 <<//
+					"float_profit" << 0.0 <<//
+					"open_cost_short" << 0.0 <<
+					"margin" << 0.0 <<//
+					"position_cost_short" << 0.0 <<//
+					"volume_short_frozen_his" << 0 <<//
+					"instrument_id" << instid <<
+					"volume_short" << 0 <<
+					"account_id" << "" <<
+					"volume_long_today" << dInfo._volume <<
+					"position_cost_long" << 0.0 <<//
+					"volume_long_his" << 0 <<//
+					"hedge_flag" << " " <<//
+					"margin_long" << 0.0 <<//
+					"volume_short_his" << 0 <<//
+					"last_price" << 0.0 << //
+					close_document <<
+					close_document <<
+					"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+					finalize;
+
+				c1_mtx.lock();
+				auto result = _poscoll_1.insert_one(std::move(position_doc));
+				bsoncxx::oid oid = result->inserted_id().get_oid().value;
+				std::cout << "insert one:" << oid.to_string() << std::endl;
+				c1_mtx.unlock();
+			}
+			else
+			{
+				bsoncxx::document::value position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+					"strategy_id" << 0 <<//
+					"position" << open_document <<
+					exch_inst << open_document <<
+					"position_profit" << dInfo._profit <<
+					"float_profit_short" << pInfo._dynprofit <<
+					"open_price_short" << dInfo._price <<
+					"volume_long_frozen_today" << 0 <<//
+					"open_cost_long" << 0.0 <<
+					"position_price_short" << dInfo._price <<
+					"float_profit_long" << 0.0 <<
+					"open_price_long" << 0.0 <<
+					"exchange_id" << exchid <<
+					"volume_short_frozen_today" << 0 <<//
+					"position_price_long" << 0.0 <<
+					"position_profit_long" << 0.0 <<
+					"volume_short_today" << dInfo._volume <<
+					"position_profit_short" << dInfo._profit <<
+					"volume_long" << 0 <<
+					"margin_short" << 0.0 <<//
+					"volume_long_frozen_his" << 0 <<//
+					"float_profit" << 0.0 <<//
+					"open_cost_short" << fee <<
+					"margin" << 0.0 <<//
+					"position_cost_short" << 0.0 <<//
+					"volume_short_frozen_his" << 0 <<//
+					"instrument_id" << instid <<
+					"volume_short" << dInfo._volume <<
+					"account_id" << "" <<
+					"volume_long_today" << 0.0 <<
+					"position_cost_long" << fee <<//
+					"volume_long_his" << 0 <<//
+					"hedge_flag" << " " <<//
+					"margin_long" << 0.0 <<//
+					"volume_short_his" << 0 <<//
+					"last_price" << 0.0 << //
+					close_document <<
+					close_document <<
+					"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+					finalize;
+
+				c1_mtx.lock();
+				auto result = _poscoll_1.insert_one(move(position_doc));
+				bsoncxx::oid oid = result->inserted_id().get_oid().value;
+				std::cout << "insert one:" << oid.to_string() << std::endl;
+				c1_mtx.unlock();
+			}
 
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), userTag, fee, _schedule_times);
 
