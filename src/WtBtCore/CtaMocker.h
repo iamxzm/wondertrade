@@ -92,6 +92,8 @@ private:
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
 
+	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true);
+
 public:
 	bool	init_cta_factory(WTSVariant* cfg);
 	void	install_hook();
@@ -183,6 +185,28 @@ protected:
 
 	uint32_t		_schedule_times;	//调度次数
 
+	const double init_money = 100000;			//初始资金
+	double      _balance = 0;					//今总资产
+	double		_total_money = init_money;		//剩余资金
+	double		_static_balance = init_money;			//期初资产
+	double		_close_price = 0;				//昨结算价
+	double		_settlepx;						//今结算价
+	double        _used_margin = 0;			//占用保证金
+	double        _margin_rate = 0.5;			//保证金比例
+	uint64_t		_cur_multiplier = 100;		//当前合约乘数
+
+	double		_day_profit = 0;
+	double		_total_profit = 0;	//策略收益
+	double		_benchmark_rate_of_return = 0; //基准收益率
+	double		_daily_rate_of_return = 0;//策略收益率
+	double		_abnormal_rate_of_return = 0;//日超额收益率
+	int			_win_or_lose_flag;
+
+	bool			_new_trade_day = true;
+	bool		_changepos = true;
+	uint32_t    _traderday = 0;
+
+
 	std::string		_main_key;
 
 	typedef struct _KlineTag
@@ -210,6 +234,7 @@ protected:
 		double		_profit;
 		char		_opentag[32];
 		uint32_t	_open_barno;
+		double		_margin;
 
 		_DetailInfo()
 		{

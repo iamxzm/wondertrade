@@ -1,4 +1,4 @@
-﻿{
+{
   "configurations": [
     {
       "name": "x64-Debug",
@@ -26,7 +26,7 @@
       "remoteBuildRoot": "$HOME/${projectDirName}/${name}",
       "remoteInstallRoot": "$HOME/${projectDirName}/out/install/${name}",
       "remoteCopySources": true,
-      "rsyncCommandArgs": "-t --delete --delete-excluded",
+      "rsyncCommandArgs": "-t",
       "remoteCopyBuildOutput": false,
       "remoteCopySourcesMethod": "rsync"
     }
