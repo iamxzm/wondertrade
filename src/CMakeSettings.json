@@ -13,23 +13,22 @@
     },
     {
       "name": "Linux-GCC-Debug",
-      "generator": "Ninja",
+      "generator": "Unix Makefiles",
       "configurationType": "Debug",
-      "cmakeExecutable": "cmake",
+      "cmakeExecutable": "/usr/bin/cmake",
       "remoteCopySourcesExclusionList": [ ".vs", ".git", "out" ],
       "cmakeCommandArgs": "",
       "buildCommandArgs": "",
       "ctestCommandArgs": "",
       "inheritEnvironments": [ "linux_x64" ],
-      "remoteMachineName": "${defaultRemoteMachineName}",
+      "remoteMachineName": "-1749984907;192.168.211.126 (username=user, port=22, authentication=Password)",
       "remoteCMakeListsRoot": "$HOME/${projectDirName}",
       "remoteBuildRoot": "$HOME/${projectDirName}/${name}",
       "remoteInstallRoot": "$HOME/${projectDirName}/out/install/${name}",
       "remoteCopySources": true,
       "rsyncCommandArgs": "-t --delete --delete-excluded",
       "remoteCopyBuildOutput": false,
-      "remoteCopySourcesMethod": "rsync",
-      "variables": []
+      "remoteCopySourcesMethod": "rsync"
     }
   ]
 }
