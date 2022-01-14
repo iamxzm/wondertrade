@@ -335,7 +335,7 @@ WtBtCore_SOURCE_DIR:STATIC=D:/work/lsqt_trade_core_v2/src/WtBtCore
 WtBtPorter_BINARY_DIR:STATIC=D:/work/lsqt_trade_core_v2/src/out/build/x64-Debug/WtBtPorter
 
 //Dependencies for the target
-WtBtPorter_LIB_DEPENDS:STATIC=general;D:/work/lsqt_trade_core_v2/src/WtBtPorter/../build_Debug/libs/libWtBtCore.a;general;D:/work/lsqt_trade_core_v2/src/WtBtPorter/../build_Debug/libs/libWTSTools.a;general;D:/work/lsqt_trade_core_v2/src/WtBtPorter/../build_Debug/libs/libWTSUtils.a;general;/lib/libmysqlclient.a;general;dl;general;pthread;general;boost_filesystem;
+WtBtPorter_LIB_DEPENDS:STATIC=general;D:/work/lsqt_trade_core_v2/src/WtBtPorter/../build_Debug/libs/libWtBtCore.a;general;D:/work/lsqt_trade_core_v2/src/WtBtPorter/../build_Debug/libs/libWTSTools.a;general;D:/work/lsqt_trade_core_v2/src/WtBtPorter/../build_Debug/libs/libWTSUtils.a;general;/lib/libmysqlclient.a;general;dl;general;pthread;general;boost_filesystem;general;mongocxx;general;bsoncxx;
 
 //Value Computed by CMake
 WtBtPorter_SOURCE_DIR:STATIC=D:/work/lsqt_trade_core_v2/src/WtBtPorter

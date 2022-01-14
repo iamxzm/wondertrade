@@ -86,8 +86,10 @@ CtaMocker::CtaMocker(HisDataReplayer* replayer, const char* name, int32_t slippa
 	, _wait_calc(false)
 	, _in_backtest(false)
 	, _persist_data(persistData)
+	//,_uri("mongodb://192.168.214.199:27017")
+	//, _client(_uri)
 {
-	_context_id = makeCtxId();
+	_context_id = makeCtxId();	
 }
 
 
@@ -330,65 +332,74 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 	_day_profit = _balance - _static_balance;
 	//策略收益
 	_total_profit = _balance - init_money;
+
 	//收益率公式 = (当前净值/最初净值) -1
+	_daily_rate_of_return = (_day_profit / _static_balance) - 1;
 
 	//基准收益率
-	double benchmarkPrePrice = _close_price;//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //昨收价
-	double benchmarkEndPrice = _settlepx;//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
+	double benchmarkPrePrice = _close_price;		//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //昨收价
+	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
 	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
 
-	//(dailyRateOfReturn + 1) / (benchmarkRateOfReturn + 1) - 1
+	//日超额收益率
+	_abnormal_rate_of_return = (_daily_rate_of_return + 1) / (_benchmark_rate_of_return + 1) - 1;
+
+	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
+
 }
 
 void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
 {
-	mongocxx::uri uri("mongodb://192.168.214.199:27017");
-	mongocxx::client client(uri);
-	_mongodb = client["lsqt_db"];
-	_acccoll = _mongodb["day_account"];
+	WTSLogger::info("Callbacks of set_dayaccount start");
+	mongocxx::database mongodb = _replayer->_client["lsqt_db"];
+	mongocxx::collection acccoll = mongodb["testaccount"];
 
-	bsoncxx::document::value position_doc = document{} <<
-			"position_profit" << 187419.886<<
-			"available" << 1203347283.835<<
+	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
+	string day = to_string(_traderday);
+	//uint64_t time =  _replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000
+
+	position_doc = document{} <<
+			"position_profit" << 0.0 <<
+			"available" << 0.0 <<
 			"frozen_premium" << 0.0<<
-			"close_profit" << 380.0<<
+			"close_profit" << 0.0 <<
 			"day_profit" << _day_profit <<
 			"premium" << 0.0<<
-			"balance" << 1203426049.915<<
+			"balance" << _balance <<
 			"static_balance" << _static_balance <<
 			"currency" << "CNY"<<
-			"commission" << 52390.9437451164<<
+			"commission" << 0.0 <<
 			"frozen_margin" << 0.0<<
-			"pre_balance" << 1203290260.972<<
+			"pre_balance" << 0.0 <<
 			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
 			"float_profit" << 0.0<<
-			"timestamp" << _replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000  <<
-			"margin" << 69946.4849999992<<
-			"risk_ratio" << 0.0001<<
-			"trade_day" << std::to_string(_traderday) <<
+			"timestamp" << newTick->actiontime() <<
+			"margin" << 0.0 <<
+			"risk_ratio" << 0.0 <<
+			"trade_day" << day <<
 			"frozen_commission" << 0.0<<
-			"abnormal_rate_of_return" << 0.0277<<
+			"abnormal_rate_of_return" << 0.0 <<
 			"daily_rate_of_return" << _total_profit <<
-			"win_or_lose_flag" << 1<<
-			"strategy_id" << "1283634220584927232"<<
+			"win_or_lose_flag" << _win_or_lose_flag <<
+			"strategy_id" << "314159"<<
 			"deposit" << 0.0<<
 			"accounts" << open_document <<
-			"1283634220790448128" << open_document <<
-				"position_profit" << 187419.886<<
-					"margin" << 69946.4849999992<<
+			"314159" << open_document <<
+				"position_profit" << 0.0 <<
+					"margin" << 0.0 <<
 					"risk_ratio" << 0.0<<
 					"frozen_commission" << 0.0<<
 					"frozen_premium" << 0.0<<
-					"available" << 1203347283.835<<
-					"close_profit" << 380.0<<
-					"account_id" << "1283634220790448128"<<
+					"available" << 0.0 <<
+					"close_profit" << 0.0 <<
+					"account_id" << "314159"<<
 					"premium" << 0.0<<
-					"static_balance" << 1203290260.972<<
-					"balance" << 1203426049.915<<
+					"static_balance" << 0.0 <<
+					"balance" << 0.0 <<
 					"deposit" << 0.0<<
 					"currency" << "rmb"<<
-					"pre_balance" << 1203290260.972<<
-					"commission" << 52390.9437451164<<
+					"pre_balance" << 0.0 <<
+					"commission" << 0.0 <<
 					"frozen_margin" << 0.0<<
 					"float_profit" << 0.0<<
 					"withdraw" << 0.0 <<
@@ -397,7 +408,8 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"withdraw" << 0.0 <<
 		finalize;
 
-	_acccoll.insert_one(std::move(position_doc));
+	WTSLogger::info("Callbacks of insert_one start");
+	acccoll.insert_one(std::move(position_doc));
 }
 
 void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
@@ -1224,11 +1236,6 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			pInfo._last_entertime = curTm;
 		}
 	}
-}
-
-void CtaMocker::change_traderday()
-{
-	_new_trade_day = true;
 }
 
 

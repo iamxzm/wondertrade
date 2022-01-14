@@ -12,3 +12,4 @@
 .vs
 CMakeSettings.json
 WonderTrader.sln
+/out

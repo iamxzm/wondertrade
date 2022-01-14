@@ -97,12 +97,12 @@ private:
 
 	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true );
 
+	
 public:
 	bool	init_cta_factory(WTSVariant* cfg);
 	void	install_hook();
 	void	enable_hook(bool bEnabled = true);
 	bool	step_calc();
-	void	change_traderday();
 
 public:
 	//////////////////////////////////////////////////////////////////////////
@@ -180,6 +180,12 @@ public:
 
 protected:
 	uint32_t			_context_id;
+
+	//mongocxx::instance _instance;
+	//mongocxx::uri _uri;
+	//mongocxx::client _client;
+
+
 	HisDataReplayer*	_replayer;
 
 	uint64_t		_total_calc_time;	//总计算时间
@@ -195,12 +201,15 @@ protected:
 	double        _margin_rate = 0.5;			//保证金比例
 	uint64_t		_cur_multiplier = 100;		//当前合约乘数
 
-	double		_day_profit;
-	double		_total_profit;	//策略收益
-	double		_benchmark_rate_of_return; //基准收益率
+	double		_day_profit = 0;
+	double		_total_profit = 0;	//策略收益
+	double		_benchmark_rate_of_return = 0; //基准收益率
+	double		_daily_rate_of_return = 0;//策略收益率
+	double		_abnormal_rate_of_return = 0;//日超额收益率
+	int			_win_or_lose_flag;
 
 	bool			_new_trade_day = true;
-	bool		_changepos = false;
+	bool		_changepos = true;
 	uint32_t    _traderday = 0;
 
 
@@ -349,7 +358,4 @@ protected:
 	bool			_wait_calc;
 
 	bool			_persist_data;
-
-	mongocxx::database		_mongodb;		//mongodb数据
-	mongocxx::collection	_acccoll;
 };

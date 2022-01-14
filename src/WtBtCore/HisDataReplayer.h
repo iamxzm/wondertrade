@@ -21,6 +21,17 @@
 #include <rapidjson/document.h>
 #include <numeric>
 #include <iostream>
+
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+
 namespace rj = rapidjson;
 
 NS_OTP_BEGIN
@@ -133,6 +144,9 @@ private:
 public:
 	HisDataReplayer();
 	~HisDataReplayer();
+	mongocxx::instance _instance;
+	mongocxx::uri _uri;
+	mongocxx::client _client;
 
 private:
 	/*
