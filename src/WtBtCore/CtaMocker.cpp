@@ -358,7 +358,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 
 	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
 	string day = to_string(_traderday);
-	//uint64_t time =  _replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000
+	uint64_t time = newTick->actiontime(); //_replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000
 
 	position_doc = document{} <<
 			"position_profit" << 0.0 <<
@@ -1141,7 +1141,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		}
 		else
 		{
-			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:资金账户不足");
+			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "LL_WARN:资金账户不足");
 		}
 
 		_used_margin += dInfo._margin;
