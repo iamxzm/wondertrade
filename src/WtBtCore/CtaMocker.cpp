@@ -251,7 +251,7 @@ void CtaMocker::handle_tick(const char* stdCode, WTSTickData* curTick)
 
 
 //////////////////////////////////////////////////////////////////////////
-//鍥炶皟鍑芥暟
+//回调函数
 void CtaMocker::on_bar(const char* stdCode, const char* period, uint32_t times, WTSBarStruct* newBar)
 {
 	if (newBar == NULL)
@@ -451,6 +451,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 		if (quit) break;
 	}
 
+	//do_set_position("SHFE.ag.HOT", 100, 30, exch_inst, "", false);//
 	{
 		auto it = _sig_map.find(stdCode);
 		if (it != _sig_map.end())
@@ -569,7 +570,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 			{
 				double price = curPrice;
 				double curQty = stra_get_position(stdCode);
-				//_replayer->is_tick_enabled() ? newTick->price() : entrust._target;	//濡傛灉寮�鍚簡tick鍥炴祴,鍒欑敤tick鏁版嵁鐨勪环鏍?濡傛灉娌℃湁寮�鍚?鍒欏彧鑳界敤鏉′欢鍗曚环鏍?
+				//_replayer->is_tick_enabled() ? newTick->price() : entrust._target;	//如果开启了tick回测,则用tick数据的价格,如果没有开启,则只能用条件单价格
 				WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_INFO, fmt::format("Condition order triggered[newprice: {}{}{}], instrument: {}, {} {}", cur_px, CMP_ALG_NAMES[entrust._alg], entrust._target, stdCode, ACTION_NAMES[entrust._action], entrust._qty).c_str());
 				switch (entrust._action)
 				{
