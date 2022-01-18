@@ -42,7 +42,7 @@
     <ProjectGuid>{220C7C79-C4E8-44C2-95B8-DAB2D4B0D385}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>WtBtCore</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -54,7 +54,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -96,8 +96,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)$(Platform)\libs\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>$(MyDepends141)\include;$(IncludePath)</IncludePath>
-    <LibraryPath>$(MyDepends141)\lib\x64;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(MyDepends141)\include;D:\work\mongo-cxx-driver-r3.6.6\include\bsoncxx\v_noabi;D:\work\mongo-cxx-driver-r3.6.6\include\mongocxx\v_noabi;$(IncludePath)</IncludePath>
+    <LibraryPath>$(MyDepends141)\lib\x64;D:\work\mongo-cxx-driver-r3.6.6\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
