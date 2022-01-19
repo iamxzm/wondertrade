@@ -358,7 +358,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 
 	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
 	string day = to_string(_traderday);
-	uint64_t time = newTick->actiontime(); //_replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000
+	//uint64_t time =  _replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000
 
 	position_doc = document{} <<
 			"position_profit" << 0.0 <<
@@ -420,6 +420,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 	double cur_px = newTick->price();
 	_price_map[stdCode] = cur_px;
 
+	//cout << _name << endl;
 	//交易日
 	if (_traderday < newTick->tradingdate())
 	{
@@ -1075,13 +1076,115 @@ void CtaMocker::append_signal(const char* stdCode, double qty, const char* userT
 	//save_data();
 }
 
+void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
+{
+	auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["test_positions"];
+	bsoncxx::document::value position_doc = document{} << finalize;
+	std::string exch_inst = exch_id;
+	exch_inst += "::";
+	exch_inst += inst_id;
+	if (dInfo._long)
+	{
+		position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+			"strategy_id" << _name <<//
+			"position" << open_document <<
+			exch_inst << open_document <<
+			"position_profit" << dInfo._profit <<
+			"float_profit_short" << 0.0 <<
+			"open_price_short" << 0.0 <<
+			"volume_long_frozen_today" << 0 <<//
+			"open_cost_long" << fee <<
+			"position_price_short" << 0.0 <<
+			"float_profit_long" << pInfo._dynprofit <<
+			"open_price_long" << dInfo._price <<
+			"exchange_id" << exch_id <<
+			"volume_short_frozen_today" << 0 <<//
+			"position_price_long" << dInfo._price <<
+			"position_profit_long" << dInfo._profit <<
+			"volume_short_today" << 0 <<
+			"position_profit_short" << 0.0 <<
+			"volume_long" << dInfo._volume <<
+			"margin_short" << 0.0 <<//
+			"volume_long_frozen_his" << 0 <<//
+			"float_profit" << 0.0 <<//
+			"open_cost_short" << 0.0 <<
+			"margin" << 0.0 <<//
+			"position_cost_short" << 0.0 <<//
+			"volume_short_frozen_his" << 0 <<//
+			"instrument_id" << inst_id <<
+			"volume_short" << 0 <<
+			"account_id" << "" <<
+			"volume_long_today" << dInfo._volume <<
+			"position_cost_long" << 0.0 <<//
+			"volume_long_his" << 0 <<//
+			"hedge_flag" << " " <<//
+			"margin_long" << 0.0 <<//
+			"volume_short_his" << 0 <<//
+			"last_price" << 0.0 << //
+			close_document <<
+			close_document <<
+			"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			finalize;
+	}
+	else
+	{
+		position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+			"strategy_id" << _name <<//
+			"position" << open_document <<
+			exch_inst << open_document <<
+			"position_profit" << dInfo._profit <<
+			"float_profit_short" << pInfo._dynprofit <<
+			"open_price_short" << dInfo._price <<
+			"volume_long_frozen_today" << 0 <<//
+			"open_cost_long" << 0.0 <<
+			"position_price_short" << dInfo._price <<
+			"float_profit_long" << 0.0 <<
+			"open_price_long" << 0.0 <<
+			"exchange_id" << exch_id <<
+			"volume_short_frozen_today" << 0 <<//
+			"position_price_long" << 0.0 <<
+			"position_profit_long" << 0.0 <<
+			"volume_short_today" << dInfo._volume <<
+			"position_profit_short" << dInfo._profit <<
+			"volume_long" << 0 <<
+			"margin_short" << 0.0 <<//
+			"volume_long_frozen_his" << 0 <<//
+			"float_profit" << 0.0 <<//
+			"open_cost_short" << fee <<
+			"margin" << 0.0 <<//
+			"position_cost_short" << 0.0 <<//
+			"volume_short_frozen_his" << 0 <<//
+			"instrument_id" << inst_id <<
+			"volume_short" << dInfo._volume <<
+			"account_id" << "" <<
+			"volume_long_today" << 0.0 <<
+			"position_cost_long" << fee <<//
+			"volume_long_his" << 0 <<//
+			"hedge_flag" << " " <<//
+			"margin_long" << 0.0 <<//
+			"volume_short_his" << 0 <<//
+			"last_price" << 0.0 << //
+			close_document <<
+			close_document <<
+			"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			finalize;
+	}
+	c1_mtx.lock();
+	auto result = _poscoll_1.insert_one(move(position_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx.unlock();
+
+}
+
 void CtaMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, std::string instid /*=""*/,const char* userTag /* = "" */, bool bTriggered /* = false */)
 {
 	//mongocxx::instance instance{};
 	/*mongocxx::uri _uri("mongodb://192.168.214.199:27017");
 	mongocxx::client _client(_uri);*/
-	auto db = _replayer->_client["lsqt_db"];
-	auto _poscoll_1 = db["test_positions"];
+	/*auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["test_positions"];*/
 	//_poscoll_2 = db["his_trades"];
 	//_poscoll_3 = db["his_orders"];//
 	PosInfo& pInfo = _pos_map[stdCode];
@@ -1141,104 +1244,15 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 		}
 		else
 		{
-			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "LL_WARN:资金账户不足");
+			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:资金账户不足");
 		}
 
 		_used_margin += dInfo._margin;
 
-		bsoncxx::document::value position_doc = document{} << finalize;
-		if (dInfo._long)
+		if (_name != "")
 		{
-			position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
-				"strategy_id" << 0 <<//
-				"position" << open_document <<
-				exch_inst << open_document <<
-				"position_profit" << dInfo._profit <<
-				"float_profit_short" << 0.0 <<
-				"open_price_short" << 0.0 <<
-				"volume_long_frozen_today" << 0 <<//
-				"open_cost_long" << fee <<
-				"position_price_short" << 0.0 <<
-				"float_profit_long" << pInfo._dynprofit <<
-				"open_price_long" << dInfo._price <<
-				"exchange_id" << exchid <<
-				"volume_short_frozen_today" << 0 <<//
-				"position_price_long" << dInfo._price <<
-				"position_profit_long" << dInfo._profit <<
-				"volume_short_today" << 0 <<
-				"position_profit_short" << 0.0 <<
-				"volume_long" << dInfo._volume <<
-				"margin_short" << 0.0 <<//
-				"volume_long_frozen_his" << 0 <<//
-				"float_profit" << 0.0 <<//
-				"open_cost_short" << 0.0 <<
-				"margin" << 0.0 <<//
-				"position_cost_short" << 0.0 <<//
-				"volume_short_frozen_his" << 0 <<//
-				"instrument_id" << instid <<
-				"volume_short" << 0 <<
-				"account_id" << "" <<
-				"volume_long_today" << dInfo._volume <<
-				"position_cost_long" << 0.0 <<//
-				"volume_long_his" << 0 <<//
-				"hedge_flag" << " " <<//
-				"margin_long" << 0.0 <<//
-				"volume_short_his" << 0 <<//
-				"last_price" << 0.0 << //
-				close_document <<
-				close_document <<
-				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-				finalize;
+			insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
 		}
-		else
-		{
-			position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
-				"strategy_id" << 0 <<//
-				"position" << open_document <<
-				exch_inst << open_document <<
-				"position_profit" << dInfo._profit <<
-				"float_profit_short" << pInfo._dynprofit <<
-				"open_price_short" << dInfo._price <<
-				"volume_long_frozen_today" << 0 <<//
-				"open_cost_long" << 0.0 <<
-				"position_price_short" << dInfo._price <<
-				"float_profit_long" << 0.0 <<
-				"open_price_long" << 0.0 <<
-				"exchange_id" << exchid <<
-				"volume_short_frozen_today" << 0 <<//
-				"position_price_long" << 0.0 <<
-				"position_profit_long" << 0.0 <<
-				"volume_short_today" << dInfo._volume <<
-				"position_profit_short" << dInfo._profit <<
-				"volume_long" << 0 <<
-				"margin_short" << 0.0 <<//
-				"volume_long_frozen_his" << 0 <<//
-				"float_profit" << 0.0 <<//
-				"open_cost_short" << fee <<
-				"margin" << 0.0 <<//
-				"position_cost_short" << 0.0 <<//
-				"volume_short_frozen_his" << 0 <<//
-				"instrument_id" << instid <<
-				"volume_short" << dInfo._volume <<
-				"account_id" << "" <<
-				"volume_long_today" << 0.0 <<
-				"position_cost_long" << fee <<//
-				"volume_long_his" << 0 <<//
-				"hedge_flag" << " " <<//
-				"margin_long" << 0.0 <<//
-				"volume_short_his" << 0 <<//
-				"last_price" << 0.0 << //
-				close_document <<
-				close_document <<
-				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-				finalize;
-		}
-
-		c1_mtx.lock();
-		auto result = _poscoll_1.insert_one(move(position_doc));
-		bsoncxx::oid oid = result->inserted_id().get_oid().value;
-		//std::cout << "insert one:" << oid.to_string() << std::endl;
-		c1_mtx.unlock();
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
@@ -1295,53 +1309,10 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 			dInfo._margin -= cur_margin;
 
-
-			bsoncxx::document::value position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
-				"strategy_id" << 0 <<//
-				"position" << open_document <<
-				exch_inst << open_document <<
-				"position_profit" << dInfo._profit <<
-				"float_profit_short" << pInfo._dynprofit <<
-				"open_price_short" << dInfo._price <<
-				"volume_long_frozen_today" << 0 <<//
-				"open_cost_long" << 0.0 <<
-				"position_price_short" << dInfo._price <<
-				"float_profit_long" << 0.0 <<
-				"open_price_long" << 0.0 <<
-				"exchange_id" << exchid <<
-				"volume_short_frozen_today" << 0 <<//
-				"position_price_long" << 0.0 <<
-				"position_profit_long" << 0.0 <<
-				"volume_short_today" << dInfo._volume <<
-				"position_profit_short" << dInfo._profit <<
-				"volume_long" << 0 <<
-				"margin_short" << 0.0 <<//
-				"volume_long_frozen_his" << 0 <<//
-				"float_profit" << 0.0 <<//
-				"open_cost_short" << fee <<
-				"margin" << 0.0 <<//
-				"position_cost_short" << 0.0 <<//
-				"volume_short_frozen_his" << 0 <<//
-				"instrument_id" << instid <<
-				"volume_short" << dInfo._volume <<
-				"account_id" << "" <<
-				"volume_long_today" << 0.0 <<
-				"position_cost_long" << fee <<//
-				"volume_long_his" << 0 <<//
-				"hedge_flag" << " " <<//
-				"margin_long" << 0.0 <<//
-				"volume_short_his" << 0 <<//
-				"last_price" << 0.0 << //
-				close_document <<
-				close_document <<
-				"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-				finalize;
-
-			c1_mtx.lock();
-			auto result = _poscoll_1.insert_one(move(position_doc));
-			bsoncxx::oid oid = result->inserted_id().get_oid().value;
-			//std::cout << "insert one:" << oid.to_string() << std::endl;
-			c1_mtx.unlock();
+			if (_name != "")
+			{
+				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
+			}
 
 			//这里写成交记录
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee, _schedule_times);
@@ -1384,104 +1355,9 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			//添加减去费率
 			_total_money -= fee;
 
-			bsoncxx::document::value position_doc = document{} << finalize;
-			if (dInfo._long)
+			if (_name != "")
 			{
-				position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
-					"strategy_id" << 0 <<//
-					"position" << open_document <<
-					exch_inst << open_document <<
-					"position_profit" << dInfo._profit <<
-					"float_profit_short" << 0.0 <<
-					"open_price_short" << 0.0 <<
-					"volume_long_frozen_today" << 0 <<//
-					"open_cost_long" << fee <<
-					"position_price_short" << 0.0 <<
-					"float_profit_long" << pInfo._dynprofit <<
-					"open_price_long" << dInfo._price <<
-					"exchange_id" << exchid <<
-					"volume_short_frozen_today" << 0 <<//
-					"position_price_long" << dInfo._price <<
-					"position_profit_long" << dInfo._profit <<
-					"volume_short_today" << 0 <<
-					"position_profit_short" << 0.0 <<
-					"volume_long" << dInfo._volume <<
-					"margin_short" << 0.0 <<//
-					"volume_long_frozen_his" << 0 <<//
-					"float_profit" << 0.0 <<//
-					"open_cost_short" << 0.0 <<
-					"margin" << 0.0 <<//
-					"position_cost_short" << 0.0 <<//
-					"volume_short_frozen_his" << 0 <<//
-					"instrument_id" << instid <<
-					"volume_short" << 0 <<
-					"account_id" << "" <<
-					"volume_long_today" << dInfo._volume <<
-					"position_cost_long" << 0.0 <<//
-					"volume_long_his" << 0 <<//
-					"hedge_flag" << " " <<//
-					"margin_long" << 0.0 <<//
-					"volume_short_his" << 0 <<//
-					"last_price" << 0.0 << //
-					close_document <<
-					close_document <<
-					"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-					finalize;
-
-				c1_mtx.lock();
-				auto result = _poscoll_1.insert_one(std::move(position_doc));
-				bsoncxx::oid oid = result->inserted_id().get_oid().value;
-				//std::cout << "insert one:" << oid.to_string() << std::endl;
-				c1_mtx.unlock();
-			}
-			else
-			{
-				bsoncxx::document::value position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
-					"strategy_id" << 0 <<//
-					"position" << open_document <<
-					exch_inst << open_document <<
-					"position_profit" << dInfo._profit <<
-					"float_profit_short" << pInfo._dynprofit <<
-					"open_price_short" << dInfo._price <<
-					"volume_long_frozen_today" << 0 <<//
-					"open_cost_long" << 0.0 <<
-					"position_price_short" << dInfo._price <<
-					"float_profit_long" << 0.0 <<
-					"open_price_long" << 0.0 <<
-					"exchange_id" << exchid <<
-					"volume_short_frozen_today" << 0 <<//
-					"position_price_long" << 0.0 <<
-					"position_profit_long" << 0.0 <<
-					"volume_short_today" << dInfo._volume <<
-					"position_profit_short" << dInfo._profit <<
-					"volume_long" << 0 <<
-					"margin_short" << 0.0 <<//
-					"volume_long_frozen_his" << 0 <<//
-					"float_profit" << 0.0 <<//
-					"open_cost_short" << fee <<
-					"margin" << 0.0 <<//
-					"position_cost_short" << 0.0 <<//
-					"volume_short_frozen_his" << 0 <<//
-					"instrument_id" << instid <<
-					"volume_short" << dInfo._volume <<
-					"account_id" << "" <<
-					"volume_long_today" << 0.0 <<
-					"position_cost_long" << fee <<//
-					"volume_long_his" << 0 <<//
-					"hedge_flag" << " " <<//
-					"margin_long" << 0.0 <<//
-					"volume_short_his" << 0 <<//
-					"last_price" << 0.0 << //
-					close_document <<
-					close_document <<
-					"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-					finalize;
-
-				c1_mtx.lock();
-				auto result = _poscoll_1.insert_one(move(position_doc));
-				bsoncxx::oid oid = result->inserted_id().get_oid().value;
-				//std::cout << "insert one:" << oid.to_string() << std::endl;
-				c1_mtx.unlock();
+				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
 			}
 
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), userTag, fee, _schedule_times);
