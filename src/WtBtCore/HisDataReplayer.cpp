@@ -1128,6 +1128,7 @@ void HisDataReplayer::replayUnbars(uint64_t stime, uint64_t nowTime, uint32_t en
 						strcpy(curTS.code, barsList._code.c_str());
 						curTS.action_date = _cur_date;
 						curTS.action_time = _cur_time * 100000;
+						curTS.trading_date = _cur_tdate;
 
 						curTS.price = nextBar.open;
 						curTS.volume = nextBar.vol;
@@ -1211,6 +1212,7 @@ void HisDataReplayer::replayUnbars(uint64_t stime, uint64_t nowTime, uint32_t en
 						strcpy(curTS.code, realCode.c_str());
 						curTS.action_date = _cur_date;
 						curTS.action_time = curTime * 100000;
+						curTS.trading_date = _cur_tdate;
 
 						curTS.price = nextBar.open;
 						curTS.volume = nextBar.vol;
@@ -1692,6 +1694,7 @@ void HisDataReplayer::onMinuteEnd(uint32_t uDate, uint32_t uTime, uint32_t endTD
 									strcpy(curTS.code, barsList._code.c_str());
 									curTS.action_date = _cur_date;
 									curTS.action_time = _cur_time * 100000;
+									curTS.trading_date = _cur_tdate;
 
 									curTS.price = nextBar.open / factor;
 									curTS.volume = nextBar.vol;
@@ -1789,6 +1792,7 @@ void HisDataReplayer::onMinuteEnd(uint32_t uDate, uint32_t uTime, uint32_t endTD
 									strcpy(curTS.code, realCode.c_str());
 									curTS.action_date = _cur_date;
 									curTS.action_time = curTime * 100000;
+									curTS.trading_date = _cur_tdate;
 
 									curTS.price = nextBar.open / factor;
 									curTS.volume = nextBar.vol;
@@ -3096,6 +3100,9 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 						unsigned long long time = stoll(cfgBF->getCString("$date"));
 						ticks.action_date = StampTimeYmd(time);
 						ticks.action_time = StampTimeHMSms(time);
+						cfgBF = cfg->get("trade_date");
+						unsigned long long date = stoll(cfgBF->getCString("$date"));
+						ticks.trading_date = StampTimeYmd(date);
 						ticks.price = cfg->getDouble("real_price");
 						ticks.open = cfg->getDouble("open_price");
 						ticks.high = cfg->getDouble("highest_price");
