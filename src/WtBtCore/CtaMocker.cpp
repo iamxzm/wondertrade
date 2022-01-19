@@ -352,13 +352,12 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 
 void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
 {
-	WTSLogger::info("Callbacks of set_dayaccount start");
 	mongocxx::database mongodb = _replayer->_client["lsqt_db"];
 	mongocxx::collection acccoll = mongodb["testaccount"];
 
 	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
 	string day = to_string(_traderday);
-	uint64_t time = newTick->actiontime(); //_replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000
+	const int timestamp = newTick->actiontime(); //_replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000
 
 	position_doc = document{} <<
 			"position_profit" << 0.0 <<
@@ -375,15 +374,15 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"pre_balance" << 0.0 <<
 			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
 			"float_profit" << 0.0<<
-			"timestamp" << 0 <<
+			"timestamp" << timestamp <<
 			"margin" << 0.0 <<
 			"risk_ratio" << 0.0 <<
 			"trade_day" << day <<
 			"frozen_commission" << 0.0<<
-			"abnormal_rate_of_return" << 0.0 <<
+			"abnormal_rate_of_return" << _abnormal_rate_of_return <<
 			"daily_rate_of_return" << _total_profit <<
 			"win_or_lose_flag" << _win_or_lose_flag <<
-			"strategy_id" << "314159"<<
+			"strategy_id" << _name <<
 			"deposit" << 0.0<<
 			"accounts" << open_document <<
 			"314159" << open_document <<
@@ -410,7 +409,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"withdraw" << 0.0 <<
 		finalize;
 
-	WTSLogger::info("Callbacks of insert_one start");
+	WTSLogger::info("Callbacks of insert_one start %lld", newTick->actiontime());
 	acccoll.insert_one(std::move(position_doc));
 }
 
@@ -430,7 +429,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 	//昨结
 	_close_price = newTick->presettle();
 	//结算价
-	_settlepx = newTick->settlepx();
+	_settlepx = newTick->price();
 
 	//先检查是否要信号要触发
 
