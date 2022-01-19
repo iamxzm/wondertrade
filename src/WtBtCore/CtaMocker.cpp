@@ -356,9 +356,9 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	mongocxx::collection acccoll = mongodb["testaccount"];
 
 	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
-	string day = to_string(_traderday);
 
-	const int timestamp = newTick->actiontime(); //_replayer->StringToDatetime(to_string(newTick->actiontime())) * 1000
+	int64_t curTime = _replayer->get_date() * 1000000 + _replayer->get_min_time() * 100 + _replayer->get_secs();
+	//const int timestamp = newTick->actiontime(); 
 
 	position_doc = document{} <<
 			"position_profit" << 0.0 <<
@@ -375,10 +375,10 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"pre_balance" << 0.0 <<
 			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
 			"float_profit" << 0.0<<
-			"timestamp" << timestamp <<
-			"margin" << 0.0 <<
+			"timestamp" << curTime <<
+			"margin" << _used_margin <<
 			"risk_ratio" << 0.0 <<
-			"trade_day" << day <<
+			"trade_day" << to_string(_traderday) <<
 			"frozen_commission" << 0.0<<
 			"abnormal_rate_of_return" << _abnormal_rate_of_return <<
 			"daily_rate_of_return" << _total_profit <<
@@ -422,10 +422,10 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 
 	//cout << _name << endl;
 	//交易日
-	if (_traderday < newTick->tradingdate())
+	if (_traderday < _replayer->get_trading_date())
 	{
 		_new_trade_day = true;
-		_traderday = newTick->tradingdate();
+		_traderday = _replayer->get_trading_date();
 	}
 
 	//昨结
