@@ -3100,6 +3100,9 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 						ticks.open = cfg->getDouble("open_price");
 						ticks.high = cfg->getDouble("highest_price");
 						ticks.low = cfg->getDouble("lowest_price");
+						ticks.pre_settle = cfg->getDouble("pre_settle_price");
+						ticks.pre_close = cfg->getDouble("pre_close_price");
+						ticks.pre_interest = cfg->getUInt32("pre_hold_volume");
 						ticks.bid_prices[0] = cfg->getDouble("bid_price1");
 						ticks.bid_qty[0] = cfg->getInt32("bid_volume1");
 						ticks.ask_prices[0] = cfg->getDouble("ask_price1");
@@ -3107,6 +3110,7 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 						ticks.total_volume = cfg->getInt32("total_volume");
 						ticks.total_turnover = cfg->getDouble("total_amount");
 						ticks.volume = cfg->getUInt64("volume");
+						ticks.turn_over = cfg->getDouble("amount");
 						tickList._items.emplace_back(ticks);
 						idx++;
 					}

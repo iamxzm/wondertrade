@@ -93,7 +93,6 @@ private:
 	inline CondList& get_cond_entrusts(const char* stdCode);
 
 	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true);
-
 public:
 	bool	init_cta_factory(WTSVariant* cfg);
 	void	install_hook();
@@ -349,6 +348,8 @@ protected:
 
 	bool			_persist_data;
 
+	void insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime);
 	//mongocxx::uri _uri;
 	//mongocxx::client _client;
 	/*mongocxx::database _db;
