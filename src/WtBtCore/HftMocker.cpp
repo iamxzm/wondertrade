@@ -668,14 +668,27 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 
 	//收益率公式 = (当前净值/最初净值) -1
 	_daily_rate_of_return = (_day_profit / _static_balance) - 1;
+	if (isnan(_daily_rate_of_return))
+	{
+		_daily_rate_of_return = 0;
+	}
 
 	//基准收益率
 	double benchmarkPrePrice = _close_price;		//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //昨收价
 	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
+
 	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
+	if (isnan(_benchmark_rate_of_return))
+	{
+		_benchmark_rate_of_return = 0;
+	}
 
 	//日超额收益率
 	_abnormal_rate_of_return = (_daily_rate_of_return + 1) / (_benchmark_rate_of_return + 1) - 1;
+	if (isnan(_abnormal_rate_of_return))
+	{
+		_abnormal_rate_of_return = 0;
+	}
 
 	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
 
@@ -1158,6 +1171,15 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 
 	double diff = qty - pInfo._volume;
 
+	//保证金检测是否成交
+	double tempfee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
+	double tempmargin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
+	if (!decimal::gt(_total_money - (tempmargin + tempfee), 0))
+	{
+		WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:资金账户不足");
+		return;
+	}
+
 	if (decimal::gt(pInfo._volume*diff, 0))//当前持仓和仓位变化方向一致, 增加一条明细, 增加数量即可
 	{
 		pInfo._volume = qty;
@@ -1177,16 +1199,8 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 
 
 		//保证金计算
-		if (decimal::gt(_total_money - (dInfo._margin + fee), 0))
-		{
-			_total_money -= dInfo._margin;
-			_total_money -= fee;
-		}
-		else
-		{
-			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:资金账户不足");
-		}
-
+		_total_money -= dInfo._margin;
+		_total_money -= fee;
 		_used_margin += dInfo._margin;
 
 		if (_name != "")

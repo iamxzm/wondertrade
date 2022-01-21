@@ -21,6 +21,7 @@ ENDIF ()
 ADD_SUBDIRECTORY(WTSUtils)
 ADD_SUBDIRECTORY(WTSTools)
 ADD_SUBDIRECTORY(WtCtaStraFact)
+ADD_SUBDIRECTORY(WtHftStraFact)
 
 #contract Loade through ctp channel
 ADD_SUBDIRECTORY(CTPLoader)

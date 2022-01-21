@@ -323,14 +323,27 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 
 	//收益率公式 = (当前净值/最初净值) -1
 	_daily_rate_of_return = (_day_profit / _static_balance) - 1;
+	if (isnan(_daily_rate_of_return))
+	{
+		_daily_rate_of_return = 0;
+	}
 
 	//基准收益率
 	double benchmarkPrePrice = _close_price;		//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //昨收价
 	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
+
 	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
+	if (isnan(_benchmark_rate_of_return))
+	{
+		_benchmark_rate_of_return = 0;
+	}
 
 	//日超额收益率
 	_abnormal_rate_of_return = (_daily_rate_of_return + 1) / (_benchmark_rate_of_return + 1) - 1;
+	if (isnan(_abnormal_rate_of_return))
+	{
+		_abnormal_rate_of_return = 0;
+	}
 
 	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
 
