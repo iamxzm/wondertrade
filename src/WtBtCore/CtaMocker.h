@@ -20,18 +20,6 @@
 #include "../Share/DLLHelper.hpp"
 #include "../Share/StdUtils.hpp"
 
-#include <bsoncxx/builder/stream/document.hpp>
-#include <bsoncxx/builder/basic/array.hpp>
-#include <bsoncxx/builder/basic/document.hpp>
-#include <bsoncxx/builder/basic/kvp.hpp>
-#include <bsoncxx/json.hpp>
-#include <bsoncxx/types.hpp>
-
-#include <mongocxx/client.hpp>
-#include <mongocxx/instance.hpp>
-#include <mongocxx/uri.hpp>
-#include <mongocxx/database.hpp>
-
 NS_OTP_BEGIN
 class EventNotifier;
 NS_OTP_END
