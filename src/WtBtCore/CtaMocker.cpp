@@ -26,20 +26,6 @@
 
 #include "../WTSTools/WTSLogger.h"
 
-using bsoncxx::builder::basic::kvp;
-using bsoncxx::builder::basic::make_array;
-using bsoncxx::builder::basic::make_document;
-using bsoncxx::to_json;
-
-using bsoncxx::builder::stream::close_array;
-using bsoncxx::builder::stream::close_document;
-using bsoncxx::builder::stream::document;
-using bsoncxx::builder::stream::finalize;
-using bsoncxx::builder::stream::open_array;
-using bsoncxx::builder::stream::open_document;
-
-using namespace mongocxx;
-
 std::mutex c1_mtx{};
 
 namespace rj = rapidjson;
