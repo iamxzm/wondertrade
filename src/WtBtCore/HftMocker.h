@@ -178,7 +178,7 @@ private:
 	double        _used_margin = 0;			//占用保证金
 	double        _margin_rate = 0.5;			//保证金比例
 	uint64_t		_cur_multiplier = 100;		//当前合约乘数
-	double		_total_closeprofit;
+	double		_total_closeprofit = 0;
 
 	double		_day_profit = 0;
 	double		_total_profit = 0;	//策略收益
@@ -271,6 +271,7 @@ private:
 		double		_max_loss;
 		double		_profit;
 		char		_usertag[32];
+		double		_margin;
 
 		_DetailInfo()
 		{

@@ -1039,12 +1039,26 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 		dInfo._price = trdPx;
 		dInfo._volume = abs(diff);
 		dInfo._opentime = curTm;
+		dInfo._margin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
 		dInfo._opentdate = curTDate;
 		strcpy(dInfo._usertag, userTag);
 		pInfo._details.emplace_back(dInfo);
 
 		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
 		_fund_info._total_fees += fee;
+
+		//保证金计算
+		if (decimal::gt(_total_money - (dInfo._margin + fee), 0))
+		{
+			_total_money -= dInfo._margin;
+			_total_money -= fee;
+		}
+		else
+		{
+			WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:资金账户不足");
+		}
+
+		_used_margin += dInfo._margin;
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), fee, userTag);
 	}
@@ -1082,6 +1096,16 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
 			_fund_info._total_fees += fee;
+
+			//释放保证金
+			double cur_margin = _margin_rate * _cur_multiplier * _close_price * maxQty;
+
+			_total_money += profit;
+			_total_money -= fee;
+			_total_money += cur_margin;
+			_used_margin -= cur_margin;
+			dInfo._margin -= cur_margin;
+
 			//这里写成交记录
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, fee, userTag);
 			//这里写平仓记录
@@ -1116,6 +1140,9 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 			//这里还需要写一笔成交记录
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
+			//添加减去费率
+			_total_money -= fee;
+
 			//_engine->mutate_fund(fee, FFT_Fee);
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), fee, userTag);
 		}
