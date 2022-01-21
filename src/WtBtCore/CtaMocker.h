@@ -10,6 +10,7 @@
 #pragma once
 #include <sstream>
 #include <atomic>
+#include <math.h>
 #include "HisDataReplayer.h"
 
 #include "../Includes/FasterDefs.h"
