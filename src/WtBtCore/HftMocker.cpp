@@ -24,6 +24,23 @@
 
 #include "../WTSTools/WTSLogger.h"
 
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::to_json;
+
+using bsoncxx::builder::stream::close_array;
+using bsoncxx::builder::stream::close_document;
+using bsoncxx::builder::stream::document;
+using bsoncxx::builder::stream::finalize;
+using bsoncxx::builder::stream::open_array;
+using bsoncxx::builder::stream::open_document;
+
+using namespace mongocxx;
+
+namespace rj = rapidjson;
+using namespace std;
+
 uint32_t makeLocalOrderID()
 {
 	static std::atomic<uint32_t> _auto_order_id{ 0 };
@@ -304,6 +321,18 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 		std::unique_lock<std::recursive_mutex> lck(_mtx_control);
 	}
 
+	//交易日
+	if (_traderday < _replayer->get_trading_date())
+	{
+		_new_trade_day = true;
+		_traderday = _replayer->get_trading_date();
+	}
+
+	//昨结
+	_close_price = newTick->presettle();
+	//结算价
+	_settlepx = newTick->price();
+
 	update_dyn_profit(stdCode, newTick);
 
 	procTask();
@@ -316,7 +345,11 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 			uint32_t localid = it->first;
 			bool bNeedErase = procOrder(localid);
 			if (bNeedErase)
+			{
+				_changepos = true;  //持仓变化
 				ids.emplace_back(localid);
+			}
+				
 		}
 
 		for(uint32_t localid : ids)
@@ -342,6 +375,13 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 		WTSLogger::log_dyn("strategy", _name.c_str(), LL_DEBUG, "Calc done, notify control thread");
 		while (_resumed)
 			_cond_calc.notify_all();
+	}
+
+	//持仓变化更新数据
+	if (_changepos)
+	{
+		_changepos = false;
+		set_dayaccount(stdCode, newTick);
 	}
 }
 
@@ -572,6 +612,105 @@ void HftMocker::update_dyn_profit(const char* stdCode, WTSTickData* newTick)
 			pInfo._dynprofit = dynprofit;
 		}
 	}
+}
+
+void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
+{
+	mongocxx::database mongodb = _replayer->_client["lsqt_db"];
+	mongocxx::collection acccoll = mongodb["testaccount"];
+
+	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
+
+	int64_t curTime = _replayer->get_date() * 1000000 + _replayer->get_min_time() * 100 + _replayer->get_secs();
+
+	double total_dynprofit = 0;
+	for (auto v : _pos_map)
+	{
+		const PosInfo& pInfo = v.second;
+		total_dynprofit += pInfo._dynprofit;
+	}
+
+	_fund_info._total_dynprofit = total_dynprofit;
+
+	//计算期初权益
+	if (_new_trade_day)
+	{
+		_static_balance = _total_money + _used_margin + _fund_info._total_fees - _fund_info._total_dynprofit - _fund_info._total_profit;
+		_new_trade_day = false;
+	}
+	//今日资产 = 期初权益 + 持仓盈亏 + 平仓盈亏 - 手续费
+	_balance = _static_balance + _fund_info._total_dynprofit + _total_closeprofit - _fund_info._total_fees;
+	//当日盈亏
+	_day_profit = _balance - _static_balance;
+	//策略收益
+	_total_profit = _balance - init_money;
+
+	//收益率公式 = (当前净值/最初净值) -1
+	_daily_rate_of_return = (_day_profit / _static_balance) - 1;
+
+	//基准收益率
+	double benchmarkPrePrice = _close_price;		//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //昨收价
+	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
+	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
+
+	//日超额收益率
+	_abnormal_rate_of_return = (_daily_rate_of_return + 1) / (_benchmark_rate_of_return + 1) - 1;
+
+	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
+
+
+	position_doc = document{} <<
+		"position_profit" << 0.0 <<
+		"available" << 0.0 <<
+		"frozen_premium" << 0.0 <<
+		"close_profit" << 0.0 <<
+		"day_profit" << _day_profit <<
+		"premium" << 0.0 <<
+		"balance" << _balance <<
+		"static_balance" << _static_balance <<
+		"currency" << "CNY" <<
+		"commission" << 0.0 <<
+		"frozen_margin" << 0.0 <<
+		"pre_balance" << 0.0 <<
+		"benchmark_rate_of_return" << _benchmark_rate_of_return <<
+		"float_profit" << 0.0 <<
+		"timestamp" << curTime <<
+		"margin" << _used_margin <<
+		"risk_ratio" << 0.0 <<
+		"trade_day" << to_string(_traderday) <<
+		"frozen_commission" << 0.0 <<
+		"abnormal_rate_of_return" << _abnormal_rate_of_return <<
+		"daily_rate_of_return" << _total_profit <<
+		"win_or_lose_flag" << _win_or_lose_flag <<
+		"strategy_id" << _name <<
+		"deposit" << 0.0 <<
+		"accounts" << open_document <<
+		"314159" << open_document <<
+		"position_profit" << 0.0 <<
+		"margin" << 0.0 <<
+		"risk_ratio" << 0.0 <<
+		"frozen_commission" << 0.0 <<
+		"frozen_premium" << 0.0 <<
+		"available" << 0.0 <<
+		"close_profit" << 0.0 <<
+		"account_id" << "314159" <<
+		"premium" << 0.0 <<
+		"static_balance" << 0.0 <<
+		"balance" << 0.0 <<
+		"deposit" << 0.0 <<
+		"currency" << "rmb" <<
+		"pre_balance" << 0.0 <<
+		"commission" << 0.0 <<
+		"frozen_margin" << 0.0 <<
+		"float_profit" << 0.0 <<
+		"withdraw" << 0.0 <<
+		close_document <<
+		close_document <<
+		"withdraw" << 0.0 <<
+		finalize;
+
+	WTSLogger::info("Callbacks of insert_one start %lld", newTick->actiontime());
+	acccoll.insert_one(std::move(position_doc));
 }
 
 bool HftMocker::procOrder(uint32_t localid)
@@ -937,6 +1076,7 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 			if (!dInfo._long)
 				profit *= -1;
 			pInfo._closeprofit += profit;
+			_total_closeprofit += profit;
 			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//浮盈也要做等比缩放
 			_fund_info._total_profit += profit;
 

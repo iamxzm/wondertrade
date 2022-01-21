@@ -20,6 +20,18 @@
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
 
+#include <bsoncxx/builder/stream/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+#include <mongocxx/database.hpp>
+
 class HisDataReplayer;
 
 class HftMocker : public IDataSink, public IHftStraCtx
@@ -152,8 +164,34 @@ private:
 	inline void	log_close(const char* stdCode, bool isLong, uint64_t openTime, double openpx, uint64_t closeTime, double closepx, double qty,
 		double profit, double maxprofit, double maxloss, double totalprofit, const char* enterTag, const char* exitTag);
 
+	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true);
+
 private:
 	HisDataReplayer*	_replayer;
+
+	const double init_money = 100000;			//初始资金
+	double      _balance = 0;					//今总资产
+	double		_total_money = init_money;		//剩余资金
+	double		_static_balance = init_money;			//期初资产
+	double		_close_price = 0;				//昨结算价
+	double		_settlepx;						//今结算价
+	double        _used_margin = 0;			//占用保证金
+	double        _margin_rate = 0.5;			//保证金比例
+	uint64_t		_cur_multiplier = 100;		//当前合约乘数
+	double		_total_closeprofit;
+
+	double		_day_profit = 0;
+	double		_total_profit = 0;	//策略收益
+	double		_benchmark_rate_of_return = 0; //基准收益率
+	double		_daily_rate_of_return = 0;//策略收益率
+	double		_abnormal_rate_of_return = 0;//日超额收益率
+	int			_win_or_lose_flag;
+
+	bool			_new_trade_day = true;
+	bool		_changepos = true;
+	uint32_t    _traderday = 0;
+
+	
 
 	bool			_use_newpx;
 	uint32_t		_error_rate;
