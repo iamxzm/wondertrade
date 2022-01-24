@@ -3410,6 +3410,7 @@ bool HisDataReplayer::cacheRawBarsFromDB(const std::string& key, const char* std
 						bs.low = cfg->getDouble("low");
 						bs.close = cfg->getDouble("close");
 						bs.vol = cfg->getInt32("volume");
+						bs.settle = cfg->getDouble("close");
 						WTSVariant* cfgBF = cfg->get("datetime");
 						unsigned long long time = stoll(cfgBF->getCString("$date"));
 						bs.time = Get_timeYmdHM(time);

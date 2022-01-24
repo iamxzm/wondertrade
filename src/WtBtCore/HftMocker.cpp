@@ -1263,7 +1263,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), fee, userTag);
 	}
-	else
+	else if(decimal::lt(pInfo._volume * diff, 0))
 	{//持仓方向和仓位变化方向不一致,需要平仓
 		double left = abs(diff);
 
