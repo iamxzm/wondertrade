@@ -1395,7 +1395,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
-	else
+	else if(decimal::lt(pInfo._volume * diff, 0))
 	{//持仓方向和仓位变化方向不一致,需要平仓
 		double left = abs(diff);
 		bool isBuy = decimal::gt(diff, 0.0);
