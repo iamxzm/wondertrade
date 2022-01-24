@@ -1033,7 +1033,7 @@ void HftMocker::log_close(const char* stdCode, bool isLong, uint64_t openTime, d
 void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
 {
 	auto db = _replayer->_client["lsqt_db"];
-	auto _poscoll_1 = db["test_positions"];
+	auto _poscoll_1 = db["his_positions"];
 	bsoncxx::document::value position_doc = document{} << finalize;
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
@@ -1135,7 +1135,7 @@ void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
 {
 	auto db = _replayer->_client["lsqt_db"];
-	auto _poscoll_1 = db["test_hft_trades"];
+	auto _poscoll_1 = db["his_trades"];
 	bsoncxx::document::value position_doc = document{} << finalize;
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
@@ -1243,6 +1243,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 		if (_name != "")
 		{
 			insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
+			insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
 		}
 
 
@@ -1296,6 +1297,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			if (_name != "")
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
+				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
 			}
 
 			//这里写成交记录
