@@ -10,6 +10,7 @@
 #pragma once
 #include <queue>
 #include <sstream>
+#include <math.h>
 
 #include "HisDataReplayer.h"
 
