@@ -638,7 +638,8 @@ void HftMocker::update_dyn_profit(const char* stdCode, WTSTickData* newTick)
 void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
 {
 	mongocxx::database mongodb = _replayer->_client["lsqt_db"];
-	mongocxx::collection acccoll = mongodb["day_account"];
+	mongocxx::collection acccoll = mongodb["his_account"];
+	mongocxx::collection daycoll = mongodb["day_account"];
 
 	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
 
@@ -693,9 +694,10 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
 
 
+	//储存到mongo
 	position_doc = document{} <<
 		"position_profit" << 0.0 <<
-		"available" << 0.0 <<
+		"available" << _total_money <<
 		"frozen_premium" << 0.0 <<
 		"close_profit" << 0.0 <<
 		"day_profit" << _day_profit <<
@@ -705,7 +707,7 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 		"currency" << "CNY" <<
 		"commission" << 0.0 <<
 		"frozen_margin" << 0.0 <<
-		"pre_balance" << 0.0 <<
+		"pre_balance" << _static_balance <<
 		"benchmark_rate_of_return" << _benchmark_rate_of_return <<
 		"float_profit" << 0.0 <<
 		"timestamp" << curTime <<
@@ -714,14 +716,14 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 		"trade_day" << to_string(_traderday) <<
 		"frozen_commission" << 0.0 <<
 		"abnormal_rate_of_return" << _abnormal_rate_of_return <<
-		"daily_rate_of_return" << _total_profit <<
+		"daily_rate_of_return" << _daily_rate_of_return <<
 		"win_or_lose_flag" << _win_or_lose_flag <<
 		"strategy_id" << _name <<
 		"deposit" << 0.0 <<
 		"accounts" << open_document <<
 		"314159" << open_document <<
 		"position_profit" << 0.0 <<
-		"margin" << 0.0 <<
+		"margin" << _used_margin <<
 		"risk_ratio" << 0.0 <<
 		"frozen_commission" << 0.0 <<
 		"frozen_premium" << 0.0 <<
@@ -729,8 +731,8 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 		"close_profit" << 0.0 <<
 		"account_id" << "314159" <<
 		"premium" << 0.0 <<
-		"static_balance" << 0.0 <<
-		"balance" << 0.0 <<
+		"static_balance" << _static_balance <<
+		"balance" << _balance <<
 		"deposit" << 0.0 <<
 		"currency" << "rmb" <<
 		"pre_balance" << 0.0 <<
@@ -743,8 +745,86 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 		"withdraw" << 0.0 <<
 		finalize;
 
-	WTSLogger::info("Callbacks of insert_one start %lld", newTick->actiontime());
+
 	acccoll.insert_one(std::move(position_doc));
+	WTSLogger::info("Callbacks of insert_one start %lld", newTick->actiontime());
+
+	//插入day acc
+	if (_dayacc_insert_flag)
+	{
+		position_doc = document{} <<
+			"position_profit" << 0.0 <<
+			"available" << _total_money <<
+			"frozen_premium" << 0.0 <<
+			"close_profit" << 0.0 <<
+			"day_profit" << _day_profit <<
+			"premium" << 0.0 <<
+			"balance" << _balance <<
+			"static_balance" << _static_balance <<
+			"currency" << "CNY" <<
+			"commission" << 0.0 <<
+			"frozen_margin" << 0.0 <<
+			"pre_balance" << _static_balance <<
+			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
+			"float_profit" << 0.0 <<
+			"timestamp" << curTime <<
+			"margin" << _used_margin <<
+			"risk_ratio" << 0.0 <<
+			"trade_day" << to_string(_traderday) <<
+			"frozen_commission" << 0.0 <<
+			"abnormal_rate_of_return" << _abnormal_rate_of_return <<
+			"daily_rate_of_return" << _daily_rate_of_return <<
+			"win_or_lose_flag" << _win_or_lose_flag <<
+			"strategy_id" << _name <<
+			"deposit" << 0.0 <<
+			"accounts" << open_document <<
+			"314159" << open_document <<
+			"position_profit" << 0.0 <<
+			"margin" << _used_margin <<
+			"risk_ratio" << 0.0 <<
+			"frozen_commission" << 0.0 <<
+			"frozen_premium" << 0.0 <<
+			"available" << 0.0 <<
+			"close_profit" << 0.0 <<
+			"account_id" << "314159" <<
+			"premium" << 0.0 <<
+			"static_balance" << _static_balance <<
+			"balance" << _balance <<
+			"deposit" << 0.0 <<
+			"currency" << "rmb" <<
+			"pre_balance" << 0.0 <<
+			"commission" << 0.0 <<
+			"frozen_margin" << 0.0 <<
+			"float_profit" << 0.0 <<
+			"withdraw" << 0.0 <<
+			close_document <<
+			close_document <<
+			"withdraw" << 0.0 <<
+			finalize;
+
+		daycoll.insert_one(std::move(position_doc));
+		_dayacc_insert_flag = false;
+	}
+	else //更新day acc
+	{
+		daycoll.update_one(
+			make_document(kvp("trade_day", to_string(_traderday))),
+			make_document(kvp("$set", make_document(kvp("available", _total_money),
+				kvp("day_profit", _day_profit),
+				kvp("balance", _balance),
+				kvp("static_balance", _static_balance),
+				kvp("benchmark_rate_of_return", _benchmark_rate_of_return),
+				kvp("timestamp", curTime),
+				kvp("margin", _used_margin),
+				kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
+				kvp("daily_rate_of_return", _daily_rate_of_return),
+				kvp("win_or_lose_flag", _win_or_lose_flag),
+				kvp("strategy_id", _name),
+				kvp("accounts.314159.margin", _used_margin),
+				kvp("accounts.314159.static_balance", _static_balance),
+				kvp("accounts.314159.balance", _balance)
+			))));
+	}
 }
 
 

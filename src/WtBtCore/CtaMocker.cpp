@@ -308,7 +308,7 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 
 	_fund_info._total_dynprofit = total_dynprofit;
 
-	//计算期初权益
+	//计算期初权益=可用资金+持仓占用保证金+手续费-持仓盈亏-平仓盈亏
 	if (_new_trade_day)
 	{
 		_static_balance = _total_money + _used_margin + _fund_info._total_fees - _fund_info._total_dynprofit - _fund_info._total_profit;
@@ -361,7 +361,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 
 	position_doc = document{} <<
 			"position_profit" << 0.0 <<
-			"available" << 0.0 <<
+			"available" << _total_money <<
 			"frozen_premium" << 0.0<<
 			"close_profit" << 0.0 <<
 			"day_profit" << _day_profit <<
@@ -371,7 +371,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"currency" << "CNY"<<
 			"commission" << 0.0 <<
 			"frozen_margin" << 0.0<<
-			"pre_balance" << 0.0 <<
+			"pre_balance" << _static_balance <<
 			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
 			"float_profit" << 0.0<<
 			"timestamp" << curTime <<
@@ -380,7 +380,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"trade_day" << to_string(_traderday) <<
 			"frozen_commission" << 0.0<<
 			"abnormal_rate_of_return" << _abnormal_rate_of_return <<
-			"daily_rate_of_return" << _total_profit <<
+			"daily_rate_of_return" << _daily_rate_of_return <<
 			"win_or_lose_flag" << _win_or_lose_flag <<
 			"strategy_id" << _name <<
 			"deposit" << 0.0<<
@@ -418,7 +418,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	{
 		position_doc = document{} <<
 			"position_profit" << 0.0 <<
-			"available" << 0.0 <<
+			"available" << _total_money <<
 			"frozen_premium" << 0.0 <<
 			"close_profit" << 0.0 <<
 			"day_profit" << _day_profit <<
@@ -428,7 +428,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"currency" << "CNY" <<
 			"commission" << 0.0 <<
 			"frozen_margin" << 0.0 <<
-			"pre_balance" << 0.0 <<
+			"pre_balance" << _static_balance <<
 			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
 			"float_profit" << 0.0 <<
 			"timestamp" << curTime <<
@@ -437,7 +437,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"trade_day" << to_string(_traderday) <<
 			"frozen_commission" << 0.0 <<
 			"abnormal_rate_of_return" << _abnormal_rate_of_return <<
-			"daily_rate_of_return" << _total_profit <<
+			"daily_rate_of_return" << _daily_rate_of_return <<
 			"win_or_lose_flag" << _win_or_lose_flag <<
 			"strategy_id" << _name <<
 			"deposit" << 0.0 <<
@@ -473,14 +473,15 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	{
 		daycoll.update_one(
 			make_document(kvp("trade_day", to_string(_traderday))),
-			make_document(kvp("$set", make_document(kvp("day_profit", _day_profit),
+			make_document(kvp("$set", make_document(kvp("available", _total_money),
+													kvp("day_profit", _day_profit),
 													kvp("balance", _balance),
 													kvp("static_balance", _static_balance),
 													kvp("benchmark_rate_of_return", _benchmark_rate_of_return),
 													kvp("timestamp", curTime),
 													kvp("margin", _used_margin),
 													kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
-													kvp("daily_rate_of_return", _total_profit),
+													kvp("daily_rate_of_return", _daily_rate_of_return),
 													kvp("win_or_lose_flag", _win_or_lose_flag),
 													kvp("strategy_id", _name),
 														kvp("accounts.314159.margin", _used_margin),
