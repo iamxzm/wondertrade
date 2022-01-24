@@ -24,10 +24,10 @@ void on_init(CtxHandler ctxid)
 {
 	//cta_get_bars(ctxid, "CFFEX.IF.HOT", "d1", 30, true, on_getbar);
 	//cta_get_bars(ctxid, "SHFE.ag.HOT", "m1", 30, true, on_getbar);
+	hft_get_bars(ctxid, "SHFE.ag.HOT", "m1", 30, on_getbar);
 	//cta_sub_ticks(ctxid, "SHFE.ag.HOT");
 	//cta_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
 	//hft_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
-	//hft_get_bars(ctxid, "SHFE.ag.HOT", 100, on_gettick);
 	//cta_log_text(ctxid, "this is a test message");
 }
 
@@ -81,6 +81,7 @@ void cbOrdQue(CtxHandler cHandle, const char* stdCode, WTSOrdQueStruct* ordQue)
 
 void cbTrans(CtxHandler cHandle, const char* stdCode, WTSTransStruct* trans)
 {}
+
 
 void run_bt()
 {
