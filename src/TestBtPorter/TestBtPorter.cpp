@@ -26,7 +26,8 @@ void on_init(CtxHandler ctxid)
 	//cta_get_bars(ctxid, "SHFE.ag.HOT", "m1", 30, true, on_getbar);
 	//cta_sub_ticks(ctxid, "SHFE.ag.HOT");
 	//cta_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
-	hft_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
+	//hft_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
+	//hft_get_bars(ctxid, "SHFE.ag.HOT", 100, on_gettick);
 	//cta_log_text(ctxid, "this is a test message");
 }
 
