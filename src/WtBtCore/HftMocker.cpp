@@ -638,7 +638,7 @@ void HftMocker::update_dyn_profit(const char* stdCode, WTSTickData* newTick)
 void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
 {
 	mongocxx::database mongodb = _replayer->_client["lsqt_db"];
-	mongocxx::collection acccoll = mongodb["testaccount"];
+	mongocxx::collection acccoll = mongodb["day_account"];
 
 	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
 
@@ -1046,7 +1046,7 @@ void HftMocker::log_close(const char* stdCode, bool isLong, uint64_t openTime, d
 void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
 {
 	auto db = _replayer->_client["lsqt_db"];
-	auto _poscoll_1 = db["test_positions"];
+	auto _poscoll_1 = db["his_positions"];
 	bsoncxx::document::value position_doc = document{} << finalize;
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
