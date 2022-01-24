@@ -191,6 +191,7 @@ protected:
 	int			_win_or_lose_flag;
 
 	bool			_new_trade_day = true;
+	bool		_dayacc_insert_flag = true;
 	bool		_changepos = true;
 	uint32_t    _traderday = 0;
 
