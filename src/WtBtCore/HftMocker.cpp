@@ -1145,6 +1145,57 @@ void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 
 }
 
+void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
+{
+	auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["test_hft_trades"];
+	bsoncxx::document::value position_doc = document{} << finalize;
+	std::string exch_inst = exch_id;
+	exch_inst += "::";
+	exch_inst += inst_id;
+	if (dInfo._long)
+	{
+		position_doc = document{} << "exchange_trade_id" << "111111" <<
+			"account_id" << "111111" <<
+			"commission" << 0.0 <<
+			"direction" << 1 <<
+			"exchange_id" << exch_id <<
+			"exchange_order_id" << "123456" <<
+			"instrument_id" << inst_id <<
+			"offset" << "" <<
+			"order_id" << "123456" <<
+			"price" << dInfo._price <<
+			"seqno" << 0 <<
+			"strategy_id" << _name <<
+			"trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			"volume" << dInfo._volume <<
+			finalize;
+	}
+	else
+	{
+		position_doc = document{} << "exchange_trade_id" << "111111" <<
+			"account_id" << "111111" <<
+			"commission" << 0.0 <<
+			"direction" << 2 <<
+			"exchange_id" << exch_id <<
+			"exchange_order_id" << "123456" <<
+			"instrument_id" << inst_id <<
+			"offset" << "" <<
+			"order_id" << "123456" <<
+			"price" << dInfo._price <<
+			"seqno" << 0 <<
+			"strategy_id" << _name <<
+			"trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			"volume" << dInfo._volume <<
+			finalize;
+	}
+	c1_mtx_1.lock();
+	auto result = _poscoll_1.insert_one(move(position_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx_1.unlock();
+}
+
 void HftMocker::do_set_position(const char* stdCode, std::string instid, double qty, double price /* = 0.0 */, const char* userTag /*= ""*/)
 {
 	PosInfo& pInfo = _pos_map[stdCode];
@@ -1303,6 +1354,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			if (_name != "")
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
+				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
 			}
 
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), fee, userTag);
