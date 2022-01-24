@@ -1198,6 +1198,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 	if (decimal::eq(pInfo._volume, qty))
 		return;
 
+
 	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
 
 	//成交价
@@ -1209,6 +1210,15 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 	double diff = qty - pInfo._volume;
 	bool isBuy = decimal::gt(diff, 0.0);
+
+	//保证金检测是否成交
+	double tempfee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
+	double tempmargin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
+	if (!decimal::gt(_total_money - (tempmargin + tempfee), 0))
+	{
+		WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:资金账户不足");
+		return;
+	}
 
 
 	if (decimal::gt(pInfo._volume*diff, 0))//当前持仓和仓位变化方向一致, 增加一条明细, 增加数量即可
