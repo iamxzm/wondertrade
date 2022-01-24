@@ -1083,6 +1083,10 @@ void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
+	if (dInfo._volume == 0)
+	{
+		return;
+	}
 	if (dInfo._long)
 	{
 		position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
@@ -1185,6 +1189,10 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
+	if (dInfo._volume == 0)
+	{
+		return;
+	}
 	if (dInfo._long)
 	{
 		position_doc = document{} << "exchange_trade_id" << "111111" <<
@@ -1317,7 +1325,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
-	else if(decimal::lt(pInfo._volume * diff, 0))
+	else /*if (decimal::lt(pInfo._volume * diff, 0))*/
 	{//持仓方向和仓位变化方向不一致,需要平仓
 		double left = abs(diff);
 		bool isBuy = decimal::gt(diff, 0.0);
