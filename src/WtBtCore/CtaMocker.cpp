@@ -517,7 +517,8 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"daily_rate_of_return" << _daily_rate_of_return <<
 			"win_or_lose_flag" << _win_or_lose_flag <<
 			"strategy_id" << _name <<
-			"deposit" << 0.0 <<
+			"total_deposit" << init_money <<
+			"total_profit" << _total_profit <<
 			"accounts" << open_document <<
 			"314159" << open_document <<
 					"position_profit" << 0.0 <<
@@ -540,7 +541,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 					"withdraw" << 0.0 <<
 			close_document <<
 			close_document <<
-			"withdraw" << 0.0 <<
+			"total_withdraw" << 0.0 <<
 			finalize;
 
 		daycoll.insert_one(std::move(position_doc));
@@ -561,6 +562,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 													kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
 													kvp("daily_rate_of_return", _daily_rate_of_return),
 													kvp("win_or_lose_flag", _win_or_lose_flag),
+													kvp("total_profit" , _total_profit),
 													kvp("strategy_id", _name),
 														kvp("accounts.314159.margin", _used_margin),
 														kvp("accounts.314159.static_balance", _static_balance),
