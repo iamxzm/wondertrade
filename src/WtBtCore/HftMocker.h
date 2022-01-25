@@ -149,6 +149,7 @@ public:
 	void	install_hook();
 	void	enable_hook(bool bEnabled = true);
 	void	step_tick();
+	void	set_initacc(double money);
 
 private:
 	typedef std::function<void()> Task;
@@ -170,7 +171,7 @@ private:
 private:
 	HisDataReplayer*	_replayer;
 
-	const double init_money = 100000;			//初始资金
+	double		init_money = 100000;			//初始资金
 	double      _balance = 0;					//今总资产
 	double		_total_money = init_money;		//剩余资金
 	double		_static_balance = init_money;			//期初资产

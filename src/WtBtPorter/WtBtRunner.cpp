@@ -331,14 +331,17 @@ void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 	_replayer.init(cfg->get("replayer"), &_notifier);
 
 	WTSVariant* cfgEnv = cfg->get("env");
+	double init_money = cfgEnv->getDouble("init_money");
 	const char* mode = cfgEnv->getCString("mocker");
 	WTSVariant* cfgMode = cfg->get(mode);
 	if (strcmp(mode, "cta") == 0 && cfgMode)
 	{
 		const char* name = cfgMode->getCString("name");
+		
 		int32_t slippage = cfgMode->getInt32("slippage");
 		_cta_mocker = new ExpCtaMocker(&_replayer, name, slippage, &_notifier);
 		_cta_mocker->init_cta_factory(cfgMode);
+		_cta_mocker->set_initacc(init_money);
 		_replayer.register_sink(_cta_mocker, name);
 	}
 	else if (strcmp(mode, "hft") == 0 && cfgMode)
@@ -346,6 +349,7 @@ void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 		const char* name = cfgMode->getCString("name");
 		_hft_mocker = new ExpHftMocker(&_replayer, name);
 		_hft_mocker->init_hft_factory(cfgMode);
+		_hft_mocker->set_initacc(init_money);
 		_replayer.register_sink(_hft_mocker, name);
 	}
 	else if (strcmp(mode, "sel") == 0 && cfgMode)

@@ -355,6 +355,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	mongocxx::database mongodb = _replayer->_client["lsqt_db"];
 	mongocxx::collection acccoll = mongodb["his_account"];
 	mongocxx::collection daycoll = mongodb["day_account"];
+	mongocxx::collection allcoll = mongodb["account"];
 
 	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
 
@@ -364,7 +365,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"position_profit" << 0.0 <<
 			"available" << _total_money <<
 			"frozen_premium" << 0.0<<
-			"close_profit" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
 			"day_profit" << _day_profit <<
 			"premium" << 0.0<<
 			"balance" << _balance <<
@@ -393,7 +394,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 					"frozen_commission" << 0.0<<
 					"frozen_premium" << 0.0<<
 					"available" << 0.0 <<
-					"close_profit" << 0.0 <<
+					"close_profit" << _total_closeprofit <<
 					"account_id" << "314159"<<
 					"premium" << 0.0<<
 					"static_balance" << _static_balance <<
@@ -414,6 +415,82 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	acccoll.insert_one(std::move(position_doc));
 	WTSLogger::info("Callbacks of insert_one start %lld", newTick->actiontime());
 
+	//accounts数据库
+	bsoncxx::stdx::optional<bsoncxx::document::value> maybe_result = allcoll.find_one(make_document(kvp("accounts.314159.account_id", "314159")));
+	if (maybe_result)
+	{
+		allcoll.update_one(
+			make_document(kvp("accounts", "314159")),
+			make_document(kvp("$set", make_document(kvp("available", _total_money),
+				kvp("day_profit", _day_profit),
+				kvp("close_profit" ,_total_closeprofit),
+				kvp("balance", _balance),
+				kvp("static_balance", _static_balance),
+				kvp("benchmark_rate_of_return", _benchmark_rate_of_return),
+				kvp("timestamp", curTime),
+				kvp("margin", _used_margin),
+				kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
+				kvp("daily_rate_of_return", _daily_rate_of_return),
+				kvp("win_or_lose_flag", _win_or_lose_flag),
+				kvp("strategy_id", _name),
+				kvp("accounts.314159.margin", _used_margin),
+				kvp("accounts.314159.static_balance", _static_balance),
+				kvp("accounts.314159.balance", _balance),
+				kvp("accounts.314159.close_profit", _total_closeprofit)
+			))));
+	}
+	else
+	{
+		allcoll.insert_one(
+			document{} <<
+			"position_profit" << 0.0 <<
+			"available" << _total_money <<
+			"frozen_premium" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
+			"day_profit" << _day_profit <<
+			"premium" << 0.0 <<
+			"balance" << _balance <<
+			"static_balance" << _static_balance <<
+			"currency" << "CNY" <<
+			"commission" << 0.0 <<
+			"frozen_margin" << 0.0 <<
+			"pre_balance" << _static_balance <<
+			"float_profit" << 0.0 <<
+			"timestamp" << curTime <<
+			"margin" << _used_margin <<
+			"risk_ratio" << 0.0 <<
+			"trade_day" << to_string(_traderday) <<
+			"frozen_commission" << 0.0 <<
+			"strategy_id" << _name <<
+			"deposit" << 0.0 <<
+			"accounts" << open_document <<
+			"314159" << open_document <<
+			"position_profit" << 0.0 <<
+			"margin" << _used_margin <<
+			"risk_ratio" << 0.0 <<
+			"frozen_commission" << 0.0 <<
+			"frozen_premium" << 0.0 <<
+			"available" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
+			"account_id" << "314159" <<
+			"premium" << 0.0 <<
+			"static_balance" << _static_balance <<
+			"balance" << _balance <<
+			"deposit" << 0.0 <<
+			"currency" << "rmb" <<
+			"pre_balance" << 0.0 <<
+			"commission" << 0.0 <<
+			"frozen_margin" << 0.0 <<
+			"float_profit" << 0.0 <<
+			"withdraw" << 0.0 <<
+			close_document <<
+			close_document <<
+			"withdraw" << 0.0 <<
+			finalize
+		);
+	}
+
+
 	//插入day acc
 	if (_dayacc_insert_flag)
 	{
@@ -421,7 +498,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"position_profit" << 0.0 <<
 			"available" << _total_money <<
 			"frozen_premium" << 0.0 <<
-			"close_profit" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
 			"day_profit" << _day_profit <<
 			"premium" << 0.0 <<
 			"balance" << _balance <<
@@ -444,24 +521,24 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"deposit" << 0.0 <<
 			"accounts" << open_document <<
 			"314159" << open_document <<
-			"position_profit" << 0.0 <<
-			"margin" << _used_margin <<
-			"risk_ratio" << 0.0 <<
-			"frozen_commission" << 0.0 <<
-			"frozen_premium" << 0.0 <<
-			"available" << 0.0 <<
-			"close_profit" << 0.0 <<
-			"account_id" << "314159" <<
-			"premium" << 0.0 <<
-			"static_balance" << _static_balance <<
-			"balance" << _balance <<
-			"deposit" << 0.0 <<
-			"currency" << "rmb" <<
-			"pre_balance" << 0.0 <<
-			"commission" << 0.0 <<
-			"frozen_margin" << 0.0 <<
-			"float_profit" << 0.0 <<
-			"withdraw" << 0.0 <<
+					"position_profit" << 0.0 <<
+					"margin" << _used_margin <<
+					"risk_ratio" << 0.0 <<
+					"frozen_commission" << 0.0 <<
+					"frozen_premium" << 0.0 <<
+					"available" << 0.0 <<
+					"close_profit" << _total_closeprofit <<
+					"account_id" << "314159" <<
+					"premium" << 0.0 <<
+					"static_balance" << _static_balance <<
+					"balance" << _balance <<
+					"deposit" << 0.0 <<
+					"currency" << "rmb" <<
+					"pre_balance" << 0.0 <<
+					"commission" << 0.0 <<
+					"frozen_margin" << 0.0 <<
+					"float_profit" << 0.0 <<
+					"withdraw" << 0.0 <<
 			close_document <<
 			close_document <<
 			"withdraw" << 0.0 <<
@@ -473,8 +550,9 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	else //更新day acc
 	{
 		daycoll.update_one(
-			make_document(kvp("trade_day", to_string(_traderday))),
+			make_document(kvp("trade_day", to_string(_traderday)), kvp("accounts.314159.account_id", "314159")),
 			make_document(kvp("$set", make_document(kvp("available", _total_money),
+													kvp("close_profit", _total_closeprofit),
 													kvp("day_profit", _day_profit),
 													kvp("balance", _balance),
 													kvp("static_balance", _static_balance),
@@ -487,7 +565,8 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 													kvp("strategy_id", _name),
 														kvp("accounts.314159.margin", _used_margin),
 														kvp("accounts.314159.static_balance", _static_balance),
-														kvp("accounts.314159.balance", _balance)
+														kvp("accounts.314159.balance", _balance),
+														kvp("accounts.314159.close_profit", _total_closeprofit)
 				))));
 	}
 }
@@ -1831,6 +1910,13 @@ double CtaMocker::stra_get_detail_profit(const char* stdCode, const char* userTa
 	}
 
 	return 0.0;
+}
+
+void  CtaMocker::set_initacc(double money)
+{
+	init_money = money;
+	_total_money = init_money;	
+	_static_balance = init_money;
 }
 
 
