@@ -67,7 +67,7 @@ public:
 	virtual void stra_exit_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) = 0;
 
 	virtual double stra_get_position(const char* stdCode, const char* userTag = "") = 0;
-	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) = 0;
+	virtual void stra_set_position(const char* stdCode, double qty, bool insert_mongo, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) = 0;
 	virtual double stra_get_price(const char* stdCode) = 0;
 
 	virtual uint32_t stra_get_tdate() = 0;

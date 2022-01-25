@@ -420,13 +420,13 @@ double cta_get_fund_data(CtxHandler cHandle, int flag)
 	return ctx->stra_get_fund_data(flag);
 }
 
-void cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
+void cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, bool insert_mongo, const char* userTag, double limitprice, double stopprice)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_set_position(stdCode, qty, userTag, limitprice, stopprice);
+	ctx->stra_set_position(stdCode, qty, insert_mongo, userTag, limitprice, stopprice);
 }
 
 WtUInt64 cta_get_first_entertime(CtxHandler cHandle, const char* stdCode)

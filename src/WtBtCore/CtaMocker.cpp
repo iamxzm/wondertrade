@@ -75,6 +75,7 @@ CtaMocker::CtaMocker(HisDataReplayer* replayer, const char* name, int32_t slippa
 	, _wait_calc(false)
 	, _in_backtest(false)
 	, _persist_data(persistData)
+	,_insert_mongo(false)
 {
 	_context_id = makeCtxId();	
 }
@@ -1095,7 +1096,7 @@ double CtaMocker::stra_get_price(const char* stdCode)
 	return 0.0;
 }
 
-void CtaMocker::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
+void CtaMocker::stra_set_position(const char* stdCode, double qty, bool insert_mongo, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
 {
 	_replayer->sub_tick(_context_id, stdCode);
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式,则直接触发
@@ -1396,11 +1397,15 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 		_used_margin += dInfo._margin;
 
-		if (_name != "")
+		if (_insert_mongo)
 		{
-			insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
-			insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime);
+			if (_name != "")
+			{
+				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
+				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime);
+			}
 		}
+		
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee, _schedule_times);
 	}
@@ -1457,11 +1462,15 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 			dInfo._margin -= cur_margin;
 
-			if (_name != "")
+			if (_insert_mongo)
 			{
-				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
-				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime);
+				if (_name != "")
+				{
+					insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
+					insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime);
+				}
 			}
+			
 
 			//这里写成交记录
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee, _schedule_times);
@@ -1504,11 +1513,15 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			//添加减去费率
 			_total_money -= fee;
 
-			if (_name != "")
+			if (_insert_mongo)
 			{
-				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
-				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime);
+				if (_name != "")
+				{
+					insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
+					insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime);
+				}
 			}
+			
 
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), userTag, fee, _schedule_times);
 
