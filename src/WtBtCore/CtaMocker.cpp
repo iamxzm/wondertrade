@@ -443,24 +443,24 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"deposit" << 0.0 <<
 			"accounts" << open_document <<
 			"314159" << open_document <<
-			"position_profit" << 0.0 <<
-			"margin" << _used_margin <<
-			"risk_ratio" << 0.0 <<
-			"frozen_commission" << 0.0 <<
-			"frozen_premium" << 0.0 <<
-			"available" << 0.0 <<
-			"close_profit" << 0.0 <<
-			"account_id" << "314159" <<
-			"premium" << 0.0 <<
-			"static_balance" << _static_balance <<
-			"balance" << _balance <<
-			"deposit" << 0.0 <<
-			"currency" << "rmb" <<
-			"pre_balance" << 0.0 <<
-			"commission" << 0.0 <<
-			"frozen_margin" << 0.0 <<
-			"float_profit" << 0.0 <<
-			"withdraw" << 0.0 <<
+					"position_profit" << 0.0 <<
+					"margin" << _used_margin <<
+					"risk_ratio" << 0.0 <<
+					"frozen_commission" << 0.0 <<
+					"frozen_premium" << 0.0 <<
+					"available" << 0.0 <<
+					"close_profit" << 0.0 <<
+					"account_id" << "314159" <<
+					"premium" << 0.0 <<
+					"static_balance" << _static_balance <<
+					"balance" << _balance <<
+					"deposit" << 0.0 <<
+					"currency" << "rmb" <<
+					"pre_balance" << 0.0 <<
+					"commission" << 0.0 <<
+					"frozen_margin" << 0.0 <<
+					"float_profit" << 0.0 <<
+					"withdraw" << 0.0 <<
 			close_document <<
 			close_document <<
 			"withdraw" << 0.0 <<
@@ -1810,6 +1810,13 @@ double CtaMocker::stra_get_detail_profit(const char* stdCode, const char* userTa
 	}
 
 	return 0.0;
+}
+
+void  CtaMocker::set_initacc(double money)
+{
+	init_money = money;
+	_total_money = init_money;	
+	_static_balance = init_money;
 }
 
 
