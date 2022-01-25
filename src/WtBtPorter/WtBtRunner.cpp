@@ -349,6 +349,7 @@ void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 		const char* name = cfgMode->getCString("name");
 		_hft_mocker = new ExpHftMocker(&_replayer, name);
 		_hft_mocker->init_hft_factory(cfgMode);
+		_hft_mocker->set_initacc(init_money);
 		_replayer.register_sink(_hft_mocker, name);
 	}
 	else if (strcmp(mode, "sel") == 0 && cfgMode)

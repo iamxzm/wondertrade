@@ -1443,3 +1443,10 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 		}
 	}
 }
+
+void  HftMocker::set_initacc(double money)
+{
+	init_money = money;
+	_total_money = init_money;
+	_static_balance = init_money;
+}
