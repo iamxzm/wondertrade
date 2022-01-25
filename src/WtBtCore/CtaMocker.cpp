@@ -364,7 +364,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"position_profit" << 0.0 <<
 			"available" << _total_money <<
 			"frozen_premium" << 0.0<<
-			"close_profit" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
 			"day_profit" << _day_profit <<
 			"premium" << 0.0<<
 			"balance" << _balance <<
@@ -393,7 +393,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 					"frozen_commission" << 0.0<<
 					"frozen_premium" << 0.0<<
 					"available" << 0.0 <<
-					"close_profit" << 0.0 <<
+					"close_profit" << _total_closeprofit <<
 					"account_id" << "314159"<<
 					"premium" << 0.0<<
 					"static_balance" << _static_balance <<
@@ -422,6 +422,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			make_document(kvp("accounts", "314159")),
 			make_document(kvp("$set", make_document(kvp("available", _total_money),
 				kvp("day_profit", _day_profit),
+				kvp("close_profit" ,_total_closeprofit),
 				kvp("balance", _balance),
 				kvp("static_balance", _static_balance),
 				kvp("benchmark_rate_of_return", _benchmark_rate_of_return),
@@ -433,7 +434,8 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 				kvp("strategy_id", _name),
 				kvp("accounts.314159.margin", _used_margin),
 				kvp("accounts.314159.static_balance", _static_balance),
-				kvp("accounts.314159.balance", _balance)
+				kvp("accounts.314159.balance", _balance),
+				kvp("accounts.314159.close_profit", _total_closeprofit)
 			))));
 	}
 	else
@@ -443,7 +445,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"position_profit" << 0.0 <<
 			"available" << _total_money <<
 			"frozen_premium" << 0.0 <<
-			"close_profit" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
 			"day_profit" << _day_profit <<
 			"premium" << 0.0 <<
 			"balance" << _balance <<
@@ -468,7 +470,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"frozen_commission" << 0.0 <<
 			"frozen_premium" << 0.0 <<
 			"available" << 0.0 <<
-			"close_profit" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
 			"account_id" << "314159" <<
 			"premium" << 0.0 <<
 			"static_balance" << _static_balance <<
@@ -495,7 +497,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 			"position_profit" << 0.0 <<
 			"available" << _total_money <<
 			"frozen_premium" << 0.0 <<
-			"close_profit" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
 			"day_profit" << _day_profit <<
 			"premium" << 0.0 <<
 			"balance" << _balance <<
@@ -524,7 +526,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 					"frozen_commission" << 0.0 <<
 					"frozen_premium" << 0.0 <<
 					"available" << 0.0 <<
-					"close_profit" << 0.0 <<
+					"close_profit" << _total_closeprofit <<
 					"account_id" << "314159" <<
 					"premium" << 0.0 <<
 					"static_balance" << _static_balance <<
@@ -549,6 +551,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 		daycoll.update_one(
 			make_document(kvp("trade_day", to_string(_traderday)), kvp("accounts.314159.account_id", "314159")),
 			make_document(kvp("$set", make_document(kvp("available", _total_money),
+													kvp("close_profit", _total_closeprofit),
 													kvp("day_profit", _day_profit),
 													kvp("balance", _balance),
 													kvp("static_balance", _static_balance),
@@ -561,7 +564,8 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 													kvp("strategy_id", _name),
 														kvp("accounts.314159.margin", _used_margin),
 														kvp("accounts.314159.static_balance", _static_balance),
-														kvp("accounts.314159.balance", _balance)
+														kvp("accounts.314159.balance", _balance),
+														kvp("accounts.314159.close_profit", _total_closeprofit)
 				))));
 	}
 }
