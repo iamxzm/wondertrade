@@ -426,13 +426,13 @@ double cta_get_fund_data(CtxHandler cHandle, int flag)
 }
 
 
-void cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
+void cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, bool insert_mongo, const char* userTag, double limitprice, double stopprice)
 {
 	CtaContextPtr ctx = getRunner().getCtaContext(cHandle);
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_set_position(stdCode, qty, userTag, limitprice, stopprice);
+	ctx->stra_set_position(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
 }
 
 

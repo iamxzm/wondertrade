@@ -1210,6 +1210,10 @@ void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
+	if (dInfo._volume == 0)
+	{
+		return;
+	}
 	if (dInfo._long)
 	{
 		position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
@@ -1312,6 +1316,10 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
+	if (dInfo._volume == 0)
+	{
+		return;
+	}
 	if (dInfo._long)
 	{
 		position_doc = document{} << "exchange_trade_id" << "111111" <<

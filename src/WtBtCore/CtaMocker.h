@@ -128,7 +128,7 @@ public:
 	virtual void stra_exit_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
 
 	virtual double stra_get_position(const char* stdCode, const char* userTag = "") override;
-	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
+	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
 	virtual double stra_get_price(const char* stdCode) override;
 
 	virtual uint32_t stra_get_tdate() override;
@@ -347,6 +347,8 @@ protected:
 		std::string exch_id, std::string inst_id, uint64_t curTime);
 	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee,
 		std::string exch_id, std::string inst_id, uint64_t curTime);
+
+	bool _insert_mongo;
 	//mongocxx::uri _uri;
 	//mongocxx::client _client;
 	/*mongocxx::database _db;
