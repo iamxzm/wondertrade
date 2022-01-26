@@ -24,6 +24,32 @@
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
 
+#include <bsoncxx/builder/stream/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+#include <mongocxx/database.hpp>
+
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::to_json;
+
+using bsoncxx::builder::stream::close_array;
+using bsoncxx::builder::stream::close_document;
+using bsoncxx::builder::stream::document;
+using bsoncxx::builder::stream::finalize;
+using bsoncxx::builder::stream::open_array;
+using bsoncxx::builder::stream::open_document;
+
+using namespace mongocxx;
+
 USING_NS_OTP;
 
 class TraderCTP : public ITraderApi, public CThostFtdcTraderSpi
@@ -44,6 +70,9 @@ public:
 		WS_ALLREADY			//È«²¿¾ÍÐ÷
 	} WrapperState;
 
+	mongocxx::instance _instance;
+	mongocxx::uri _uri;
+	mongocxx::client _client;
 
 private:
 
@@ -144,6 +173,8 @@ protected:
 	int wrapOffsetType(WTSOffsetType offType);
 	int	wrapTimeCondition(WTSTimeCondition timeCond);
 	int wrapActionFlag(WTSActionFlag actionFlag);
+	void insert_his_position(CThostFtdcOrderField* pOrder);
+	void insert_his_trade(CThostFtdcTradeField* pTrade);
 
 	WTSPriceType		wrapPriceType(TThostFtdcOrderPriceTypeType priceType);
 	WTSDirectionType	wrapDirectionType(TThostFtdcDirectionType dirType, TThostFtdcOffsetFlagType offType);
