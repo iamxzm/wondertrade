@@ -22,6 +22,8 @@
 
 #include <boost/filesystem.hpp>
 
+std::mutex c1_mtx{};
+
 void inst_hlp(){}
 
 #ifdef _WIN32
@@ -136,6 +138,8 @@ TraderCTP::TraderCTP()
 	, m_bInQuery(false)
 	, m_bStopped(false)
 	, m_lastQryTime(0)
+	,_uri("mongodb://192.168.214.199:27017")
+	,_client(_uri)
 {
 }
 
@@ -1066,9 +1070,113 @@ void TraderCTP::OnRspError(CThostFtdcRspInfoField *pRspInfo, int nRequestID, boo
 	int x = 0;
 }
 
+time_t StringToDatetime(std::string str)
+{
+	tm tm_;												// 定义tm结构体。
+	int year, month, day, hour, minute, second;			// 定义时间的各个int临时变量。
+	year = atoi((str.substr(0, 4)).c_str());
+	month = atoi((str.substr(4, 2)).c_str());
+	day = atoi((str.substr(6, 2)).c_str());
+	hour = atoi((str.substr(8, 2)).c_str());
+	minute = atoi((str.substr(10, 2)).c_str());
+	second = atoi((str.substr(12, 2)).c_str());
+	//milsecond = atoi((str.substr(14, 3)).c_str());	//不取毫秒
+
+	tm_.tm_year = year - 1900;                 // 年，由于tm结构体存储的是从1900年开始的时间，所以tm_year为int临时变量减去1900。      
+	tm_.tm_mon = month - 1;                    // 月，由于tm结构体的月份存储范围为0-11，所以tm_mon为int临时变量减去1。
+	tm_.tm_mday = day;                         // 日。
+	tm_.tm_hour = hour;                        // 时。
+	tm_.tm_min = minute;                       // 分。
+	tm_.tm_sec = second;                       // 秒。
+	tm_.tm_isdst = 0;                          // 非夏令时。
+	time_t t_ = mktime(&tm_);                  // 将tm结构体转换成time_t格式。
+	return t_;						           // 返回值。
+}
+
+time_t timetrans(std::string pdate,std::string ptime)	//20220126,09:00:00
+{
+	std::string stime, hour, minu, second;
+	long long itime;
+	if (!pdate.empty() && ptime.empty())
+	{
+		hour = ptime.substr(0, 2);
+		minu = ptime.substr(3, 2);
+		second = ptime.substr(6, 2);
+		stime = (stime + hour + minu + second);	//20220126090000
+		itime = atoi(stime.c_str()) - 8 * 10000;
+		stime = to_string(itime);
+		return StringToDatetime(stime);
+	}
+}
+
+void TraderCTP::insert_his_position(CThostFtdcOrderField* pOrder)
+{
+	auto db = _client["lsqt_db"];
+	auto _poscoll_1 = db["test_order"];
+	bsoncxx::document::value order_doc = document{} << finalize;
+
+	order_doc = document{} << "offset" << pOrder->CombOffsetFlag <<
+		"seqno" << pOrder->SequenceNo <<
+		"trading_day" << pOrder->TradingDay <<
+		"time_condition" << pOrder->TimeCondition <<
+		"volume_condition" << pOrder->VolumeCondition <<
+		"instrument_id" << pOrder->InstrumentID <<
+		"limit_price" << pOrder->LimitPrice <<
+		"exchange_order_id" << pOrder->OrderSysID <<
+		"insert_date_time" << timetrans(pOrder->TradingDay, pOrder->InsertTime) * 1000 <<
+		"last_msg" << 0 <<
+		"exchange_id" << pOrder->ExchangeID <<
+		"account_id" << pOrder->AccountID <<
+		"volume_left" << pOrder->VolumeTotal <<
+		"min_volume" << pOrder->MinVolume <<
+		"hedge_flag" << pOrder->CombHedgeFlag <<
+		"strategy_id" << "0" <<
+		"price_type" << pOrder->OrderPriceType <<
+		"volume_orign" << pOrder->VolumeTotalOriginal <<
+		"frozen_margin" << 0 <<
+		"order_id" << pOrder->OrderLocalID <<
+		"order_type" << pOrder->OrderType <<
+		"direction" << pOrder->Direction <<
+		"status" << pOrder->OrderStatus << finalize;
+
+	c1_mtx.lock();
+	auto result = _poscoll_1.insert_one(move(order_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx.unlock();
+}
+
+void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
+{
+	auto db = _client["lsqt_db"];
+	auto _poscoll_1 = db["test_trades"];
+	bsoncxx::document::value trade_doc = document{} << finalize;
+
+	trade_doc = document{} << "exchange_trade_id" << pTrade->TradeID <<
+		"account_id" << "0" <<
+		"commission" << 0 <<
+		"direction" << pTrade->Direction <<
+		"exchange_id" << pTrade->ExchangeID <<
+		"instrument_id" << pTrade->InstrumentID <<
+		"offset" << pTrade->OffsetFlag <<
+		"order_id" << pTrade->OrderLocalID <<
+		"price" << pTrade->Price <<
+		"seqno" << pTrade->SequenceNo <<
+		"strategy_id" << "0" <<
+		"trade_date_time" << timetrans(pTrade->TradeDate,pTrade->TradeTime) <<
+		"volume" << pTrade->Volume << finalize;
+
+	c1_mtx.lock();
+	auto result = _poscoll_1.insert_one(move(trade_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx.unlock();
+}
+
 void TraderCTP::OnRtnOrder(CThostFtdcOrderField *pOrder)
 {
 	WTSOrderInfo *orderInfo = makeOrderInfo(pOrder);
+	insert_his_position(pOrder);
 	if (orderInfo)
 	{
 		if (m_sink)
@@ -1083,6 +1191,7 @@ void TraderCTP::OnRtnOrder(CThostFtdcOrderField *pOrder)
 void TraderCTP::OnRtnTrade(CThostFtdcTradeField *pTrade)
 {
 	WTSTradeInfo *tRecord = makeTradeRecord(pTrade);
+	insert_his_trade(pTrade);
 	if (tRecord)
 	{
 		if (m_sink)
