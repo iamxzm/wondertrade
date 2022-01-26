@@ -432,7 +432,7 @@ void cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, bool 
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_set_position(stdCode, qty, insert_mongo, userTag, limitprice, stopprice);
+	ctx->stra_set_position(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
 }
 
 

@@ -75,7 +75,7 @@ CtaMocker::CtaMocker(HisDataReplayer* replayer, const char* name, int32_t slippa
 	, _wait_calc(false)
 	, _in_backtest(false)
 	, _persist_data(persistData)
-	,_insert_mongo(false)
+	,_insert_mongo(true)
 {
 	_context_id = makeCtxId();	
 }
@@ -1177,8 +1177,9 @@ double CtaMocker::stra_get_price(const char* stdCode)
 	return 0.0;
 }
 
-void CtaMocker::stra_set_position(const char* stdCode, double qty, bool insert_mongo, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
+void CtaMocker::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */, bool insert_mongo )
 {
+	_insert_mongo = insert_mongo;
 	_replayer->sub_tick(_context_id, stdCode);
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式,则直接触发
 	{
