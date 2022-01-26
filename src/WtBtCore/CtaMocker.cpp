@@ -444,12 +444,12 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 
 	
 	acccoll.insert_one(std::move(position_doc));
-	WTSLogger::info("Callbacks of acccoll insert_one start %lld", newTick->actiontime());
-
 
 	//插入day acc
-	if (_dayacc_insert_flag)
+	if (_dayacc_insert_flag || _per_strategy_id != _name)
 	{
+		_per_strategy_id = _name;
+
 		position_doc = document{} <<
 			"position_profit" << 0.0 <<
 			"available" << _total_money <<
@@ -509,7 +509,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	else //更新day acc
 	{
 		daycoll.update_one(
-			make_document(kvp("trade_day", to_string(_traderday)), kvp("accounts.314159.account_id", "314159")),
+			make_document(kvp("trade_day", to_string(_traderday)), kvp("accounts.314159.account_id", "314159"), kvp("strategy_id", _name)),
 			make_document(kvp("$set", make_document(kvp("available", _total_money),
 													kvp("close_profit", _total_closeprofit),
 													kvp("day_profit", _day_profit),
@@ -524,7 +524,7 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 													kvp("daily_rate_of_return", _daily_rate_of_return),
 													kvp("win_or_lose_flag", _win_or_lose_flag),
 													kvp("total_profit" , _total_profit),
-													kvp("strategy_id", _name),
+													kvp("total_deposit" , init_money),
 														kvp("accounts.314159.margin", _used_margin),
 														kvp("accounts.314159.static_balance", _static_balance),
 														kvp("accounts.314159.balance", _balance),
@@ -533,11 +533,11 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	}
 
 	//accounts数据库
-	bsoncxx::stdx::optional<bsoncxx::document::value> maybe_result = allcoll.find_one(make_document(kvp("accounts.314159.account_id", "314159")));
+	bsoncxx::stdx::optional<bsoncxx::document::value> maybe_result = allcoll.find_one(make_document(kvp("accounts.314159.account_id", "314159"), kvp("strategy_id", _name)));
 	if (maybe_result)
 	{
 		allcoll.update_one(
-			make_document(kvp("accounts", "314159")),
+			make_document(kvp("accounts", "314159"), kvp("strategy_id", _name)),
 			make_document(kvp("$set", make_document(kvp("available", _total_money),
 				kvp("day_profit", _day_profit),
 				kvp("close_profit", _total_closeprofit),
@@ -549,7 +549,6 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 				kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
 				kvp("daily_rate_of_return", _daily_rate_of_return),
 				kvp("win_or_lose_flag", _win_or_lose_flag),
-				kvp("strategy_id", _name),
 				kvp("accounts.314159.margin", _used_margin),
 				kvp("accounts.314159.static_balance", _static_balance),
 				kvp("accounts.314159.balance", _balance),

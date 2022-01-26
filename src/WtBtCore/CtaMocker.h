@@ -184,6 +184,8 @@ protected:
 	double        _margin_rate = 0.5;			//保证金比例
 	uint64_t		_cur_multiplier = 100;		//当前合约乘数
 
+	std::string _per_strategy_id;
+
 	double		_day_profit = 0;
 	double		_total_profit = 0;				//策略收益
 	double		_benchmark_rate_of_return = 0;	//基准收益率
