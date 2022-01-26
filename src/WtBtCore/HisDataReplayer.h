@@ -164,6 +164,8 @@ public:
 	mongocxx::uri _uri;
 	mongocxx::client _client;
 
+	int32_t getPrevTDate(const char* pid, uint32_t uDate);
+
 private:
 	/*
 	 *	从自定义数据文件缓存历史数据

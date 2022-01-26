@@ -187,6 +187,8 @@ protected:
 	double		_day_profit = 0;
 	double		_total_profit = 0;				//策略收益
 	double		_benchmark_rate_of_return = 0;	//基准收益率
+	double		_benchmark_cumulative_rate = 0;
+	double		_strategy_cumulative_rate = 0;	//策略累计收益率
 	double		_daily_rate_of_return = 0;		//策略收益率
 	double		_abnormal_rate_of_return = 0;	//日超额收益率
 	int			_win_or_lose_flag;
@@ -195,6 +197,8 @@ protected:
 	bool		_dayacc_insert_flag = true;
 	bool		_changepos = true;
 	uint32_t    _traderday = 0;
+	uint32_t	_pretraderday;
+	uint32_t	_firstday = 0;
 
 
 	std::string		_main_key;
