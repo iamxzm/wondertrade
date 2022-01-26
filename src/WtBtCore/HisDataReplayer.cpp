@@ -4385,6 +4385,6 @@ bool HisDataReplayer::cacheRawBarsFromBin(const std::string& key, const char* st
 
 int32_t HisDataReplayer::getPrevTDate(const char* pid, uint32_t uDate)
 {
-	return _bd_mgr.getPrevTDate(get_commodity_info(pid)->getExchg(), uDate);
+	return _bd_mgr.getPrevTDate(pid, uDate);
 	 
 }
