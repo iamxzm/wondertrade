@@ -349,6 +349,8 @@ protected:
 		std::string exch_id, std::string inst_id, uint64_t curTime);
 	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee,
 		std::string exch_id, std::string inst_id, uint64_t curTime);
+	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime);
 
 	bool _insert_mongo;
 	//mongocxx::uri _uri;

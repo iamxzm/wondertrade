@@ -1113,9 +1113,9 @@ void TraderCTP::insert_his_position(CThostFtdcOrderField* pOrder)
 {
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["test_order"];
-	bsoncxx::document::value order_doc = document{} << finalize;
 
-	order_doc = document{} << "offset" << pOrder->CombOffsetFlag <<
+	bsoncxx::document::value order_doc order_doc = document{} << 
+		"offset" << pOrder->CombOffsetFlag <<
 		"seqno" << pOrder->SequenceNo <<
 		"trading_day" << pOrder->TradingDay <<
 		"time_condition" << pOrder->TimeCondition <<
@@ -1146,14 +1146,14 @@ void TraderCTP::insert_his_position(CThostFtdcOrderField* pOrder)
 	c1_mtx.unlock();
 }
 
-void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
+void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 {
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["test_trades"];
-	bsoncxx::document::value trade_doc = document{} << finalize;
 
-	trade_doc = document{} << "exchange_trade_id" << pTrade->TradeID <<
-		"account_id" << "0" <<
+	bsoncxx::document::value trade_doc = document{} << 
+		"exchange_trade_id" << pTrade->TradeID <<
+		"account_id" << "" <<
 		"commission" << 0 <<
 		"direction" << pTrade->Direction <<
 		"exchange_id" << pTrade->ExchangeID <<
@@ -1165,6 +1165,37 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 		"strategy_id" << "0" <<
 		"trade_date_time" << timetrans(pTrade->TradeDate,pTrade->TradeTime) <<
 		"volume" << pTrade->Volume << finalize;
+
+	c1_mtx.lock();
+	auto result = _poscoll_1.insert_one(move(trade_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx.unlock();
+}
+
+void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
+{
+	auto db = _client["lsqt_db"];
+	auto _poscoll_1 = db["test_trade"];
+
+	bsoncxx::document::value trade_doc = document{} << 
+		"trade_date_time" << timetrans(pTrade->TradingDay, pTrade->TradeTime) * 1000 <<
+		"offset" << pTrade->OffsetFlag <<
+		"seqno" << pTrade->SequenceNo <<
+		"exchange_trade_id" << pTrade->TradeID <<
+		"trading_day" << pTrade->TradingDay <<
+		"type" << pTrade->TradeType <<
+		"instrument_id" << pTrade->InstrumentID <<
+		"exchange_order_id" << pOrder->OrderSysID <<
+		"close_profit" << 0.0 <<
+		"volume" << pTrade->Volume <<
+		"exchange_id" << pTrade->ExchangeID <<
+		"account_id" << "" <<
+		"price" << pTrade->Price <<
+		"strategy_id" << "" <<
+		"commission" << "" <<
+		"order_id" << pTrade->OrderLocalID <<
+		"direction" << pTrade->Direction << finalize;
 
 	c1_mtx.lock();
 	auto result = _poscoll_1.insert_one(move(trade_doc));
@@ -1191,6 +1222,7 @@ void TraderCTP::OnRtnOrder(CThostFtdcOrderField *pOrder)
 void TraderCTP::OnRtnTrade(CThostFtdcTradeField *pTrade)
 {
 	WTSTradeInfo *tRecord = makeTradeRecord(pTrade);
+	insert_his_trades(pTrade);
 	insert_his_trade(pTrade);
 	if (tRecord)
 	{

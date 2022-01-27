@@ -174,6 +174,7 @@ protected:
 	int	wrapTimeCondition(WTSTimeCondition timeCond);
 	int wrapActionFlag(WTSActionFlag actionFlag);
 	void insert_his_position(CThostFtdcOrderField* pOrder);
+	void insert_his_trades(CThostFtdcTradeField* pTrade);
 	void insert_his_trade(CThostFtdcTradeField* pTrade);
 
 	WTSPriceType		wrapPriceType(TThostFtdcOrderPriceTypeType priceType);

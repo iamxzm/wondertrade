@@ -1363,6 +1363,44 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	c1_mtx_1.unlock();
 }
 
+void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
+{
+	auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["his_trade"];
+	bsoncxx::document::value position_doc = document{} << finalize;
+	std::string exch_inst = exch_id;
+	exch_inst += "::";
+	exch_inst += inst_id;
+	if (dInfo._volume == 0)
+	{
+		return;
+	}
+
+	position_doc = document{} << "trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+		"offset" << "" <<
+		"seqno" << "" <<
+		"exchange_trade_id" << "" <<
+		"trading_day" << to_string(_replayer->get_trading_date()) <<
+		"type" << "" <<
+		"instrument_id" << inst_id <<
+		"exchange_order_id" << "" <<
+		"close_profit" << pInfo._closeprofit <<
+		"volume" << dInfo._volume <<
+		"exchange_id" << exch_id <<
+		"account_id" << "" <<
+		"price" << dInfo._price <<
+		"strategy_id" << _name <<
+		"commission" << "" <<
+		"order_id" << "" <<
+		"direction" << dInfo._long << finalize;
+
+	c1_mtx_1.lock();
+	auto result = _poscoll_1.insert_one(move(position_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx_1.unlock();
+}
+
 void HftMocker::do_set_position(const char* stdCode, std::string instid, double qty, double price /* = 0.0 */, const char* userTag /*= ""*/)
 {
 	PosInfo& pInfo = _pos_map[stdCode];
@@ -1425,6 +1463,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 		{
 			insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
 			insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
+			insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm);
 		}
 
 
@@ -1479,6 +1518,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
 				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
+				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm);
 			}
 
 			//这里写成交记录
@@ -1524,6 +1564,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
 				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
+				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm);
 			}
 
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), fee, userTag);
