@@ -164,5 +164,7 @@ private:
 
 	StdThreadPtr	_worker;
 	bool			_async;
+
+	double _init_money = 0;
 };
 
