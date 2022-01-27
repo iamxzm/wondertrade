@@ -334,10 +334,15 @@ void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 	double init_money = cfgEnv->getDouble("init_money");
 	const char* mode = cfgEnv->getCString("mocker");
 	WTSVariant* cfgMode = cfg->get(mode);
+
+	if(_cta_mocker)
+		_cta_mocker->set_initacc(init_money);
+	if (_hft_mocker)
+		_hft_mocker->set_initacc(init_money);
+
 	if (strcmp(mode, "cta") == 0 && cfgMode)
 	{
 		const char* name = cfgMode->getCString("name");
-		
 		int32_t slippage = cfgMode->getInt32("slippage");
 		_cta_mocker = new ExpCtaMocker(&_replayer, name, slippage, &_notifier);
 		_cta_mocker->init_cta_factory(cfgMode);
