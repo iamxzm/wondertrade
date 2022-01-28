@@ -322,10 +322,10 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 	//策略收益
 	_total_profit = _balance - init_money;
 
-	//收益率公式 = (当前净值/最初净值) -1
+	//收益率公式 = (当前净值/最初净值)
 
 	//策略收益率
-	_daily_rate_of_return = (_day_profit / _static_balance) - 1;
+	_daily_rate_of_return = _day_profit / _static_balance;
 	if (isnan(_daily_rate_of_return) || !isfinite(_daily_rate_of_return))
 	{
 		_daily_rate_of_return = 0;
@@ -336,7 +336,7 @@ void CtaMocker::update_dyn_profit(const char* stdCode, double price)
 	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
 
 	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
-	if (isnan(_benchmark_rate_of_return) || !isfinite(_benchmark_rate_of_return))
+	if (isnan(_benchmark_rate_of_return) || !isfinite(_benchmark_rate_of_return) || _firstday == _replayer->get_trading_date())
 	{
 		_benchmark_rate_of_return = 0;
 	}
@@ -388,7 +388,16 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	{
 		preRate = 0;
 	}
-	_strategy_cumulative_rate = (preRate + 1) * (_daily_rate_of_return + 1) - 1;	//(preRate + 1) * (currRate + 1) - 1;
+
+	if (_firstday == _replayer->get_trading_date())
+	{
+		_strategy_cumulative_rate = 0;
+	}
+	else
+	{
+		_strategy_cumulative_rate = (preRate + 1) * (_daily_rate_of_return + 1) - 1;	//(preRate + 1) * (currRate + 1) - 1;
+	}
+	
 
 	position_doc = document{} <<
 			"position_profit" << 0.0 <<
@@ -1314,7 +1323,7 @@ void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 			"volume_long_frozen_his" << 0 <<//
 			"float_profit" << 0.0 <<//
 			"open_cost_short" << 0.0 <<
-			"margin" << 0.0 <<//
+			"margin" << dInfo._margin <<//
 			"position_cost_short" << 0.0 <<//
 			"volume_short_frozen_his" << 0 <<//
 			"instrument_id" << inst_id <<
@@ -1357,7 +1366,7 @@ void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 			"volume_long_frozen_his" << 0 <<//
 			"float_profit" << 0.0 <<//
 			"open_cost_short" << fee <<
-			"margin" << 0.0 <<//
+			"margin" << dInfo._margin <<//
 			"position_cost_short" << 0.0 <<//
 			"volume_short_frozen_his" << 0 <<//
 			"instrument_id" << inst_id <<
@@ -1404,7 +1413,7 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
-			"offset" << "" <<
+			"offset" << dInfo._profit <<
 			"order_id" << "123456" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
@@ -1422,7 +1431,7 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
-			"offset" << "" <<
+			"offset" << dInfo._profit <<
 			"order_id" << "123456" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<

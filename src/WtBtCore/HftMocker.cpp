@@ -1370,7 +1370,7 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
-			"offset" << "" <<
+			"offset" << dInfo._profit <<
 			"order_id" << "123456" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
@@ -1388,7 +1388,7 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
-			"offset" << "" <<
+			"offset" << dInfo._profit <<
 			"order_id" << "123456" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
