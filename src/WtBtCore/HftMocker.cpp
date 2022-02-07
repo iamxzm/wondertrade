@@ -1308,7 +1308,7 @@ void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 
 }
 
-void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
+void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
 {
 	auto db = _replayer->_client["lsqt_db"];
 	auto _poscoll_1 = db["his_trades"];
@@ -1320,6 +1320,20 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	{
 		return;
 	}
+
+	std::string off_set = "";
+	if (offset == 1)
+	{
+		off_set = "P033_1";
+	}
+	else if (offset == 2)
+	{
+		off_set = "P033_2";
+	}
+	else if (offset == 3)
+	{
+		off_set = "P033_3";
+	}
 	if (dInfo._long)
 	{
 		position_doc = document{} << "exchange_trade_id" << "111111" <<
@@ -1329,7 +1343,7 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
-			"offset" << "" <<
+			"offset" << off_set <<
 			"order_id" << "123456" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
@@ -1347,7 +1361,7 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
-			"offset" << "" <<
+			"offset" << off_set <<
 			"order_id" << "123456" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
@@ -1363,7 +1377,7 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	c1_mtx_1.unlock();
 }
 
-void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
+void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
 {
 	auto db = _replayer->_client["lsqt_db"];
 	auto _poscoll_1 = db["his_trade"];
@@ -1376,8 +1390,21 @@ void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 		return;
 	}
 
+	std::string off_set = "";
+	if (offset == 1)
+	{
+		off_set = "P033_1";
+	}
+	else if (offset == 2)
+	{
+		off_set = "P033_2";
+	}
+	else if (offset == 3)
+	{
+		off_set = "P033_3";
+	}
 	position_doc = document{} << "trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-		"offset" << "" <<
+		"offset" << off_set <<
 		"seqno" << "" <<
 		"exchange_trade_id" << "" <<
 		"trading_day" << to_string(_replayer->get_trading_date()) <<
@@ -1459,11 +1486,12 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 		_total_money -= fee;
 		_used_margin += dInfo._margin;
 
+		int offset = 1;
 		if (_name != "")
 		{
 			insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
-			insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
-			insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm);
+			insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+			insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset);
 		}
 
 
@@ -1514,11 +1542,12 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			_used_margin -= cur_margin;
 			dInfo._margin -= cur_margin;
 
+			int offset = 2;
 			if (_name != "")
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
-				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
-				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm);
+				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset);
 			}
 
 			//这里写成交记录
@@ -1560,11 +1589,12 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 
 			//_engine->mutate_fund(fee, FFT_Fee);
 
+			int offset = 0;
 			if (_name != "")
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
-				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm);
-				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm);
+				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset);
 			}
 
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), fee, userTag);

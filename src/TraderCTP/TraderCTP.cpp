@@ -1114,7 +1114,7 @@ void TraderCTP::insert_his_position(CThostFtdcOrderField* pOrder)
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["test_order"];
 
-	bsoncxx::document::value order_doc order_doc = document{} << 
+	bsoncxx::document::value order_doc = document{} << 
 		"offset" << pOrder->CombOffsetFlag <<
 		"seqno" << pOrder->SequenceNo <<
 		"trading_day" << pOrder->TradingDay <<
@@ -1130,7 +1130,7 @@ void TraderCTP::insert_his_position(CThostFtdcOrderField* pOrder)
 		"volume_left" << pOrder->VolumeTotal <<
 		"min_volume" << pOrder->MinVolume <<
 		"hedge_flag" << pOrder->CombHedgeFlag <<
-		"strategy_id" << "0" <<
+		"strategy_id" << "" <<
 		"price_type" << pOrder->OrderPriceType <<
 		"volume_orign" << pOrder->VolumeTotalOriginal <<
 		"frozen_margin" << 0 <<
@@ -1186,7 +1186,7 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 		"trading_day" << pTrade->TradingDay <<
 		"type" << pTrade->TradeType <<
 		"instrument_id" << pTrade->InstrumentID <<
-		"exchange_order_id" << pOrder->OrderSysID <<
+		"exchange_order_id" << pTrade->OrderSysID <<
 		"close_profit" << 0.0 <<
 		"volume" << pTrade->Volume <<
 		"exchange_id" << pTrade->ExchangeID <<
