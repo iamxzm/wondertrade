@@ -1109,7 +1109,7 @@ time_t timetrans(std::string pdate,std::string ptime)	//20220126,09:00:00
 	}
 }
 
-void TraderCTP::insert_his_position(CThostFtdcOrderField* pOrder)
+void TraderCTP::insert_his_order(CThostFtdcOrderField* pOrder)
 {
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["test_order"];
@@ -1151,6 +1151,16 @@ void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["test_trades"];
 
+	std::string offset = "";
+	if (pTrade->OffsetFlag== THOST_FTDC_OF_Open){
+		offset = "P033_1";
+	}
+	else if (pTrade->OffsetFlag== THOST_FTDC_OF_Close){
+		offset = "P033_2";
+	}
+	else if (pTrade->OffsetFlag== THOST_FTDC_OF_CloseToday){
+		offset = "P033_3";
+	}
 	bsoncxx::document::value trade_doc = document{} << 
 		"exchange_trade_id" << pTrade->TradeID <<
 		"account_id" << "" <<
@@ -1158,7 +1168,7 @@ void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 		"direction" << pTrade->Direction <<
 		"exchange_id" << pTrade->ExchangeID <<
 		"instrument_id" << pTrade->InstrumentID <<
-		"offset" << pTrade->OffsetFlag <<
+		"offset" << offset <<
 		"order_id" << pTrade->OrderLocalID <<
 		"price" << pTrade->Price <<
 		"seqno" << pTrade->SequenceNo <<
@@ -1178,9 +1188,19 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["test_trade"];
 
+	std::string offset = "";
+	if (pTrade->OffsetFlag == THOST_FTDC_OF_Open) {
+		offset = "P033_1";
+	}
+	else if (pTrade->OffsetFlag == THOST_FTDC_OF_Close) {
+		offset = "P033_2";
+	}
+	else if (pTrade->OffsetFlag == THOST_FTDC_OF_CloseToday) {
+		offset = "P033_3";
+	}
 	bsoncxx::document::value trade_doc = document{} << 
 		"trade_date_time" << timetrans(pTrade->TradingDay, pTrade->TradeTime) * 1000 <<
-		"offset" << pTrade->OffsetFlag <<
+		"offset" << offset <<
 		"seqno" << pTrade->SequenceNo <<
 		"exchange_trade_id" << pTrade->TradeID <<
 		"trading_day" << pTrade->TradingDay <<
@@ -1207,7 +1227,7 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 void TraderCTP::OnRtnOrder(CThostFtdcOrderField *pOrder)
 {
 	WTSOrderInfo *orderInfo = makeOrderInfo(pOrder);
-	insert_his_position(pOrder);
+	insert_his_order(pOrder);
 	if (orderInfo)
 	{
 		if (m_sink)
