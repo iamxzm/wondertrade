@@ -371,8 +371,8 @@ void CtaMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 
 	int64_t curTime = _replayer->get_date() * 1000000 + _replayer->get_min_time() * 100 + _replayer->get_secs();
 	bsoncxx::stdx::optional<bsoncxx::document::value> day_result = daycoll.find_one(make_document(kvp("accounts.314159.account_id", "314159"),
-																								  kvp("trade_day", to_string(_pretraderday))));
-
+																								  kvp("trade_day", to_string(_pretraderday)),
+																								  kvp("strategy_id", _name)));
 	//策略累计收益率
 	double preRate = 0;
 	if (day_result)

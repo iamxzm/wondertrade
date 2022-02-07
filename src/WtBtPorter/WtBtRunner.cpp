@@ -159,6 +159,7 @@ uint32_t WtBtRunner::initHftMocker(const char* name, bool hook/* = false*/)
 
 	_hft_mocker = new ExpHftMocker(&_replayer, name);
 	if (hook) _hft_mocker->install_hook();
+	_hft_mocker->set_initacc(_init_money);
 	_replayer.register_sink(_hft_mocker, name);
 	return _hft_mocker->id();
 }
