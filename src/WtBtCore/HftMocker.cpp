@@ -674,8 +674,8 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	//策略收益
 	_total_profit = _balance - init_money;
 
-	//收益率公式 = (当前净值/最初净值) -1
-	_daily_rate_of_return = (_day_profit / _static_balance) - 1;
+	//收益率公式 = (当前净值/最初净值)
+	_daily_rate_of_return = (_day_profit / _static_balance);
 	if (isnan(_daily_rate_of_return) || !isfinite(_daily_rate_of_return))
 	{
 		_daily_rate_of_return = 0;
@@ -686,7 +686,7 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
 
 	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
-	if (isnan(_benchmark_rate_of_return) || !isfinite(_benchmark_rate_of_return))
+	if (isnan(_benchmark_rate_of_return) || !isfinite(_benchmark_rate_of_return) || _firstday == _replayer->get_trading_date())
 	{
 		_benchmark_rate_of_return = 0;
 	}
@@ -727,7 +727,14 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	{
 		preRate = 0;
 	}
-	_strategy_cumulative_rate = (preRate + 1) * (_daily_rate_of_return + 1) - 1;	//(preRate + 1) * (currRate + 1) - 1;
+	if (_firstday == _replayer->get_trading_date())
+	{
+		_strategy_cumulative_rate = 0;
+	}
+	else
+	{
+		_strategy_cumulative_rate = (preRate + 1) * (_daily_rate_of_return + 1) - 1;	//(preRate + 1) * (currRate + 1) - 1;
+	}
 
 	//储存到mongo
 	position_doc = document{} <<

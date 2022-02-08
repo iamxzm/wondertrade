@@ -201,6 +201,7 @@ protected:
 	uint32_t    _traderday = 0;
 	uint32_t	_pretraderday;
 	uint32_t	_firstday = 0;
+	double		_firstprice = 0;
 
 
 	std::string		_main_key;
