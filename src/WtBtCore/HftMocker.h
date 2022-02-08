@@ -306,7 +306,9 @@ private:
 	void insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee, 
 		std::string exch_id, std::string inst_id, uint64_t curTime);
 	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee,
-		std::string exch_id, std::string inst_id, uint64_t curTime);
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
+	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
 	typedef faster_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
 

@@ -201,6 +201,7 @@ protected:
 	uint32_t    _traderday = 0;
 	uint32_t	_pretraderday;
 	uint32_t	_firstday = 0;
+	double		_firstprice = 0;
 
 
 	std::string		_main_key;
@@ -348,7 +349,9 @@ protected:
 	void insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 		std::string exch_id, std::string inst_id, uint64_t curTime);
 	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee,
-		std::string exch_id, std::string inst_id, uint64_t curTime);
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
+	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
 
 	bool _insert_mongo;
 	//mongocxx::uri _uri;
