@@ -78,7 +78,7 @@ extern "C"
 
 	EXPORT_FLAG	double		cta_get_position(CtxHandler cHandle, const char* stdCode, const char* openTag);
 
-	EXPORT_FLAG	void		cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, const char* uesrTag, double limitprice, double stopprice);
+	EXPORT_FLAG	void		cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, const char* uesrTag, double limitprice, double stopprice, bool insert_mongo);
 
 	EXPORT_FLAG	double 		cta_get_price(const char* stdCode);
 
