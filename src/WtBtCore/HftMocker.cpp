@@ -1630,7 +1630,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 
 			//_engine->mutate_fund(fee, FFT_Fee);
 
-			int offset = 0;
+			int offset = 1;
 			if (_name != "")
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);

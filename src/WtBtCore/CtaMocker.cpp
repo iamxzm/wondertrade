@@ -1705,7 +1705,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			//添加减去费率
 			_total_money -= fee;
 			
-			int offset = 0;
+			int offset = 1;
 			if (_insert_mongo)
 			{
 				if (_name != "")
