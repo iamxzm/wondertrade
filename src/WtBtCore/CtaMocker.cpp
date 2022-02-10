@@ -1056,8 +1056,9 @@ CondList& CtaMocker::get_cond_entrusts(const char* stdCode)
 
 //////////////////////////////////////////////////////////////////////////
 //策略接口
-void CtaMocker::stra_enter_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
+void CtaMocker::stra_enter_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
 {
+	_insert_mongo = insert_mongo;
 	_replayer->sub_tick(_context_id, stdCode);
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式,则直接触发
 	{
@@ -1097,8 +1098,9 @@ void CtaMocker::stra_enter_long(const char* stdCode, double qty, const char* use
 	}
 }
 
-void CtaMocker::stra_enter_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
+void CtaMocker::stra_enter_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
 {
+	_insert_mongo = insert_mongo;
 	_replayer->sub_tick(_context_id, stdCode);
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式,则直接触发
 	{
@@ -1139,8 +1141,9 @@ void CtaMocker::stra_enter_short(const char* stdCode, double qty, const char* us
 	}
 }
 
-void CtaMocker::stra_exit_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
+void CtaMocker::stra_exit_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
 {
+	_insert_mongo = insert_mongo;
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式,则直接触发
 	{
 		double curQty = stra_get_position(stdCode);
@@ -1179,8 +1182,9 @@ void CtaMocker::stra_exit_long(const char* stdCode, double qty, const char* user
 	}
 }
 
-void CtaMocker::stra_exit_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
+void CtaMocker::stra_exit_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
 {
+	_insert_mongo = insert_mongo;
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式,则直接触发
 	{
 		double curQty = stra_get_position(stdCode);
@@ -1295,7 +1299,7 @@ void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
-	if (dInfo._volume == 0)
+	if (dInfo._volume < 0)
 	{
 		return;
 	}
@@ -1401,7 +1405,7 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
-	if (dInfo._volume == 0)
+	if (dInfo._volume < 0)
 	{
 		return;
 	}
@@ -1470,7 +1474,7 @@ void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
-	if (dInfo._volume == 0)
+	if (dInfo._volume < 0)
 	{
 		return;
 	}
@@ -1715,7 +1719,7 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			//添加减去费率
 			_total_money -= fee;
 			
-			int offset = 0;
+			int offset = 1;
 			if (_insert_mongo)
 			{
 				if (_name != "")
