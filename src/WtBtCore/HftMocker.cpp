@@ -332,10 +332,6 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 	}
 
 	_pretraderday = _replayer->getPrevTDate(stdCode, _traderday);
-	if (_firstday == 0)
-	{
-		_firstday = _replayer->get_trading_date();
-	}
 
 	//昨结
 	_close_price = newTick->presettle();
@@ -373,6 +369,10 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 			if (bNeedErase)
 			{
 				_changepos = true;  //持仓变化
+				if (_firstday == 0)
+				{
+					_firstday = _replayer->get_trading_date();
+				}
 				ids.emplace_back(localid);
 			}
 				
@@ -692,8 +692,7 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	}
 
 	//基准累计收益率
-	double firstPrice = 0;
-	_benchmark_cumulative_rate = benchmarkEndPrice / firstPrice;
+	_benchmark_cumulative_rate = benchmarkEndPrice / _firstprice;
 	if (!isfinite(_benchmark_cumulative_rate))
 	{
 		_benchmark_cumulative_rate = 0;
