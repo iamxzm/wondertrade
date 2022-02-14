@@ -150,6 +150,7 @@ TraderCTP::~TraderCTP()
 
 bool TraderCTP::init(WTSParams* params)
 {
+	m_stra_name = params->get("name")->asCString();
 	m_strFront = params->get("front")->asCString();
 	m_strBroker = params->get("broker")->asCString();
 	m_strUser = params->get("user")->asCString();
@@ -1112,7 +1113,7 @@ time_t timetrans(std::string pdate,std::string ptime)	//20220126,09:00:00
 void TraderCTP::insert_his_order(CThostFtdcOrderField* pOrder)
 {
 	auto db = _client["lsqt_db"];
-	auto _poscoll_1 = db["test_order"];
+	auto _poscoll_1 = db["his_order"];
 
 	bsoncxx::document::value order_doc = document{} << 
 		"offset" << pOrder->CombOffsetFlag <<
@@ -1130,7 +1131,7 @@ void TraderCTP::insert_his_order(CThostFtdcOrderField* pOrder)
 		"volume_left" << pOrder->VolumeTotal <<
 		"min_volume" << pOrder->MinVolume <<
 		"hedge_flag" << pOrder->CombHedgeFlag <<
-		"strategy_id" << "" <<
+		"strategy_id" << m_stra_name <<
 		"price_type" << pOrder->OrderPriceType <<
 		"volume_orign" << pOrder->VolumeTotalOriginal <<
 		"frozen_margin" << 0 <<
@@ -1186,7 +1187,7 @@ void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 {
 	auto db = _client["lsqt_db"];
-	auto _poscoll_1 = db["test_trade"];
+	auto _poscoll_1 = db["his_trade"];
 
 	std::string offset = "";
 	if (pTrade->OffsetFlag == THOST_FTDC_OF_Open) {
@@ -1212,7 +1213,7 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 		"exchange_id" << pTrade->ExchangeID <<
 		"account_id" << "" <<
 		"price" << pTrade->Price <<
-		"strategy_id" << "" <<
+		"strategy_id" << m_stra_name <<
 		"commission" << "" <<
 		"order_id" << pTrade->OrderLocalID <<
 		"direction" << pTrade->Direction << finalize;
@@ -1242,7 +1243,7 @@ void TraderCTP::OnRtnOrder(CThostFtdcOrderField *pOrder)
 void TraderCTP::OnRtnTrade(CThostFtdcTradeField *pTrade)
 {
 	WTSTradeInfo *tRecord = makeTradeRecord(pTrade);
-	insert_his_trades(pTrade);
+	//insert_his_trades(pTrade);
 	insert_his_trade(pTrade);
 	if (tRecord)
 	{

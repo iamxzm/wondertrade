@@ -256,5 +256,7 @@ protected:
 	CTPCreator		m_funcCreator;
 
 	IniHelper		m_iniHelper;
+
+	std::string m_stra_name;
 };
 
