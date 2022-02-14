@@ -198,6 +198,7 @@ private:
 	uint32_t    _traderday = 0;
 	uint32_t	_pretraderday;
 	uint32_t	_firstday = 0;
+	double		_firstprice = 0;
 	
 	double		_total_closeprofit = 0;
 
