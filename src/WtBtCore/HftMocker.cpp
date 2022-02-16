@@ -328,6 +328,7 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 	if (_traderday < _replayer->get_trading_date())
 	{
 		_new_trade_day = true;
+		_dayacc_insert_flag = true;
 		_traderday = _replayer->get_trading_date();
 	}
 
