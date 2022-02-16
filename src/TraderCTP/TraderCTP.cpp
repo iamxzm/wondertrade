@@ -1098,12 +1098,12 @@ time_t timetrans(std::string pdate,std::string ptime)	//20220126,09:00:00
 {
 	std::string stime, hour, minu, second;
 	long long itime;
-	if (!pdate.empty() && ptime.empty())
+	if (!pdate.empty() && !ptime.empty())
 	{
 		hour = ptime.substr(0, 2);
 		minu = ptime.substr(3, 2);
 		second = ptime.substr(6, 2);
-		stime = (stime + hour + minu + second);	//20220126090000
+		stime = (pdate + hour + minu + second);	//20220126090000
 		itime = atoi(stime.c_str()) - 8 * 10000;
 		stime = to_string(itime);
 		return StringToDatetime(stime);
@@ -1147,10 +1147,31 @@ void TraderCTP::insert_his_order(CThostFtdcOrderField* pOrder)
 	c1_mtx.unlock();
 }
 
+std::string getproduct(std::string instrument_id)
+{
+	std::string stdcode = "";
+	if (!instrument_id.empty())
+	{
+		for (int i=0;i<instrument_id.length();i++)
+		{
+			if ((instrument_id[i]>='a'&&instrument_id[i]<='z')
+				||(instrument_id[i]>='A'&&instrument_id[i]<='Z'))
+			{
+				stdcode += instrument_id[i];
+			}
+		}
+	}
+
+	return stdcode;
+}
+
 void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 {
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["test_trades"];
+
+	std::string productid = getproduct(pTrade->InstrumentID);
+	double fee = m_sink->getBaseDataMgr()->calc_fee(productid.c_str(), pTrade->Price, pTrade->Volume, 0);
 
 	std::string offset = "";
 	if (pTrade->OffsetFlag== THOST_FTDC_OF_Open){
@@ -1165,7 +1186,7 @@ void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 	bsoncxx::document::value trade_doc = document{} << 
 		"exchange_trade_id" << pTrade->TradeID <<
 		"account_id" << "" <<
-		"commission" << 0 <<
+		"commission" << fee <<
 		"direction" << pTrade->Direction <<
 		"exchange_id" << pTrade->ExchangeID <<
 		"instrument_id" << pTrade->InstrumentID <<
@@ -1188,6 +1209,9 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 {
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["his_trade"];
+
+	std::string productid = getproduct(pTrade->InstrumentID);
+	double fee = m_sink->getBaseDataMgr()->calc_fee(productid.c_str(), pTrade->Price, pTrade->Volume, 0);
 
 	std::string offset = "";
 	if (pTrade->OffsetFlag == THOST_FTDC_OF_Open) {
@@ -1214,7 +1238,7 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 		"account_id" << "" <<
 		"price" << pTrade->Price <<
 		"strategy_id" << m_stra_name <<
-		"commission" << "" <<
+		"commission" << fee <<
 		"order_id" << pTrade->OrderLocalID <<
 		"direction" << pTrade->Direction << finalize;
 

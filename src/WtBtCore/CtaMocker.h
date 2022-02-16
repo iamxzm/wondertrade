@@ -76,7 +76,7 @@ private:
 
 	void	update_dyn_profit(const char* stdCode, double price);
 
-	void	do_set_position(const char* stdCode, double qty, double price = 0.0, std::string instid = "",const char* userTag = "", bool bTriggered = false);//
+	//void	do_set_position(const char* stdCode, double qty, SigInfo* sig_info, double price = 0.0, std::string instid = "", const char* userTag = "", bool bTriggered = false);//
 	void	append_signal(const char* stdCode, double qty, const char* userTag = "", double price = 0.0);
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
@@ -348,10 +348,13 @@ protected:
 
 	void insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 		std::string exch_id, std::string inst_id, uint64_t curTime);
-	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee,
+	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, const SigInfo* sig_info,
 		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
-	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee,
+	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, const SigInfo* sig_info,
 		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
+
+private:
+	void	do_set_position(const char* stdCode, double qty, const SigInfo* sig_info, double price = 0.0, std::string instid = "", const char* userTag = "", bool bTriggered = false);//
 
 	bool _insert_mongo;
 	//mongocxx::uri _uri;

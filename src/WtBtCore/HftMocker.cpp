@@ -1257,7 +1257,7 @@ void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
-	if (dInfo._volume == 0)
+	if (dInfo._volume <= 0)
 	{
 		return;
 	}
@@ -1385,13 +1385,14 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	{
 		position_doc = document{} << "exchange_trade_id" << "111111" <<
 			"account_id" << "111111" <<
-			"commission" << 0.0 <<
+			"commission" << fee <<
 			"direction" << 1 <<
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
 			"offset" << off_set <<
 			"order_id" << "123456" <<
+			"order_type" << "48" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
 			"strategy_id" << _name <<
@@ -1403,13 +1404,14 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	{
 		position_doc = document{} << "exchange_trade_id" << "111111" <<
 			"account_id" << "111111" <<
-			"commission" << 0.0 <<
+			"commission" << fee <<
 			"direction" << 2 <<
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
 			"offset" << off_set <<
 			"order_id" << "123456" <<
+			"order_type" << "48" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
 			"strategy_id" << _name <<
@@ -1458,13 +1460,14 @@ void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 		"type" << "" <<
 		"instrument_id" << inst_id <<
 		"exchange_order_id" << "" <<
+		"order_type" << "48" <<
 		"close_profit" << pInfo._closeprofit <<
 		"volume" << dInfo._volume <<
 		"exchange_id" << exch_id <<
 		"account_id" << "" <<
 		"price" << dInfo._price <<
 		"strategy_id" << _name <<
-		"commission" << "" <<
+		"commission" << fee <<
 		"order_id" << "" <<
 		"direction" << dInfo._long << finalize;
 
@@ -1544,7 +1547,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), fee, userTag);
 	}
-	else if(decimal::lt(pInfo._volume * diff, 0))
+	else
 	{//持仓方向和仓位变化方向不一致,需要平仓
 		double left = abs(diff);
 

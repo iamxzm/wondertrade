@@ -669,7 +669,7 @@ void CtaMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStr
 				else
 					price = sInfo._desprice;
 
-				do_set_position(stdCode, sInfo._volume, price, exch_inst, sInfo._usertag.c_str(), sInfo._triggered);
+				do_set_position(stdCode, sInfo._volume, &sInfo, price, exch_inst, sInfo._usertag.c_str(), sInfo._triggered);
 				_changepos = true;
 
 				if (_firstday == 0)
@@ -1299,7 +1299,7 @@ void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 	std::string exch_inst = exch_id;
 	exch_inst += "::";
 	exch_inst += inst_id;
-	if (dInfo._volume < 0)
+	if (dInfo._volume <= 0)
 	{
 		return;
 	}
@@ -1397,7 +1397,7 @@ void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 
 }
 
-void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
+void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, const SigInfo* sig_info, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
 {
 	auto db = _replayer->_client["lsqt_db"];
 	auto _poscoll_1 = db["his_trades"];
@@ -1427,17 +1427,19 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	{
 		position_doc = document{} << "exchange_trade_id" << "111111" <<
 			"account_id" << "111111" <<
-			"commission" << 0.0 <<
+			"commission" << fee <<
 			"direction" << 1 <<
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
 			"offset" << off_set <<
 			"order_id" << "123456" <<
+			"order_type" << "48" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
 			"strategy_id" << _name <<
 			"trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			"insert_date_time"<<_replayer->StringToDatetime(to_string(sig_info->_gentime)) * 1000<<
 			"volume" << dInfo._volume <<
 			finalize;
 	}
@@ -1445,17 +1447,19 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	{
 		position_doc = document{} << "exchange_trade_id" << "111111" <<
 			"account_id" << "111111" <<
-			"commission" << 0.0 <<
+			"commission" << fee <<
 			"direction" << 2 <<
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
 			"offset" << off_set <<
 			"order_id" << "123456" <<
+			"order_type" << "48" <<
 			"price" << dInfo._price <<
 			"seqno" << 0 <<
 			"strategy_id" << _name <<
 			"trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			"insert_date_time" << _replayer->StringToDatetime(to_string(sig_info->_gentime)) * 1000 <<
 			"volume" << dInfo._volume <<
 			finalize;
 	}
@@ -1466,7 +1470,7 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	c1_mtx.unlock();
 }
 
-void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
+void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, const SigInfo* sig_info, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
 {
 	auto db = _replayer->_client["lsqt_db"];
 	auto _poscoll_1 = db["his_trade"];
@@ -1494,6 +1498,7 @@ void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 	}
 
 	position_doc = document{} << "trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+		"insert_date_time" << _replayer->StringToDatetime(to_string(sig_info->_gentime)) * 1000 <<
 		"offset" << off_set <<
 		"seqno" << "" <<
 		"exchange_trade_id" << "" <<
@@ -1501,13 +1506,14 @@ void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 		"type" << "" <<
 		"instrument_id" << inst_id <<
 		"exchange_order_id" << "" <<
+		"order_type" << "48" <<
 		"close_profit" << pInfo._closeprofit <<
 		"volume" << dInfo._volume <<
 		"exchange_id" << exch_id <<
 		"account_id" << "" <<
 		"price" << dInfo._price <<
 		"strategy_id" << _name <<
-		"commission" << "" <<
+		"commission" << fee <<
 		"order_id" << "" <<
 		"direction" << dInfo._long << finalize;
 
@@ -1518,7 +1524,7 @@ void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 	c1_mtx.unlock();
 }
 
-void CtaMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, std::string instid /*=""*/,const char* userTag /* = "" */, bool bTriggered /* = false */)
+void CtaMocker::do_set_position(const char* stdCode, double qty, const SigInfo* sig_info, double price /* = 0.0 */, std::string instid /*=""*/,const char* userTag /* = "" */, bool bTriggered /* = false */)
 {
 	//mongocxx::instance instance{};
 	/*mongocxx::uri _uri("mongodb://192.168.214.199:27017");
@@ -1605,8 +1611,8 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 			if (_name != "")
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
-				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime, offset);
-				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTime, offset);
+				insert_his_trades(dInfo, pInfo, fee, sig_info, exchid, instid, curTime, offset);
+				insert_his_trade(dInfo, pInfo, fee, sig_info, exchid, instid, curTime, offset);
 			}
 		}
 		
@@ -1672,8 +1678,8 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				if (_name != "")
 				{
 					insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
-					insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime, offset);
-					insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTime, offset);
+					insert_his_trades(dInfo, pInfo, fee, sig_info, exchid, instid, curTime, offset);
+					insert_his_trade(dInfo, pInfo, fee, sig_info, exchid, instid, curTime, offset);
 				}
 			}
 			
@@ -1725,8 +1731,8 @@ void CtaMocker::do_set_position(const char* stdCode, double qty, double price /*
 				if (_name != "")
 				{
 					insert_his_position(dInfo, pInfo, fee, exchid, instid, curTime);
-					insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTime, offset);
-					insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTime, offset);
+					insert_his_trades(dInfo, pInfo, fee, sig_info, exchid, instid, curTime, offset);
+					insert_his_trade(dInfo, pInfo, fee, sig_info, exchid, instid, curTime, offset);
 				}
 			}
 			
