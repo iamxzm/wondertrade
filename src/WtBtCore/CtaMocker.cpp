@@ -1340,7 +1340,7 @@ void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 			"hedge_flag" << " " <<//
 			"margin_long" << 0.0 <<//
 			"volume_short_his" << 0 <<//
-			"last_price" << 0.0 << //
+			"last_price" << _settlepx << //
 			close_document <<
 			close_document <<
 			"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
@@ -1383,7 +1383,7 @@ void CtaMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
 			"hedge_flag" << " " <<//
 			"margin_long" << 0.0 <<//
 			"volume_short_his" << 0 <<//
-			"last_price" << 0.0 << //
+			"last_price" << _settlepx << //
 			close_document <<
 			close_document <<
 			"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
@@ -1428,7 +1428,7 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, c
 		position_doc = document{} << "exchange_trade_id" << "111111" <<
 			"account_id" << "111111" <<
 			"commission" << fee <<
-			"direction" << 1 <<
+			"direction" << "P032_1" <<
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
@@ -1448,7 +1448,7 @@ void CtaMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, c
 		position_doc = document{} << "exchange_trade_id" << "111111" <<
 			"account_id" << "111111" <<
 			"commission" << fee <<
-			"direction" << 2 <<
+			"direction" << "P032_2" <<
 			"exchange_id" << exch_id <<
 			"exchange_order_id" << "123456" <<
 			"instrument_id" << inst_id <<
@@ -1497,6 +1497,15 @@ void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, co
 		off_set = "P033_3";
 	}
 
+	std::string direction = "";
+	if (dInfo._long)
+	{
+		direction = "P032_1";
+	}
+	else
+	{
+		direction = "P032_2";
+	}
 	position_doc = document{} << "trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
 		"insert_date_time" << _replayer->StringToDatetime(to_string(sig_info->_gentime)) * 1000 <<
 		"offset" << off_set <<
@@ -1506,7 +1515,7 @@ void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, co
 		"type" << "" <<
 		"instrument_id" << inst_id <<
 		"exchange_order_id" << "" <<
-		"order_type" << "48" <<
+		"order_type" << direction <<
 		"close_profit" << pInfo._closeprofit <<
 		"volume" << dInfo._volume <<
 		"exchange_id" << exch_id <<
@@ -1515,7 +1524,7 @@ void CtaMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, co
 		"strategy_id" << _name <<
 		"commission" << fee <<
 		"order_id" << "" <<
-		"direction" << dInfo._long << finalize;
+		"direction" << direction << finalize;
 
 	c1_mtx.lock();
 	auto result = _poscoll_1.insert_one(move(position_doc));

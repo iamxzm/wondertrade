@@ -236,40 +236,40 @@ CtxHandler init_sel_mocker(const char* name, WtUInt32 date, WtUInt32 time, const
 }
 
 #pragma region "CTA²ßÂÔ½Ó¿Ú"
-void cta_enter_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
+void cta_enter_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_enter_long(stdCode, qty, userTag, limitprice, stopprice);
+	ctx->stra_enter_long(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
 }
 
-void cta_exit_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
+void cta_exit_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_exit_long(stdCode, qty, userTag, limitprice, stopprice);
+	ctx->stra_exit_long(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
 }
 
-void cta_enter_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
+void cta_enter_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_enter_short(stdCode, qty, userTag, limitprice, stopprice);
+	ctx->stra_enter_short(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
 }
 
-void cta_exit_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
+void cta_exit_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_exit_short(stdCode, qty, userTag, limitprice, stopprice);
+	ctx->stra_exit_short(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
 }
 
 WtUInt32 cta_get_bars(CtxHandler cHandle, const char* stdCode, const char* period, WtUInt32 barCnt, bool isMain, FuncGetBarsCallback cb)
