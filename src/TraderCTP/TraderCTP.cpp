@@ -21,6 +21,7 @@
 #include "../Share/StrUtil.hpp"
 
 #include <boost/filesystem.hpp>
+#include <iostream>
 
 std::mutex c1_mtx{};
 
@@ -1104,10 +1105,121 @@ time_t timetrans(std::string pdate,std::string ptime)	//20220126,09:00:00
 		minu = ptime.substr(3, 2);
 		second = ptime.substr(6, 2);
 		stime = (pdate + hour + minu + second);	//20220126090000
-		itime = atoi(stime.c_str()) - 8 * 10000;
-		stime = to_string(itime);
+		//itime = atoi(stime.c_str()) - 8 * 10000;
+		//stime = to_string(itime);
+		//std::cout << "stime=" << stime << std::endl;
 		return StringToDatetime(stime);
 	}
+}
+
+void TraderCTP::insert_his_positions(CThostFtdcInvestorPositionField* pInvestorPosition)
+{
+	auto db = _client["lsqt_db"];
+	auto _poscoll_1 = db["his_positions"];
+
+	std::string exch_inst = pInvestorPosition->ExchangeID;
+	exch_inst += "::";
+	exch_inst += pInvestorPosition->InstrumentID;
+	if (pInvestorPosition->OpenVolume)
+	{
+		return;
+	}
+	bsoncxx::document::value position_doc = document{} << finalize;
+	if (pInvestorPosition->PosiDirection== THOST_FTDC_PD_Long)
+	{
+		position_doc = document{} <<
+			"trade_day" << pInvestorPosition->PositionDate <<
+			"strategy_id" << m_stra_name <<//
+			"position" << open_document <<
+			exch_inst << open_document <<
+			"position_profit" << pInvestorPosition->PositionProfit <<
+			//"float_profit_short" <<  <<
+			//"open_price_short" <<  <<
+			"volume_long_frozen_today" << pInvestorPosition->LongFrozen <<
+			"open_cost_long" << pInvestorPosition->OpenCost <<
+			//"position_price_short" <<  <<
+			//"float_profit_long" <<  <<
+			//"open_price_long" <<  <<
+			"exchange_id" << pInvestorPosition->ExchangeID <<
+			"volume_short_frozen_today" << 0 <<
+			//"position_price_long" <<  <<
+			"position_profit_long" << pInvestorPosition->PositionProfit <<
+			"volume_short_today" << 0 <<
+			"position_profit_short" << 0.0 <<
+			"volume_long" << pInvestorPosition->Position <<
+			//"margin_short" << pInvestorPosition->UseMargin <<
+			//"volume_long_frozen_his" <<  <<
+			//"float_profit" <<  <<
+			"open_cost_short" << 0.0 <<
+			"margin" << pInvestorPosition->UseMargin <<
+			"position_cost_short" << 0.0 <<
+			//"volume_short_frozen_his" <<  <<
+			"instrument_id" << pInvestorPosition->InstrumentID <<
+			"volume_short" << 0 <<
+			"account_id" << pInvestorPosition->InvestorID <<
+			"volume_long_today" << pInvestorPosition->TodayPosition <<
+			"position_cost_long" << pInvestorPosition->PositionCost <<
+			//"volume_long_his" <<  <<
+			"hedge_flag" << pInvestorPosition->HedgeFlag <<
+			//"margin_long" << pInvestorPosition->UseMargin <<
+			//"volume_short_his" <<  <<
+			"last_price" << pInvestorPosition->PreSettlementPrice << //
+			close_document <<
+			close_document <<
+			"timestamp" << 0 <<
+			finalize;
+	}
+	
+	else if (pInvestorPosition->PosiDirection==THOST_FTDC_PD_Short)
+	{
+		position_doc = document{} <<
+			"trade_day" << pInvestorPosition->PositionDate <<
+			"strategy_id" << m_stra_name <<//
+			"position" << open_document <<
+			exch_inst << open_document <<
+			"position_profit" << pInvestorPosition->PositionProfit <<
+			//"float_profit_short" <<  <<
+			//"open_price_short" <<  <<
+			"volume_long_frozen_today" << 0 <<
+			"open_cost_long" << 0.0 <<
+			//"position_price_short" <<  <<
+			//"float_profit_long" <<  <<
+			//"open_price_long" <<  <<
+			"exchange_id" << pInvestorPosition->ExchangeID <<
+			"volume_short_frozen_today" << pInvestorPosition->ShortFrozen <<
+			//"position_price_long" <<  <<
+			"position_profit_long" << 0.0 <<
+			"volume_short_today" << pInvestorPosition->TodayPosition <<
+			"position_profit_short" << pInvestorPosition->PositionProfit <<
+			"volume_long" << 0 <<
+			//"margin_short" << pInvestorPosition->UseMargin <<
+			//"volume_long_frozen_his" <<  <<
+			//"float_profit" <<  <<
+			"open_cost_short" << pInvestorPosition->OpenCost <<
+			"margin" << pInvestorPosition->UseMargin <<
+			"position_cost_short" << pInvestorPosition->PositionCost <<
+			//"volume_short_frozen_his" <<  <<
+			"instrument_id" << pInvestorPosition->InstrumentID <<
+			"volume_short" << pInvestorPosition->Position <<
+			"account_id" << pInvestorPosition->InvestorID <<
+			"volume_long_today" << 0 <<
+			"position_cost_long" << 0.0 <<
+			//"volume_long_his" <<  <<
+			"hedge_flag" << pInvestorPosition->HedgeFlag <<
+			//"margin_long" << pInvestorPosition->UseMargin <<
+			//"volume_short_his" <<  <<
+			"last_price" << pInvestorPosition->PreSettlementPrice << //
+			close_document <<
+			close_document <<
+			"timestamp" << 0 <<
+			finalize;
+	}
+	c1_mtx.lock();
+	auto result = _poscoll_1.insert_one(move(position_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx.unlock();
+
 }
 
 void TraderCTP::insert_his_order(CThostFtdcOrderField* pOrder)
@@ -1115,6 +1227,15 @@ void TraderCTP::insert_his_order(CThostFtdcOrderField* pOrder)
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["his_order"];
 
+	std::string direction = "";
+	if (pOrder->Direction == THOST_FTDC_D_Buy)
+	{
+		direction = "P032_1";
+	}
+	else if (pOrder->Direction = THOST_FTDC_D_Sell)
+	{
+		direction = "P032_2";
+	}
 	bsoncxx::document::value order_doc = document{} << 
 		"offset" << pOrder->CombOffsetFlag <<
 		"seqno" << pOrder->SequenceNo <<
@@ -1137,7 +1258,7 @@ void TraderCTP::insert_his_order(CThostFtdcOrderField* pOrder)
 		"frozen_margin" << 0 <<
 		"order_id" << pOrder->OrderLocalID <<
 		"order_type" << pOrder->OrderType <<
-		"direction" << pOrder->Direction <<
+		"direction" << direction <<
 		"status" << pOrder->OrderStatus << finalize;
 
 	c1_mtx.lock();
@@ -1165,13 +1286,27 @@ std::string getproduct(std::string instrument_id)
 	return stdcode;
 }
 
+double TraderCTP::calc_fee(const char* stdCode, double price, double qty, uint32_t offset)
+{
+	double ret = 0.0;
+	switch (offset)
+	{
+	case 0: ret = m_feeitem._open * qty; break;
+	case 1: ret = m_feeitem._close * qty; break;
+	case 2: ret = m_feeitem._close_today * qty; break;
+	default: ret = 0.0; break;
+	}
+
+	return (int32_t)(ret * 100 + 0.5) / 100.0;
+}
+
 void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 {
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["test_trades"];
 
-	std::string productid = getproduct(pTrade->InstrumentID);
-	double fee = m_sink->getBaseDataMgr()->calc_fee(productid.c_str(), pTrade->Price, pTrade->Volume, 0);
+	//std::string productid = getproduct(pTrade->InstrumentID);
+	//double fee = m_sink->getBaseDataMgr()->calc_fee(productid.c_str(), pTrade->Price, pTrade->Volume, 0);
 
 	std::string offset = "";
 	if (pTrade->OffsetFlag== THOST_FTDC_OF_Open){
@@ -1186,7 +1321,7 @@ void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 	bsoncxx::document::value trade_doc = document{} << 
 		"exchange_trade_id" << pTrade->TradeID <<
 		"account_id" << "" <<
-		"commission" << fee <<
+		"commission" << calc_fee(pTrade->InstrumentID,pTrade->Price,pTrade->Volume,0) <<
 		"direction" << pTrade->Direction <<
 		"exchange_id" << pTrade->ExchangeID <<
 		"instrument_id" << pTrade->InstrumentID <<
@@ -1195,7 +1330,7 @@ void TraderCTP::insert_his_trades(CThostFtdcTradeField* pTrade)
 		"price" << pTrade->Price <<
 		"seqno" << pTrade->SequenceNo <<
 		"strategy_id" << "0" <<
-		"trade_date_time" << timetrans(pTrade->TradeDate,pTrade->TradeTime) <<
+		//"trade_date_time" << timetrans(pTrade->TradeDate,pTrade->TradeTime) <<
 		"volume" << pTrade->Volume << finalize;
 
 	c1_mtx.lock();
@@ -1210,8 +1345,8 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 	auto db = _client["lsqt_db"];
 	auto _poscoll_1 = db["his_trade"];
 
-	std::string productid = getproduct(pTrade->InstrumentID);
-	double fee = m_sink->getBaseDataMgr()->calc_fee(productid.c_str(), pTrade->Price, pTrade->Volume, 0);
+	//std::string productid = getproduct(pTrade->InstrumentID);
+	//double fee = m_sink->getBaseDataMgr()->calc_fee(productid.c_str(), pTrade->Price, pTrade->Volume, 0);
 
 	std::string offset = "";
 	if (pTrade->OffsetFlag == THOST_FTDC_OF_Open) {
@@ -1222,6 +1357,15 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 	}
 	else if (pTrade->OffsetFlag == THOST_FTDC_OF_CloseToday) {
 		offset = "P033_3";
+	}
+	std::string direction = "";
+	if (pTrade->Direction== THOST_FTDC_D_Buy)
+	{
+		direction = "P032_1";
+	}
+	else if (pTrade->Direction= THOST_FTDC_D_Sell)
+	{
+		direction = "P032_2";
 	}
 	bsoncxx::document::value trade_doc = document{} << 
 		"trade_date_time" << timetrans(pTrade->TradingDay, pTrade->TradeTime) * 1000 <<
@@ -1238,9 +1382,9 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 		"account_id" << "" <<
 		"price" << pTrade->Price <<
 		"strategy_id" << m_stra_name <<
-		"commission" << fee <<
+		"commission" << calc_fee(pTrade->InstrumentID, pTrade->Price, pTrade->Volume, 0) <<
 		"order_id" << pTrade->OrderLocalID <<
-		"direction" << pTrade->Direction << finalize;
+		"direction" << direction << finalize;
 
 	c1_mtx.lock();
 	auto result = _poscoll_1.insert_one(move(trade_doc));
@@ -1251,6 +1395,8 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 
 void TraderCTP::OnRtnOrder(CThostFtdcOrderField *pOrder)
 {
+	/*std::cout << __FUNCTION__ << endl << "pOrder->date:" << pOrder->TradingDay << endl <<
+		"pOrder->time:" << pOrder->InsertTime << endl;*/
 	WTSOrderInfo *orderInfo = makeOrderInfo(pOrder);
 	insert_his_order(pOrder);
 	if (orderInfo)
@@ -1266,6 +1412,8 @@ void TraderCTP::OnRtnOrder(CThostFtdcOrderField *pOrder)
 
 void TraderCTP::OnRtnTrade(CThostFtdcTradeField *pTrade)
 {
+	/*std::cout << __FUNCTION__ << endl << "pTrade->date:" << pTrade->TradingDay << endl <<
+		"pTrade->time:" << pTrade->TradeTime << endl;*/
 	WTSTradeInfo *tRecord = makeTradeRecord(pTrade);
 	//insert_his_trades(pTrade);
 	insert_his_trade(pTrade);

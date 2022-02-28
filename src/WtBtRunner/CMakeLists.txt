@@ -65,3 +65,6 @@ SET(LIBS
 ADD_EXECUTABLE(TestBtPorter ../TestBtPorter/TestBtPorter.cpp)
 TARGET_LINK_LIBRARIES(TestBtPorter ${LIBS})
 
+ADD_EXECUTABLE(BackTest ../BackTest/backtest.cpp ../BackTest/backtest.h)
+TARGET_LINK_LIBRARIES(BackTest ${LIBS})
+

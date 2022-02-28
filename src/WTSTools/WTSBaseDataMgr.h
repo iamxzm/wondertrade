@@ -57,7 +57,7 @@ public:
 	bool		loadCommodities(const char* filename);
 	bool		loadContracts(const char* filename);
 	bool		loadHolidays(const char* filename);
-	bool		loadFees(const char* filename);
+	//bool		loadFees(const char* filename);
 
 public:
 	uint32_t	getTradingDate(const char* stdPID, uint32_t uOffDate = 0, uint32_t uOffMinute = 0, bool isTpl = false);
@@ -66,7 +66,7 @@ public:
 	bool		isTradingDate(const char* stdPID, uint32_t uDate, bool isTpl = false);
 	void		setTradingDate(const char* stdPID, uint32_t uDate, bool isTpl = false);
 
-	double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
+	//double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
 
 	CodeSet*	getSessionComms(const char* sid);
 
@@ -82,20 +82,20 @@ private:
 	WTSSessionMap*		m_mapSessions;
 	WTSCommodityMap*	m_mapCommodities;
 	WTSContractMap*		m_mapContracts;
-	//手续费模板
-	typedef struct _FeeItem
-	{
-		double	_open;
-		double	_close;
-		double	_close_today;
-		bool	_by_volume;
+	////手续费模板
+	//typedef struct _FeeItem
+	//{
+	//	double	_open;
+	//	double	_close;
+	//	double	_close_today;
+	//	bool	_by_volume;
 
-		_FeeItem()
-		{
-			memset(this, 0, sizeof(_FeeItem));
-		}
-	} FeeItem;
-	typedef faster_hashmap<std::string, FeeItem>	FeeMap;
-	FeeMap		_fee_map;
+	//	_FeeItem()
+	//	{
+	//		memset(this, 0, sizeof(_FeeItem));
+	//	}
+	//} FeeItem;
+	//typedef faster_hashmap<std::string, FeeItem>	FeeMap;
+	//FeeMap		_fee_map;
 };
 

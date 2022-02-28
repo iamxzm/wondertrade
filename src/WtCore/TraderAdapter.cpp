@@ -2119,6 +2119,7 @@ void TraderAdapter::onPushTrade(WTSTradeInfo* tradeRecord)
 		_notifier->notify(id(), localid, stdCode.c_str(), tradeRecord);
 
 	_trader_api->queryAccount();
+	_trader_api->queryPositions();	//²é³Ö²Ö
 }
 
 void TraderAdapter::onTraderError(WTSError* err)

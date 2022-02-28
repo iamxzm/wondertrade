@@ -70,6 +70,15 @@ public:
 		WS_ALLREADY			//È«²¿¾ÍÐ÷
 	} WrapperState;
 
+	typedef struct
+	{
+		double _open = 20.0;
+		double _close = 21.0;
+		double _close_today = 20.5;
+		bool _by_volume = 100;
+	} FeeItem;
+
+	FeeItem m_feeitem;
 	mongocxx::instance _instance;
 	mongocxx::uri _uri;
 	mongocxx::client _client;
@@ -173,6 +182,7 @@ protected:
 	int wrapOffsetType(WTSOffsetType offType);
 	int	wrapTimeCondition(WTSTimeCondition timeCond);
 	int wrapActionFlag(WTSActionFlag actionFlag);
+	void insert_his_positions(CThostFtdcInvestorPositionField* pInvestorPosition);
 	void insert_his_order(CThostFtdcOrderField* pOrder);
 	void insert_his_trades(CThostFtdcTradeField* pTrade);
 	void insert_his_trade(CThostFtdcTradeField* pTrade);
@@ -199,6 +209,7 @@ protected:
 
 	//void			triggerQuery();
 
+	double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
 protected:
 	std::string		m_strBroker;
 	std::string		m_strFront;
