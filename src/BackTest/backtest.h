@@ -183,6 +183,30 @@ void CbOrdQue(const char* stdCode, OrdQueStruct* ordQue);
 
 void CbTrans(const char* stdCode, TransStruct* trans);
 
+bool Hft_Cancel(unsigned long localid)
+{
+	unsigned long cHandle = 0;
+	return hft_cancel(cHandle, localid);
+}
+
+std::string Hft_Cancel_All(const char* stdCode, bool isBuy)
+{
+	unsigned long cHandle = 0;
+	return hft_cancel_all(cHandle, stdCode, isBuy);
+}
+
+std::string Hft_Buy(const char* stdCode, double price, double qty, const char* userTag)
+{
+	unsigned long cHandle = 0;
+	return hft_buy(cHandle, stdCode, price, qty, userTag);
+}
+
+std::string Hft_Sell(const char* stdCode, double price, double qty, const char* userTag)
+{
+	unsigned long cHandle = 0;
+	return hft_sell(cHandle, stdCode, price, qty, userTag);
+}
+
 BarStruct* BarStrTras(BarStruct* bar,WTSBarStruct* wtbar)
 {
 	bar->date = wtbar->date;
