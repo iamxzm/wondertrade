@@ -2,32 +2,34 @@
 
 void GetBar(const char* code, const char* period, BarStruct* bar, unsigned long, bool isLast)
 {
-
+	if (bar)
+		printf("GetBar@%u\r\n", bar->time);
 }
 
 void GetTick(const char* code, TickStruct* tick, unsigned long count, bool isLast)
 {
-
+	if (tick)
+		printf("GetTick@%u\r\n", tick->action_time);
 }
 
 void Tick(const char* code, TickStruct* tick)
 {
-
+	printf("Tick newTick:%u %u %f\r\n", tick->action_date, tick->action_time, tick->price);
 }
 
 void Calc(unsigned long curDate, unsigned long curTime)
 {
-
+	printf("Calc @ %u.%u\r\n", curDate, curTime);
 }
 
 void Calc_Done(unsigned long curDate, unsigned long curTime)
 {
-
+	printf("Calc_Done @ %u.%u\r\n", curDate, curTime);
 }
 
 void Bar(const char* code, const char* period, BarStruct* bar)
 {
-
+	printf("on_bar%u\r\n", bar->time);
 }
 
 void Session_Event(unsigned long curTDate, bool isBegin)
