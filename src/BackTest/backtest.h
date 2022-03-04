@@ -415,7 +415,7 @@ void on_calc(CtxHandler ctxid, WtUInt32 curDate, WtUInt32 curTime)
 
 void on_calc_done(CtxHandler ctxid, WtUInt32 curDate, WtUInt32 curTime)
 {
-	printf("on_calc_done @ %u.%u\r\n", curDate, curTime);
+	//printf("on_calc_done @ %u.%u\r\n", curDate, curTime);
 }
 
 void on_bar(CtxHandler ctxid, const char* code, const char* period, WTSBarStruct* newBar)
