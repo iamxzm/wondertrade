@@ -17,3 +17,18 @@ RUN ./install_mongo.sh
 RUN ./install_mongocxx.sh
 
 RUN git clone http://xiongzhimin:xiongzhimin@192.168.214.112:7070/bitbucket/scm/lhjy/lsqt_trade_core_v2.git
+
+RUN cp -r /usr/local/include/bsoncxx/v_noabi/bsoncxx/* /usr/local/include/bsoncxx
+RUN cp -r /usr/local/include/mongocxx/v_noabi/mongocxx/* /usr/local/include/mongocxx
+
+WORKDIR lsqt_trade_core_v2/src
+RUN pwd
+RUN chmod 777 build_debug.sh
+RUN ./build_debug.sh
+RUN cp -r ../dist/config/* ./build_Debug/bin/WtTester/
+
+CMD ["bash", "./run.sh"]
+
+
+#CMD ["./build_Debug/bin/WtTester/BackTest"]
+#RUN sh /root/lsqt_trade_core_v2/src/build_debug.sh
