@@ -156,6 +156,7 @@ void config_backtest(const char* cfgfile, bool isFile)
 	if (inited)
 		return;
 
+	getRunner().config_setting("setting.json", true);
 	if (strlen(cfgfile) == 0)
 		getRunner().config("configbt.json", true);
 	else

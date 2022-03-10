@@ -3058,7 +3058,8 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 			datelist._sdate = hotSec._s_date;
 			datelist._edate = hotSec._e_date;
 			if (datelist._cnt_date == 0) {
-				datelist._cnt_date = datelist._sdate;
+				//datelist._cnt_date = datelist._sdate;
+				datelist._cnt_date = tickList._date;
 			}
 			ostringstream oss;
 			oss << datelist._cnt_date;

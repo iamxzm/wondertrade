@@ -336,6 +336,10 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 
 	//×ò½á
 	_close_price = newTick->presettle();
+	if (decimal::eq(_close_price, 0.0))
+	{
+		_close_price = newTick->open();
+	}
 	//½áËã¼Û
 	_settlepx = newTick->price();
 
