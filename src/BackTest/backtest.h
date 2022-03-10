@@ -488,8 +488,6 @@ void init()
 
 	run_backtest(true, true);
 
-	release_backtest();
-
 	for (int i = 0; i < 20; i++)
 	{
 		printf("%d\r\n", i);
