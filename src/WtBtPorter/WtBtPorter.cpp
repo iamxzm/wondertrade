@@ -157,10 +157,12 @@ void config_backtest(const char* cfgfile, bool isFile)
 		return;
 
 	getRunner().config_setting("setting.json", true);
+	printf("after config_setting");
 	if (strlen(cfgfile) == 0)
 		getRunner().config("configbt.json", true);
 	else
 		getRunner().config(cfgfile, isFile);
+	printf("after config(cfgfile, isFile)");
 }
 
 void set_time_range(WtUInt64 stime, WtUInt64 etime)
