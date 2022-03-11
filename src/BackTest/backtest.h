@@ -480,11 +480,19 @@ void init()
 #endif
 	register_hft_callbacks(on_init, on_tick, on_bar, cbChnl, cbOrd, cbTrd, cbEntrust, cbOrdDtl, cbOrdQue, cbTrans, on_session_event);
 
+	printf("after register_hft_callbacks\n");
+
 	auto id = init_hft_mocker("test", true);
+
+	printf("after init_hft_mocker\n");
 
 	init_backtest("logcfg.json", true);
 
+	printf("after init_backtest\n");
+
 	config_backtest("config.json", true);
+
+	printf("after config_backtest\n");
 
 	run_backtest(true, true);
 
