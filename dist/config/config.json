@@ -16,10 +16,12 @@
     },
     "env":{
         "mocker":"hft",
-        "slippage": 1
+        "slippage": 1,
+		"init_money":0.0
     },
     "cta":{
         "module":"libWtCtaStraFact.so",
+		"name":"",
 	"use_newpx":true,
 	"error_rate":1,
         "strategy":{

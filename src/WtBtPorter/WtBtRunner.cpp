@@ -434,25 +434,15 @@ void WtBtRunner::config_setting(const char* cfgFile, bool isFile /* = true */)
 	WTSVariant* cfg = WTSVariant::createObject();
 	jsonToVariant(root, cfg);
 
-	WTSLogger::info("read setting.json file\n");
 	const char* markerDataType = cfg->getCString("marketDataType");
-	WTSLogger::info("markerDataType");
 	const char* traderWsUrl = cfg->getCString("traderWsUrl");
-	WTSLogger::info("traderWsUrl");
 	const char* strategyRecordId = cfg->getCString("strategyRecordId");
-	WTSLogger::info("strategyRecordId");
 	const char* type = cfg->getCString("type");
-	WTSLogger::info("type");
 	const char* quotationSubUrl = cfg->getCString("quotationSubUrl");
-	WTSLogger::info("quotationSubUrl");
 	double initMoney = cfg->getDouble("initMoney");
-	WTSLogger::info("initMoney");
 	const char* backtestStartDate = cfg->getCString("backtestStartDate");
-	WTSLogger::info("backtestStartDate");
 	const char* backtestEndDate = cfg->getCString("backtestEndDate");
-	WTSLogger::info("backtestEndDate");
 	const char* logstashHost = cfg->getCString("logstashHost");
-	WTSLogger::info("logstashHost");
 	int logstashPort = cfg->getInt32("logstashPort");
 	/*const char* RealStartDate = cfg->getCString("RealStartDate");
 	const char* RealEndDate = cfg->getCString("RealEndDate");*/
@@ -481,11 +471,12 @@ void WtBtRunner::config_setting(const char* cfgFile, bool isFile /* = true */)
 	root_1["replayer"]["stime"].SetUint64(stime);
 	root_1["replayer"]["etime"].SetUint64(etime);
 	root_1["env"]["init_money"] = initMoney;
-	
+	WTSLogger::info("after initMoney");
 	if (strcmp(mode, "hft") == 0 && cfgMode)
 	{
 		std::string stra_id = strategyRecordId;
 		root_1["hft"]["name"].SetString(stra_id.c_str(), root_1.GetAllocator());
+		WTSLogger::info("after name");
 	}
 
 	rj::StringBuffer strBuf;
