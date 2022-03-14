@@ -434,6 +434,7 @@ void WtBtRunner::config_setting(const char* cfgFile, bool isFile /* = true */)
 	WTSVariant* cfg = WTSVariant::createObject();
 	jsonToVariant(root, cfg);
 
+	WTSLogger::info("read setting.json file\n");
 	const char* markerDataType = cfg->getCString("marketDataType");
 	const char* traderWsUrl = cfg->getCString("traderWsUrl");
 	const char* strategyRecordId = cfg->getCString("strategyRecordId");
@@ -446,7 +447,8 @@ void WtBtRunner::config_setting(const char* cfgFile, bool isFile /* = true */)
 	int logstashPort = cfg->getInt32("logstashPort");
 	/*const char* RealStartDate = cfg->getCString("RealStartDate");
 	const char* RealEndDate = cfg->getCString("RealEndDate");*/
-	
+	WTSLogger::info("after read setting.json");
+
 	std::string content_1;
 	StdFile::read_file_content("config.json", content_1);
 

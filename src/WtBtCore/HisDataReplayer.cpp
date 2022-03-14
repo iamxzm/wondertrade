@@ -3129,7 +3129,7 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 			}
 			else
 			{
-				WTSLogger::debug("hot contract &s last day &u tick date load complete", hotSec._code, datelist._cnt_date);
+				WTSLogger::debug("hot contract %s last day %u tick date load complete", hotSec._code.c_str(), datelist._cnt_date);
 			}
 			tickList._count += idx;
 			if (idx == 0)
