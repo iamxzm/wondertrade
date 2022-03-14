@@ -19,7 +19,7 @@
         "slippage": 1,
 		"init_money":0.0
     },
-    "cta":{
+    "hft":{
         "module":"libWtCtaStraFact.so",
 		"name":"",
 	"use_newpx":true,
