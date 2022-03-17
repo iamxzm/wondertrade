@@ -3057,9 +3057,17 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 			auto& datelist = _datelistmap[hotSec._code];
 			datelist._sdate = hotSec._s_date;
 			datelist._edate = hotSec._e_date;
-			if (datelist._cnt_date == 0) {
-				//datelist._cnt_date = datelist._sdate;
+			//if (datelist._cnt_date == 0) {
+			//	//datelist._cnt_date = datelist._sdate;
+			//	datelist._cnt_date = tickList._date;
+			//}
+			if (datelist._sdate <= uDate && datelist._edate >= uDate)
+			{
 				datelist._cnt_date = tickList._date;
+			}
+			else
+			{
+				continue;
 			}
 			ostringstream oss;
 			oss << datelist._cnt_date;
@@ -3123,9 +3131,6 @@ bool HisDataReplayer::cacheRawTicksFromDB(const std::string& key, const char* st
 						idx++;
 					}
 				}
-			}
-			if (datelist._cnt_date < datelist._edate) {
-				datelist._cnt_date += 1;
 			}
 			else
 			{
