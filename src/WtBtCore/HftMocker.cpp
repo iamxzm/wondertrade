@@ -1476,6 +1476,7 @@ void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 		"instrument_id" << inst_id <<
 		"exchange_order_id" << "" <<
 		"order_type" << direction <<
+		"exchange_type" << "M008_1" <<
 		"close_profit" << pInfo._closeprofit <<
 		"volume" << dInfo._volume <<
 		"exchange_id" << exch_id <<

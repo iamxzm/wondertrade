@@ -1377,6 +1377,7 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 		"instrument_id" << pTrade->InstrumentID <<
 		"exchange_order_id" << pTrade->OrderSysID <<
 		"order_type" << direction <<
+		"exchange_type" << "M008_1" <<
 		"close_profit" << 0.0 <<
 		"volume" << pTrade->Volume <<
 		"exchange_id" << pTrade->ExchangeID <<
