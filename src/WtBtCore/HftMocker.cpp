@@ -1470,7 +1470,7 @@ void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 	position_doc = document{} << "trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
 		"offset" << off_set <<
 		"seqno" << "" <<
-		"exchange_trade_id" << "" <<
+		"exchange_trade_id" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
 		"trading_day" << to_string(_replayer->get_trading_date()) <<
 		"type" << "" <<
 		"instrument_id" << inst_id <<
@@ -1483,7 +1483,7 @@ void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 		"price" << dInfo._price <<
 		"strategy_id" << _name <<
 		"commission" << fee <<
-		"order_id" << "" <<
+		"order_id" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
 		"direction" << direction << finalize;
 
 	c1_mtx_1.lock();
