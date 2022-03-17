@@ -471,12 +471,10 @@ void WtBtRunner::config_setting(const char* cfgFile, bool isFile /* = true */)
 	root_1["replayer"]["stime"].SetUint64(stime);
 	root_1["replayer"]["etime"].SetUint64(etime);
 	root_1["env"]["init_money"] = initMoney;
-	WTSLogger::info("after initMoney");
 	if (strcmp(mode, "hft") == 0 && cfgMode)
 	{
 		std::string stra_id = strategyRecordId;
 		root_1["hft"]["name"].SetString(stra_id.c_str(), root_1.GetAllocator());
-		WTSLogger::info("after name");
 	}
 
 	rj::StringBuffer strBuf;
