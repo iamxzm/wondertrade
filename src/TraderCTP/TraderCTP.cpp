@@ -1367,7 +1367,7 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 	{
 		direction = "P032_2";
 	}
-	bsoncxx::document::value trade_doc = document{} << 
+	bsoncxx::document::value trade_doc = document{} <<
 		"trade_date_time" << timetrans(pTrade->TradingDay, pTrade->TradeTime) * 1000 <<
 		"offset" << offset <<
 		"seqno" << pTrade->SequenceNo <<
@@ -1376,6 +1376,7 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 		"type" << pTrade->TradeType <<
 		"instrument_id" << pTrade->InstrumentID <<
 		"exchange_order_id" << pTrade->OrderSysID <<
+		"order_type" << direction <<
 		"close_profit" << 0.0 <<
 		"volume" << pTrade->Volume <<
 		"exchange_id" << pTrade->ExchangeID <<
