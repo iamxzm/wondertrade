@@ -439,7 +439,7 @@ void WtBtRunner::config_setting(const char* cfgFile, bool isFile /* = true */)
 	const char* strategyRecordId = cfg->getCString("strategyRecordId");
 	const char* type = cfg->getCString("type");
 	const char* quotationSubUrl = cfg->getCString("quotationSubUrl");
-	double initMoney = cfg->getDouble("initMoney");
+	const char* initMoney = cfg->getCString("initMoney");
 	const char* backtestStartDate = cfg->getCString("backtestStartDate");
 	const char* backtestEndDate = cfg->getCString("backtestEndDate");
 	const char* logstashHost = cfg->getCString("logstashHost");
@@ -470,7 +470,8 @@ void WtBtRunner::config_setting(const char* cfgFile, bool isFile /* = true */)
 	rj::Value& var = root_1;
 	root_1["replayer"]["stime"].SetUint64(stime);
 	root_1["replayer"]["etime"].SetUint64(etime);
-	root_1["env"]["init_money"] = initMoney;
+	double dinitMoney = atof(initMoney);
+	root_1["env"]["init_money"] = dinitMoney;
 	if (strcmp(mode, "hft") == 0 && cfgMode)
 	{
 		std::string stra_id = strategyRecordId;
