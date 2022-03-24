@@ -399,6 +399,7 @@ void on_gettick(CtxHandler ctxid, const char* code, WTSTickStruct* tick, WtUInt3
 void on_init(CtxHandler ctxid)
 {
 	hft_get_bars(ctxid, "SHFE.ag.HOT", "m1", 30, on_getbar);
+	hft_sub_ticks(ctxid, "SHFE.ag.HOT");
 }
 
 void on_tick(CtxHandler ctxid, const char* stdCode, WTSTickStruct* newTick)
