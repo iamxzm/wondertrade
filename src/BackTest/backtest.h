@@ -4,8 +4,8 @@
 #include "../Share/DLLHelper.hpp"
 #include "../Share/StdUtils.hpp"
 
-const char* stdCode;
-int cnt = 0;
+const char* _stdCode;
+int cnt;
 
 struct BarStruct
 {
@@ -401,8 +401,8 @@ void on_gettick(CtxHandler ctxid, const char* code, WTSTickStruct* tick, WtUInt3
 
 void on_init(CtxHandler ctxid)
 {
-	hft_get_bars(ctxid, stdCode, "m1", cnt, on_getbar);
-	hft_sub_ticks(ctxid, stdCode);
+	hft_get_bars(ctxid, _stdCode, "m1", cnt, on_getbar);
+	hft_sub_ticks(ctxid, _stdCode);
 }
 
 void on_tick(CtxHandler ctxid, const char* stdCode, WTSTickStruct* newTick)
@@ -482,7 +482,9 @@ void init(const char* stdcode,int count)
 #else
 	DLLHelper::load_library("libWtBtPorter.so");
 #endif
-	stdCode = stdcode;
+	std::string code = stdcode;
+	code += ".HOT";
+	_stdCode = code.c_str();
 	cnt = count;
 	register_hft_callbacks(on_init, on_tick, on_bar, cbChnl, cbOrd, cbTrd, cbEntrust, cbOrdDtl, cbOrdQue, cbTrans, on_session_event);
 

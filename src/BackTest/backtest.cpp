@@ -81,7 +81,7 @@ void CbTrans(const char* stdCode, TransStruct* trans)
 int main()
 {
 	printf("before init");
-	init("SHFE.ag.HOT", 30);
+	init("SHFE.ag", 30);
 	printf("after init");
 	return 0;
 }
