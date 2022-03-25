@@ -4,6 +4,9 @@
 #include "../Share/DLLHelper.hpp"
 #include "../Share/StdUtils.hpp"
 
+const char* stdCode;
+int cnt = 0;
+
 struct BarStruct
 {
 public:
@@ -398,8 +401,8 @@ void on_gettick(CtxHandler ctxid, const char* code, WTSTickStruct* tick, WtUInt3
 
 void on_init(CtxHandler ctxid)
 {
-	hft_get_bars(ctxid, "SHFE.ag.HOT", "m1", 30, on_getbar);
-	hft_sub_ticks(ctxid, "SHFE.ag.HOT");
+	hft_get_bars(ctxid, stdCode, "m1", cnt, on_getbar);
+	hft_sub_ticks(ctxid, stdCode);
 }
 
 void on_tick(CtxHandler ctxid, const char* stdCode, WTSTickStruct* newTick)
@@ -472,13 +475,15 @@ void cbTrans(CtxHandler cHandle, const char* stdCode, WTSTransStruct* trans)
 	CbTrans(stdCode, &transtruct);
 }
 
-void init()
+void init(const char* stdcode,int count)
 {
 #ifdef _WIN32
 	DLLHelper::load_library("WtBtPorter.dll");
 #else
 	DLLHelper::load_library("libWtBtPorter.so");
 #endif
+	stdCode = stdcode;
+	cnt = count;
 	register_hft_callbacks(on_init, on_tick, on_bar, cbChnl, cbOrd, cbTrd, cbEntrust, cbOrdDtl, cbOrdQue, cbTrans, on_session_event);
 
 	auto id = init_hft_mocker("test", true);
