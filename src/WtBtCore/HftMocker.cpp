@@ -559,6 +559,7 @@ otp::OrderIDs HftMocker::stra_buy(const char* stdCode, double price, double qty,
 	order._price = price;
 	order._total = qty;
 	order._left = qty;
+	order.insert_date_time = getTimeStamp();
 
 	{
 		_mtx_ords.lock();
@@ -588,14 +589,14 @@ void HftMocker::on_order(uint32_t localid, const char* stdCode, bool isBuy, doub
 		_strategy->on_order(this, localid, stdCode, isBuy, totalQty, leftQty, price, isCanceled, userTag);
 }
 
-void HftMocker::on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag/* = ""*/)
+void HftMocker::on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag/* = ""*/,time_t insert_date_time)
 {
 	if (_strategy)
 		_strategy->on_trade(this, localid, stdCode, isBuy, vol, price, userTag);
 
 	const PosInfo& posInfo = _pos_map[stdCode];
 	double curPos = posInfo._volume + vol * (isBuy ? 1 : -1);
-	do_set_position(stdCode, instid, curPos, price, userTag);
+	do_set_position(stdCode, instid, curPos, insert_date_time, price, userTag);
 }
 
 void HftMocker::on_entrust(uint32_t localid, const char* stdCode, bool bSuccess, const char* message, const char* userTag/* = ""*/)
@@ -1018,7 +1019,7 @@ bool HftMocker::procOrder(uint32_t localid,std::string instid)
 	auto vols = splitVolume((uint32_t)maxQty);
 	for(uint32_t curQty : vols)
 	{
-		on_trade(ordInfo._localid, instid, ordInfo._code, ordInfo._isBuy, curQty, curPx, ordInfo._usertag);
+		on_trade(ordInfo._localid, instid, ordInfo._code, ordInfo._isBuy, curQty, curPx, ordInfo._usertag,ordInfo.insert_date_time);
 
 		ordInfo._left -= curQty;
 		on_order(localid, ordInfo._code, ordInfo._isBuy, ordInfo._total, ordInfo._left, ordInfo._price, false, ordInfo._usertag);
@@ -1050,6 +1051,7 @@ otp::OrderIDs HftMocker::stra_sell(const char* stdCode, double price, double qty
 	order._price = price;
 	order._total = qty;
 	order._left = qty;
+	order.insert_date_time = getTimeStamp();
 
 	{
 		StdLocker<StdRecurMutex> lock(_mtx_ords);
@@ -1431,7 +1433,7 @@ void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, s
 	c1_mtx_1.unlock();
 }
 
-void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
+void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset,time_t insert_date_time)
 {
 	auto db = _replayer->_client["lsqt_db"];
 	auto _poscoll_1 = db["his_trade"];
@@ -1485,6 +1487,7 @@ void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 		"strategy_id" << _name <<
 		"commission" << fee <<
 		"order_id" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+		"insert_date_time" << insert_date_time <<
 		"direction" << direction << finalize;
 
 	c1_mtx_1.lock();
@@ -1494,7 +1497,7 @@ void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, st
 	c1_mtx_1.unlock();
 }
 
-void HftMocker::do_set_position(const char* stdCode, std::string instid, double qty, double price /* = 0.0 */, const char* userTag /*= ""*/)
+void HftMocker::do_set_position(const char* stdCode, std::string instid, double qty, time_t insert_date_time, double price /* = 0.0 */, const char* userTag /*= ""*/)
 {
 	PosInfo& pInfo = _pos_map[stdCode];
 	double curPx = price;
@@ -1557,7 +1560,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 		{
 			insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
 			insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
-			insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+			insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
 		}
 
 
@@ -1613,7 +1616,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
 				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
-				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
 			}
 
 			//这里写成交记录
@@ -1660,7 +1663,7 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			{
 				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
 				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
-				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
 			}
 
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), fee, userTag);
@@ -1673,4 +1676,14 @@ void  HftMocker::set_initacc(double money)
 	init_money = money;
 	_total_money = init_money;
 	_static_balance = init_money;
+}
+
+
+std::time_t HftMocker::getTimeStamp()
+{
+	std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+	auto tmp = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
+	std::time_t timestamp = tmp.count();
+	//std::time_t timestamp = std::chrono::system_clock::to_time_t(tp);
+	return timestamp;
 }

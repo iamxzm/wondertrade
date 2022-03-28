@@ -43,7 +43,7 @@ public:
 	virtual void on_trans_updated(const char* stdCode, WTSTransData* newTrans) override;
 
 
-	virtual void on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag) override;
+	virtual void on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag,time_t insert_date_time) override;
 
 };
 

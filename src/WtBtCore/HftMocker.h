@@ -136,7 +136,7 @@ public:
 	virtual const char* stra_load_user_data(const char* key, const char* defVal = "") override;
 
 	//////////////////////////////////////////////////////////////////////////
-	virtual void on_trade(uint32_t localid, std::string instid,const char* stdCode, bool isBuy, double vol, double price, const char* userTag);
+	virtual void on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag, time_t insert_date_time);
 
 	virtual void on_order(uint32_t localid, const char* stdCode, bool isBuy, double totalQty, double leftQty, double price, bool isCanceled, const char* userTag);
 
@@ -151,6 +151,8 @@ public:
 	void	step_tick();
 	void	set_initacc(double money);
 
+	std::time_t getTimeStamp();
+
 private:
 	typedef std::function<void()> Task;
 	void	postTask(Task task);
@@ -158,7 +160,7 @@ private:
 
 	bool	procOrder(uint32_t localid, std::string instid);
 
-	void	do_set_position(const char* stdCode, std::string instid, double qty, double price = 0.0, const char* userTag = "");
+	void	do_set_position(const char* stdCode, std::string instid, double qty, time_t insert_date_time, double price = 0.0, const char* userTag = "");
 	void	update_dyn_profit(const char* stdCode, WTSTickData* newTick);
 
 	void	dump_outputs();
@@ -248,6 +250,7 @@ private:
 		double	_total;
 		double	_left;
 		char	_usertag[32];
+		time_t insert_date_time;
 		
 		uint32_t	_localid;
 
@@ -309,7 +312,7 @@ private:
 	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee,
 		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
 	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee,
-		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset, time_t insert_date_time);
 	typedef faster_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
 
