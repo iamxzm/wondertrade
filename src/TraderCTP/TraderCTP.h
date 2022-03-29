@@ -11,6 +11,7 @@
 
 #include <string>
 #include <queue>
+#include <map>
 #include <stdint.h>
 
 #include "../Includes/WTSTypes.h"
@@ -83,6 +84,26 @@ public:
 	mongocxx::uri _uri;
 	mongocxx::client _client;
 
+	struct front_session_ref
+	{
+		int front_id;
+		int session_id;
+		std::string oref;
+
+		bool operator==(const front_session_ref& key) const //需要重载==才能find
+		{
+			return front_id == key.front_id && session_id == key.session_id && oref == key.oref;
+		};
+		bool operator < (const front_session_ref& key) const
+		{
+			return front_id < key.front_id || (front_id == key.front_id && session_id < key.session_id) ||
+				(front_id == key.front_id && session_id == key.session_id && oref < key.oref);
+		}
+
+	}_f_s_r_struct;
+
+	std::map<std::string, front_session_ref> _sys_front_map;
+	std::map<front_session_ref, time_t> _front_time_map;
 private:
 
 	int confirm();

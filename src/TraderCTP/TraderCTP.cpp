@@ -1347,6 +1347,9 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 
 	//std::string productid = getproduct(pTrade->InstrumentID);
 	//double fee = m_sink->getBaseDataMgr()->calc_fee(productid.c_str(), pTrade->Price, pTrade->Volume, 0);
+	auto it = _sys_front_map[pTrade->OrderSysID];
+	
+	time_t insert_date_time = _front_time_map[_f_s_r_struct];
 
 	std::string offset = "";
 	if (pTrade->OffsetFlag == THOST_FTDC_OF_Open) {
@@ -1386,6 +1389,7 @@ void TraderCTP::insert_his_trade(CThostFtdcTradeField* pTrade)
 		"strategy_id" << m_stra_name <<
 		"commission" << calc_fee(pTrade->InstrumentID, pTrade->Price, pTrade->Volume, 0) <<
 		"order_id" << pTrade->OrderLocalID <<
+		"insert_date_time" << insert_date_time <<
 		"direction" << direction << finalize;
 
 	c1_mtx.lock();
@@ -1401,6 +1405,12 @@ void TraderCTP::OnRtnOrder(CThostFtdcOrderField *pOrder)
 		"pOrder->time:" << pOrder->InsertTime << endl;*/
 	WTSOrderInfo *orderInfo = makeOrderInfo(pOrder);
 	insert_his_order(pOrder);
+	auto sys_fro_map = _sys_front_map[pOrder->OrderSysID];
+	sys_fro_map.front_id = pOrder->FrontID;
+	sys_fro_map.session_id = pOrder->SessionID;
+	sys_fro_map.oref = pOrder->OrderRef;
+
+	_front_time_map[sys_fro_map] = timetrans(pOrder->TradingDay, pOrder->InsertTime) * 1000;
 	if (orderInfo)
 	{
 		if (m_sink)
