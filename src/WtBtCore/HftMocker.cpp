@@ -414,6 +414,7 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 		_changepos = false;
 		set_dayaccount(stdCode, newTick);
 	}
+
 }
 
 void HftMocker::on_tick_updated(const char* stdCode, WTSTickData* newTick)
@@ -714,9 +715,11 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
 
 	//策略累计收益率
-	bsoncxx::stdx::optional<bsoncxx::document::value> day_result = daycoll.find_one(make_document(kvp("accounts.314159.account_id", "314159"),
+	bsoncxx::stdx::optional<bsoncxx::document::value> day_result = daycoll.find_one(make_document(
 		kvp("trade_day", to_string(_pretraderday)),
-		kvp("strategy_id", _name)));
+		kvp("strategy_id", _name),
+		kvp("accounts.314159.account_id", "314159")
+		));
 
 	double preRate = 0;
 	if (day_result)
@@ -861,7 +864,7 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	else //更新day acc
 	{
 		daycoll.update_one(
-			make_document(kvp("trade_day", to_string(_traderday)), kvp("accounts.314159.account_id", "314159"), kvp("strategy_id", _name)),
+			make_document(kvp("trade_day", to_string(_traderday)),  kvp("strategy_id", _name), kvp("accounts.314159.account_id", "314159")),
 			make_document(kvp("$set", make_document(kvp("available", _total_money),
 				kvp("close_profit", _total_closeprofit),
 				kvp("day_profit", _day_profit),
@@ -885,7 +888,8 @@ void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool b
 	}
 
 	//accounts数据库
-	bsoncxx::stdx::optional<bsoncxx::document::value> maybe_result = allcoll.find_one(make_document(kvp("accounts.314159.account_id", "314159"), kvp("strategy_id", _name)));
+	bsoncxx::stdx::optional<bsoncxx::document::value> maybe_result = allcoll.find_one(make_document(kvp("strategy_id", _name),kvp("accounts.314159.account_id", "314159")));
+
 	if (maybe_result)
 	{
 		allcoll.update_one(

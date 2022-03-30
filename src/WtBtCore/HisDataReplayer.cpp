@@ -67,7 +67,7 @@ int HisDataReplayer::StampTimeHM(unsigned long long timestamp)
 {
 	//int ms = timestamp % 1000;//取毫秒
 	time_t tick = (time_t)(timestamp / 1000);//转换时间
-	tick = tick - 8 * 60 * 60;
+	tick = tick + 8 * 60 * 60;
 	struct tm tm;
 	char s[40];
 	tm = *localtime(&tick);
@@ -81,7 +81,7 @@ int HisDataReplayer::StampTimeYmd(unsigned long long timestamp)
 {
 	//int ms = timestamp % 1000;//取毫秒
 	time_t tick = (time_t)(timestamp / 1000);//转换时间
-	tick = tick - 8 * 60 * 60;
+	tick = tick + 8 * 60 * 60;
 	struct tm tm;
 	char s[40];
 	tm = *localtime(&tick);
@@ -95,7 +95,7 @@ int HisDataReplayer::StampTimeHMSms(long long timestamp)
 {
 	int ms = timestamp % 1000;//取毫秒
 	time_t tick = (time_t)(timestamp / 1000);//转换时间
-	tick = tick - 8 * 60 * 60;
+	tick = tick + 8 * 60 * 60;
 	struct tm tm;
 	char s[40];
 	tm = *localtime(&tick);
