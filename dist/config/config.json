@@ -1,6 +1,7 @@
 {
     "replayer":{
         "mode":"db",
+		"mongodb_uri":"mongodb://192.168.214.199:27017",
         "path":"./storage/",
         "stime":202005082100,
         "etime":202112290000,

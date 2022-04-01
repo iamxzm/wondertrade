@@ -160,6 +160,7 @@ private:
 public:
 	HisDataReplayer();
 	~HisDataReplayer();
+	std::string _mongodb_uri;
 	mongocxx::instance _instance;
 	mongocxx::uri _uri;
 	mongocxx::client _client;

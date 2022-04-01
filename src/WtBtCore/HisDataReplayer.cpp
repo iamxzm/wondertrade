@@ -179,8 +179,8 @@ HisDataReplayer::HisDataReplayer()
 	, _closed_tdate(0)
 	, _tick_simulated(true)
 	, _running(false)
-	,_uri("mongodb://192.168.214.199:27017")
-	,_client(_uri)
+	/*,_uri("mongodb://192.168.214.199:27017")
+	,_client(_uri)*/
 {
 	//mongocxx::instance instance{};
 }
@@ -196,6 +196,8 @@ bool HisDataReplayer::init(WTSVariant* cfg, EventNotifier* notifier /* = NULL */
 	_notifier = notifier;
 
 	_mode = cfg->getCString("mode");
+	_mongodb_uri= cfg->getString("mongodb_uri");
+	_client = mongocxx::client(mongocxx::uri(_mongodb_uri));
 	_base_dir = StrUtil::standardisePath(cfg->getCString("path"));
 
 	_begin_time = cfg->getUInt64("stime");

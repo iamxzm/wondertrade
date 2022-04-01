@@ -567,7 +567,7 @@ otp::OrderIDs HftMocker::stra_buy(const char* stdCode, double price, double qty,
 		_orders[localid] = order;
 		_mtx_ords.unlock();
 	}
-
+	//WTSLogger::info("localid%u,isBuy%d,price%f,total%f,left%f\n", order._localid, order._isBuy, order._price, order._total, order._left);
 	postTask([this, localid](){
 		const OrderInfo& ordInfo = _orders[localid];
 		on_entrust(localid, ordInfo._code, true, "下单成功", ordInfo._usertag);
@@ -1061,7 +1061,7 @@ otp::OrderIDs HftMocker::stra_sell(const char* stdCode, double price, double qty
 		StdLocker<StdRecurMutex> lock(_mtx_ords);
 		_orders[localid] = order;
 	}
-
+	//WTSLogger::info("localid%u,isBuy%d,price%f,total%f,left%f\n", order._localid, order._isBuy, order._price, order._total, order._left);
 	postTask([this, localid]() {
 		const OrderInfo& ordInfo = _orders[localid];
 		on_entrust(localid, ordInfo._code, true, "下单成功", ordInfo._usertag);
