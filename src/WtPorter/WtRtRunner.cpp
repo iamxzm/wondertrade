@@ -380,12 +380,6 @@ bool WtRtRunner::config(const char* cfgFile, bool isFile /* = true */)
 		WTSLogger::info("Contracts loaded");
 	}
 
-	/*if (cfgBF->get("fees"))
-	{
-		_bd_mgr.loadFees(cfgBF->getCString("fees"));
-		WTSLogger::info("Fees loaded");
-	}*/
-
 	if (cfgBF->get("holiday"))
 	{
 		_bd_mgr.loadHolidays(cfgBF->getCString("holiday"));
