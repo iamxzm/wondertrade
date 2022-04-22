@@ -156,13 +156,10 @@ void config_backtest(const char* cfgfile, bool isFile)
 	if (inited)
 		return;
 
-	getRunner().config_setting("setting.json", true);
-	printf("after config_setting");
 	if (strlen(cfgfile) == 0)
 		getRunner().config("configbt.json", true);
 	else
 		getRunner().config(cfgfile, isFile);
-	printf("after config(cfgfile, isFile)");
 }
 
 void set_time_range(WtUInt64 stime, WtUInt64 etime)
@@ -239,40 +236,40 @@ CtxHandler init_sel_mocker(const char* name, WtUInt32 date, WtUInt32 time, const
 }
 
 #pragma region "CTA²ßÂÔ½Ó¿Ú"
-void cta_enter_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo)
+void cta_enter_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_enter_long(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
+	ctx->stra_enter_long(stdCode, qty, userTag, limitprice, stopprice);
 }
 
-void cta_exit_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo)
+void cta_exit_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_exit_long(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
+	ctx->stra_exit_long(stdCode, qty, userTag, limitprice, stopprice);
 }
 
-void cta_enter_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo)
+void cta_enter_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_enter_short(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
+	ctx->stra_enter_short(stdCode, qty, userTag, limitprice, stopprice);
 }
 
-void cta_exit_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo)
+void cta_exit_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_exit_short(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
+	ctx->stra_exit_short(stdCode, qty, userTag, limitprice, stopprice);
 }
 
 WtUInt32 cta_get_bars(CtxHandler cHandle, const char* stdCode, const char* period, WtUInt32 barCnt, bool isMain, FuncGetBarsCallback cb)
@@ -423,13 +420,13 @@ double cta_get_fund_data(CtxHandler cHandle, int flag)
 	return ctx->stra_get_fund_data(flag);
 }
 
-void cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice ,bool insert_mongo)
+void cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice)
 {
 	CtaMocker* ctx = getRunner().cta_mocker();
 	if (ctx == NULL)
 		return;
 
-	ctx->stra_set_position(stdCode, qty, userTag, limitprice, stopprice, insert_mongo);
+	ctx->stra_set_position(stdCode, qty, userTag, limitprice, stopprice);
 }
 
 WtUInt64 cta_get_first_entertime(CtxHandler cHandle, const char* stdCode)

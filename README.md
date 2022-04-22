@@ -1,3 +1,10 @@
+![WonderTrader2.png](http://wt.f-sailors.cn/wt/logo_qcode_noad.jpg)
+<p align="center">
+    <img src ="https://img.shields.io/badge/version-0.7.1-blueviolet.svg"/>
+    <img src ="https://img.shields.io/badge/platform-windows|linux-yellow.svg"/>
+    <img src ="https://img.shields.io/badge/build-passing-brightgreen"/>
+    <img src ="https://img.shields.io/badge/license-MIT-orange"/>
+</p>
 
 #### *WonderTrader*是什么
 * `WonderTrader`是一个基于`C++`核心模块的，适应全市场**全品种**交易的，**高效率**、**高可用**的量化交易开发框架。
@@ -83,3 +90,10 @@
     ``` shell
     pip install wtpy
     ```
+
+#### 写在最后
+* * *
+* 特别感谢@ZerounNet，他在使用WonderTrader进行实盘交易的过程中也对WonderTrader提出了许多宝贵意见
+* 关注公众号`wondertrader`，可以收到`WonderTrader`的实时资讯
+* 用户交流QQ群上线：`610730738`(加入前请先`star`一下, 然后提供`github`用户名)
+* 更多`WonderTrader`的文档请看<https://wondertrader.github.io/>

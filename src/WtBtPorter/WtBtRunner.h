@@ -12,8 +12,6 @@
 #include "../WtBtCore/EventNotifier.h"
 #include "../WtBtCore/HisDataReplayer.h"
 #include "../Includes/WTSMarcos.h"
-#include <rapidjson/writer.h>
-#include <rapidjson/stringbuffer.h>
 
 
 NS_OTP_BEGIN
@@ -80,7 +78,6 @@ public:
 
 	void	init(const char* logProfile = "", bool isFile = true);
 	void	config(const char* cfgFile, bool isFile = true);
-	void	config_setting(const char* cfgFile, bool isFile = true);
 	void	run(bool bNeedDump = false, bool bAsync = false);
 	void	release();
 	void	stop();
@@ -167,7 +164,5 @@ private:
 
 	StdThreadPtr	_worker;
 	bool			_async;
-
-	double _init_money = 0;
 };
 
