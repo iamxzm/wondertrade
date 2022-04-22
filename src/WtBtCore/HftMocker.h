@@ -10,6 +10,7 @@
 #pragma once
 #include <queue>
 #include <sstream>
+#include <math.h>
 
 #include "HisDataReplayer.h"
 
@@ -19,6 +20,18 @@
 
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
+
+#include <bsoncxx/builder/stream/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+#include <mongocxx/database.hpp>
 
 class HisDataReplayer;
 
@@ -123,7 +136,7 @@ public:
 	virtual const char* stra_load_user_data(const char* key, const char* defVal = "") override;
 
 	//////////////////////////////////////////////////////////////////////////
-	virtual void on_trade(uint32_t localid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag);
+	virtual void on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag, time_t insert_date_time);
 
 	virtual void on_order(uint32_t localid, const char* stdCode, bool isBuy, double totalQty, double leftQty, double price, bool isCanceled, const char* userTag);
 
@@ -136,15 +149,18 @@ public:
 	void	install_hook();
 	void	enable_hook(bool bEnabled = true);
 	void	step_tick();
+	void	set_initacc(double money);
+
+	std::time_t getTimeStamp();
 
 private:
 	typedef std::function<void()> Task;
 	void	postTask(Task task);
 	void	procTask();
 
-	bool	procOrder(uint32_t localid);
+	bool	procOrder(uint32_t localid, std::string instid);
 
-	void	do_set_position(const char* stdCode, double qty, double price = 0.0, const char* userTag = "");
+	void	do_set_position(const char* stdCode, std::string instid, double qty, time_t insert_date_time, double price = 0.0, const char* userTag = "");
 	void	update_dyn_profit(const char* stdCode, WTSTickData* newTick);
 
 	void	dump_outputs();
@@ -152,8 +168,41 @@ private:
 	inline void	log_close(const char* stdCode, bool isLong, uint64_t openTime, double openpx, uint64_t closeTime, double closepx, double qty,
 		double profit, double maxprofit, double maxloss, double totalprofit, const char* enterTag, const char* exitTag);
 
+	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true);
+
 private:
 	HisDataReplayer*	_replayer;
+
+	double		init_money = 100000;			//初始资金
+	double      _balance = 0;					//今总资产
+	double		_total_money = init_money;		//剩余资金
+	double		_static_balance = init_money;	//期初资产
+	double		_close_price = 0;				//昨结算价
+	double		_settlepx;						//今结算价
+	double        _used_margin = 0;				//占用保证金
+	double        _margin_rate = 0.5;			//保证金比例
+	uint64_t		_cur_multiplier = 100;		//当前合约乘数
+
+	std::string _per_strategy_id;
+
+	double		_day_profit = 0;
+	double		_total_profit = 0;				//策略收益
+	double		_benchmark_rate_of_return = 0;	//基准收益率
+	double		_benchmark_cumulative_rate = 0;
+	double		_strategy_cumulative_rate = 0;	//策略累计收益率
+	double		_daily_rate_of_return = 0;		//策略收益率
+	double		_abnormal_rate_of_return = 0;	//日超额收益率
+	int			_win_or_lose_flag;
+
+	bool			_new_trade_day = true;
+	bool		_dayacc_insert_flag = true;
+	bool		_changepos = true;
+	uint32_t    _traderday = 0;
+	uint32_t	_pretraderday;
+	uint32_t	_firstday = 0;
+	double		_firstprice = 0;
+	
+	double		_total_closeprofit = 0;
 
 	bool			_use_newpx;
 	uint32_t		_error_rate;
@@ -201,6 +250,7 @@ private:
 		double	_total;
 		double	_left;
 		char	_usertag[32];
+		time_t insert_date_time;
 		
 		uint32_t	_localid;
 
@@ -233,6 +283,7 @@ private:
 		double		_max_loss;
 		double		_profit;
 		char		_usertag[32];
+		double		_margin;
 
 		_DetailInfo()
 		{
@@ -255,6 +306,13 @@ private:
 			_dynprofit = 0;
 		}
 	} PosInfo;
+
+	void insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee, 
+		std::string exch_id, std::string inst_id, uint64_t curTime);
+	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
+	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset, time_t insert_date_time);
 	typedef faster_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
 

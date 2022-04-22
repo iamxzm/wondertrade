@@ -232,7 +232,7 @@ void CtaStraBaseCtx::load_userdata()
 void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 {
 	std::string filename = WtHelper::getStraDataDir();
-	filename += _name;
+	filename += _name;//策略名
 	filename += ".json";
 	
 	if (!StdFile::exists(filename.c_str()))
@@ -933,7 +933,7 @@ CondList& CtaStraBaseCtx::get_cond_entrusts(const char* stdCode)
 
 //////////////////////////////////////////////////////////////////////////
 //策略接口
-void CtaStraBaseCtx::stra_enter_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
+void CtaStraBaseCtx::stra_enter_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
 {
 	_engine->sub_tick(id(), stdCode);
 	
@@ -978,7 +978,7 @@ void CtaStraBaseCtx::stra_enter_long(const char* stdCode, double qty, const char
 	}
 }
 
-void CtaStraBaseCtx::stra_enter_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
+void CtaStraBaseCtx::stra_enter_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
 {
 	_engine->sub_tick(id(), stdCode);
 	
@@ -1023,7 +1023,7 @@ void CtaStraBaseCtx::stra_enter_short(const char* stdCode, double qty, const cha
 	}
 }
 
-void CtaStraBaseCtx::stra_exit_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
+void CtaStraBaseCtx::stra_exit_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
 {
 	_engine->sub_tick(id(), stdCode);
 	
@@ -1064,7 +1064,7 @@ void CtaStraBaseCtx::stra_exit_long(const char* stdCode, double qty, const char*
 	}
 }
 
-void CtaStraBaseCtx::stra_exit_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
+void CtaStraBaseCtx::stra_exit_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
 {
 	_engine->sub_tick(id(), stdCode);
 	
@@ -1113,7 +1113,7 @@ double CtaStraBaseCtx::stra_get_price(const char* stdCode)
 	return 0.0;
 }
 
-void CtaStraBaseCtx::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
+void CtaStraBaseCtx::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */, bool insert_mongo/*=true*/)
 {
 	_engine->sub_tick(id(), stdCode);
 

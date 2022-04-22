@@ -60,11 +60,11 @@
         {
             "active":true,
             "id":"simnow",
-            "module":"libTraderCTP.so",
-            "front":"tcp://180.168.146.187:10101",
+            "module":"TraderCTP",
+            "front":"tcp://180.168.146.187:10201",
             "broker":"9999",
-            "user":"your account",
-            "pass":"your passwd",
+            "user":"167495",
+            "pass":"xzm123456789",
             "appid":"simnow_client_test",
             "authcode":"0000000000000000",
             "quick":true,
@@ -90,8 +90,8 @@
         {
 			"id":"parser0",
             "active":true,
-            "module":"libParserCTP.so",
-            "front":"tcp://180.168.146.187:10111",
+            "module":"ParserCTP",
+            "front":"tcp://180.168.146.187:10211",
             "broker":"9999",
             "user":"your account",
             "pass":"your passwd"

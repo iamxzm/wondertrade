@@ -14,7 +14,7 @@ void on_getbar(CtxHandler ctxid, const char* code, const char* period, WTSBarStr
 		int x = 1;
 }
 
-void on_gettick(CtxHandler ctxid, const char* code, WTSTickStruct* tick, bool isLast)
+void on_gettick(CtxHandler ctxid, const char* code, WTSTickStruct* tick, WtUInt32 count, bool isLast)
 {
 	if (tick)
 		printf("on_gettick@%u\r\n", tick->action_time);
@@ -22,14 +22,17 @@ void on_gettick(CtxHandler ctxid, const char* code, WTSTickStruct* tick, bool is
 
 void on_init(CtxHandler ctxid)
 {
-	cta_get_bars(ctxid, "CFFEX.IF.HOT", "m5", 30, true, on_getbar);
-	//cta_get_ticks(ctxid, "CFFEX.IF.HOT", 100, on_gettick);
+	//cta_get_bars(ctxid, "CFFEX.IF.HOT", "d1", 30, true, on_getbar);
+	cta_get_bars(ctxid, "SHFE.ag.HOT", "m1", 30, true, on_getbar);
+	//cta_sub_ticks(ctxid, "SHFE.ag.HOT");
+	//cta_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
+	//hft_get_ticks(ctxid, "SHFE.ag.HOT", 100, on_gettick);
 	//cta_log_text(ctxid, "this is a test message");
 }
 
 void on_tick(CtxHandler ctxid, const char* stdCode, WTSTickStruct* newTick)
 {
-	//printf("on_tick\r\n");
+	printf("on_tick newTick:%u %u %f\r\n",newTick->action_date,newTick->action_time,newTick->price);
 }
 
 void on_calc(CtxHandler ctxid, WtUInt32 curDate, WtUInt32 curTime)
@@ -47,7 +50,7 @@ void on_calc_done(CtxHandler ctxid, WtUInt32 curDate, WtUInt32 curTime)
 
 void on_bar(CtxHandler ctxid, const char* code, const char* period, WTSBarStruct* newBar)
 {
-	//printf("on_bar\r\n");
+	printf("on_bar%u\r\n",newBar->time);
 }
 
 void on_session_event(CtxHandler cHandle, WtUInt32 curTDate, bool isBegin)
@@ -55,6 +58,28 @@ void on_session_event(CtxHandler cHandle, WtUInt32 curTDate, bool isBegin)
 
 }
 
+void cbChnl(CtxHandler cHandle, const char* trader, WtUInt32 evtid)
+{
+}
+
+void cbOrd(CtxHandler cHandle, WtUInt32 localid, const char* stdCode, bool isBuy, double totalQty, double leftQty, double price, bool isCanceled, const char* userTag)
+{
+}
+
+void cbTrd(CtxHandler cHandle, WtUInt32 localid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag)
+{}
+
+void cbEntrust(CtxHandler cHandle, WtUInt32 localid, const char* stdCode, bool bSuccess, const char* message, const char* userTag)
+{}
+
+void cbOrdDtl(CtxHandler cHandle, const char* stdCode, WTSOrdDtlStruct* ordDtl)
+{}
+
+void cbOrdQue(CtxHandler cHandle, const char* stdCode, WTSOrdQueStruct* ordQue)
+{}
+
+void cbTrans(CtxHandler cHandle, const char* stdCode, WTSTransStruct* trans)
+{}
 
 void run_bt()
 {
@@ -63,13 +88,15 @@ void run_bt()
 #else
 	DLLHelper::load_library("libWtBtPorter.so");
 #endif
-	register_cta_callbacks(on_init, on_tick, on_calc, on_bar, on_session_event, on_calc_done);
+	//register_cta_callbacks(on_init, on_tick, on_calc, on_bar, on_session_event, on_calc_done);
+	register_hft_callbacks(on_init, on_tick, on_bar, cbChnl, cbOrd, cbTrd, cbEntrust, cbOrdDtl, cbOrdQue, cbTrans, on_session_event);
 
 	auto id = init_cta_mocker("test", 0, true);
+	//auto id = init_hft_mocker("test", true);
 
-	init_backtest("logcfgbt.json", true);
+	init_backtest("logcfg.json", true);
 
-	config_backtest("configbt.json", true);
+	config_backtest("config.json", true);
 
 	run_backtest(true, true);
 
@@ -77,9 +104,10 @@ void run_bt()
 	{
 		printf("%d\r\n", i);
 		cta_step(id);
+		//hft_step(id);
 
-		if (i == 5)
-			stop_backtest();
+		//if (i == 5) { stop_backtest(); }
+			
 	}
 
 	printf("press enter key to exit\n");

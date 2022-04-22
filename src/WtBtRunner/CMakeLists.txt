@@ -19,6 +19,12 @@ ELSE (UNIX)
 	SET (MyDeps "/home/mydeps")
 	SET(INCS ${MyDeps}/include)
 	SET(LNKS ${MyDeps}/lib)
+	SET(INC_1 "/usr/local/include/bsoncxx")
+	SET(INC_2 "/usr/local/include/bsoncxx/v_noabi")
+	SET(INC_3 "/usr/local/include/mongocxx")
+	SET(INC_4 "/usr/local/include/mongocxx/v_noabi")
+	SET(MONGOCXX "/usr/local/lib")
+	SET(BSONCXX "usr/local/lib")
 ENDIF ()
 
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/bin/WtTester)
@@ -36,6 +42,8 @@ SET(LIBS
 	boost_filesystem
 	pthread
 	dl
+	mongocxx
+	bsoncxx
 )
 
 #9. 生成可执行文件
@@ -56,4 +64,7 @@ SET(LIBS
 )
 ADD_EXECUTABLE(TestBtPorter ../TestBtPorter/TestBtPorter.cpp)
 TARGET_LINK_LIBRARIES(TestBtPorter ${LIBS})
+
+ADD_EXECUTABLE(BackTest ../BackTest/backtest.cpp ../BackTest/backtest.h)
+TARGET_LINK_LIBRARIES(BackTest ${LIBS})
 

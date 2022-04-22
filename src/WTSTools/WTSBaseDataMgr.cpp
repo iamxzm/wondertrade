@@ -344,6 +344,36 @@ bool WTSBaseDataMgr::loadCommodities(const char* filename)
 	return true;
 }
 
+//bool WTSBaseDataMgr::loadFees(const char* filename)
+//{
+//	if (!StdFile::exists(filename))
+//	{
+//		WTSLogger::error("Commodities configuration file %s not exists", filename);
+//		return false;
+//	}
+//
+//	std::string content;
+//	StdFile::read_file_content(filename, content);
+//	rj::Document root;
+//	if (root.Parse(content.c_str()).HasParseError())
+//	{
+//		WTSLogger::error("Loading commodities configuration file failed");
+//		return false;
+//	}
+//
+//	for (auto& m : root.GetObject())
+//	{
+//		FeeItem& feeitem = _fee_map[m.name.GetString()];
+//		const rj::Value& jvalue = m.value;
+//		feeitem._open = jvalue["open"].GetDouble();
+//		feeitem._close = jvalue["close"].GetDouble();
+//		feeitem._close_today = jvalue["closetoday"].GetDouble();
+//		feeitem._by_volume = jvalue["byvolumn"].GetBool();
+//
+//	}
+//	return true;
+//}
+
 bool WTSBaseDataMgr::loadContracts(const char* filename)
 {
 	if (!StdFile::exists(filename))
@@ -445,6 +475,44 @@ bool WTSBaseDataMgr::loadHolidays(const char* filename)
 
 	return true;
 }
+
+//double WTSBaseDataMgr::calc_fee(const char* stdCode, double price, double qty, uint32_t offset)
+//{
+//	auto it = _fee_map.find(stdCode);
+//	if (it == _fee_map.end())
+//	{
+//		WTSLogger::info("_fee_map.find(stdCode) failed\n");
+//			return 0.0;
+//	}
+//
+//	double ret = 0.0;
+//	WTSCommodityInfo* commInfo = getCommodity(stdCode);
+//	const FeeItem& fItem = it->second;
+//
+//	if (fItem._by_volume)
+//	{
+//		switch (offset)
+//		{
+//		case 0: ret = fItem._open * qty; break;
+//		case 1: ret = fItem._close * qty; break;
+//		case 2: ret = fItem._close_today * qty; break;
+//		default: ret = 0.0; break;
+//		}
+//	}
+//	else
+//	{
+//		double amount = price * qty * commInfo->getVolScale();
+//		switch (offset)
+//		{
+//		case 0: ret = fItem._open * amount; break;
+//		case 1: ret = fItem._close * amount; break;
+//		case 2: ret = fItem._close_today * amount; break;
+//		default: ret = 0.0; break;
+//		}
+//	}
+//
+//	return (int32_t)(ret * 100 + 0.5) / 100.0;
+//}
 
 uint64_t WTSBaseDataMgr::getBoundaryTime(const char* stdPID, uint32_t tDate, bool isSession /* = false */, bool isStart /* = true */)
 {

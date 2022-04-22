@@ -18,6 +18,37 @@
 
 #include "../WTSTools/WTSHotMgr.h"
 #include "../WTSTools/WTSBaseDataMgr.h"
+#include <rapidjson/document.h>
+#include <numeric>
+#include <iostream>
+#include <bsoncxx/builder/stream/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+#include <mongocxx/database.hpp>
+
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::to_json;
+
+using bsoncxx::builder::stream::close_array;
+using bsoncxx::builder::stream::close_document;
+using bsoncxx::builder::stream::document;
+using bsoncxx::builder::stream::finalize;
+using bsoncxx::builder::stream::open_array;
+using bsoncxx::builder::stream::open_document;
+
+using namespace mongocxx;
+namespace rj = rapidjson;
+
+//extern mongocxx::instance inst;
 
 NS_OTP_BEGIN
 class WTSTickData;
@@ -129,6 +160,12 @@ private:
 public:
 	HisDataReplayer();
 	~HisDataReplayer();
+	std::string _mongodb_uri;
+	mongocxx::instance _instance;
+	mongocxx::uri _uri;
+	mongocxx::client _client;
+
+	int32_t getPrevTDate(const char* pid, uint32_t uDate);
 
 private:
 	/*
@@ -155,6 +192,10 @@ private:
 	 *	从csv文件缓存历史tick数据
 	 */
 	bool		cacheRawTicksFromCSV(const std::string& key, const char* stdCode, uint32_t uDate);
+	/*
+	 *	从mongodb缓存历史tick数据
+	 */
+	bool		cacheRawTicksFromDB(const std::string& key, const char* stdCode, uint32_t uDate);
 
 	void		onMinuteEnd(uint32_t uDate, uint32_t uTime, uint32_t endTDate = 0, bool tickSimulated = true);
 
@@ -247,6 +288,14 @@ public:
 	uint32_t get_raw_time() const{ return _cur_time; }
 	uint32_t get_secs() const{ return _cur_secs; }
 	uint32_t get_trading_date() const{ return _cur_tdate; }
+	int StampTimeHM(unsigned long long timestamp);//
+	int StampTimeYmd(unsigned long long timestamp);
+	int StampTimeHMSms(long long timestamp);
+	uint32_t AddTime(int time1, int time2);
+	uint32_t Get_timeYmdHM(long long timestamp);
+	time_t StringToDatetime(std::string str);
+	time_t timeTransS(std::string time);
+	time_t timeTransE(std::string time);
 
 	double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
 	WTSSessionInfo*		get_session_info(const char* sid, bool isCode = false);
@@ -369,5 +418,29 @@ private:
 	MysqlDbPtr	_db_conn;
 
 	EventNotifier*	_notifier;
+
+	//主力合约日期范围
+	typedef struct _DateList
+	{
+		uint32_t _sdate;
+		uint32_t _edate;
+		uint32_t _cnt_date;
+	} DateList;
+
+	std::map<std::string, DateList> _datelistmap;
+
+	//主力合约K线日期
+	typedef struct _BarInstDate
+	{
+		uint32_t _s_date;
+		uint32_t _e_date;
+	} BarInstDate;
+
+public:
+	typedef std::map<std::string, std::map<std::string, BarInstDate>> _barinstdate_map;
+	_barinstdate_map* get_barinstdate() { return &_barinstdate; }
+	
+private:
+	_barinstdate_map _barinstdate;
 };
 

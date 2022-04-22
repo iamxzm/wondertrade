@@ -1,0 +1,42 @@
+{
+    "replayer":{
+        "mode":"db",
+		"mongodb_uri":"mongodb://192.168.214.199:27017",
+        "path":"./storage/",
+        "stime":202005082100,
+        "etime":202112290000,
+	"tick":true,
+        "basefiles":{
+            "session":"./common/sessions.json",
+            "commodity":"./common/commodities.json",
+            "contract":"./common/contracts.json",
+            "holiday":"./common/holidays.json",
+            "hot":"./common/hots.json"
+        },
+        "fees":"fees.json"
+    },
+    "env":{
+        "mocker":"hft",
+        "slippage": 1,
+		"init_money":0.0
+    },
+    "hft":{
+        "module":"libWtCtaStraFact.so",
+		"name":"",
+	"use_newpx":true,
+	"error_rate":1,
+        "strategy":{
+            "id": "dt_rb",
+            "name": "DualThrust",
+            "params": {
+                "code": "DCE.m1903.HOT",
+                "count": 50,
+                "period": "m1",
+                "days": 30,
+                "k1": 0.6,
+                "k2": 0.6,
+                "stock":false
+            }
+        }
+    }
+}

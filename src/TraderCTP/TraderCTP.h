@@ -11,6 +11,7 @@
 
 #include <string>
 #include <queue>
+#include <map>
 #include <stdint.h>
 
 #include "../Includes/WTSTypes.h"
@@ -23,6 +24,32 @@
 #include "../Share/IniHelper.hpp"
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
+
+#include <bsoncxx/builder/stream/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+#include <mongocxx/database.hpp>
+
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::to_json;
+
+using bsoncxx::builder::stream::close_array;
+using bsoncxx::builder::stream::close_document;
+using bsoncxx::builder::stream::document;
+using bsoncxx::builder::stream::finalize;
+using bsoncxx::builder::stream::open_array;
+using bsoncxx::builder::stream::open_document;
+
+using namespace mongocxx;
 
 USING_NS_OTP;
 
@@ -44,7 +71,39 @@ public:
 		WS_ALLREADY			//全部就绪
 	} WrapperState;
 
+	typedef struct
+	{
+		double _open = 20.0;
+		double _close = 21.0;
+		double _close_today = 20.5;
+		bool _by_volume = 100;
+	} FeeItem;
 
+	FeeItem m_feeitem;
+	mongocxx::instance _instance;
+	mongocxx::uri _uri;
+	mongocxx::client _client;
+
+	struct front_session_ref
+	{
+		int front_id;
+		int session_id;
+		std::string oref;
+
+		bool operator==(const front_session_ref& key) const //需要重载==才能find
+		{
+			return front_id == key.front_id && session_id == key.session_id && oref == key.oref;
+		};
+		bool operator < (const front_session_ref& key) const
+		{
+			return front_id < key.front_id || (front_id == key.front_id && session_id < key.session_id) ||
+				(front_id == key.front_id && session_id == key.session_id && oref < key.oref);
+		}
+
+	}_f_s_r_struct;
+
+	std::map<std::string, front_session_ref> _sys_front_map;
+	std::map<front_session_ref, time_t> _front_time_map;
 private:
 
 	int confirm();
@@ -144,6 +203,10 @@ protected:
 	int wrapOffsetType(WTSOffsetType offType);
 	int	wrapTimeCondition(WTSTimeCondition timeCond);
 	int wrapActionFlag(WTSActionFlag actionFlag);
+	void insert_his_positions(CThostFtdcInvestorPositionField* pInvestorPosition);
+	void insert_his_order(CThostFtdcOrderField* pOrder);
+	void insert_his_trades(CThostFtdcTradeField* pTrade);
+	void insert_his_trade(CThostFtdcTradeField* pTrade);
 
 	WTSPriceType		wrapPriceType(TThostFtdcOrderPriceTypeType priceType);
 	WTSDirectionType	wrapDirectionType(TThostFtdcDirectionType dirType, TThostFtdcOffsetFlagType offType);
@@ -167,6 +230,7 @@ protected:
 
 	//void			triggerQuery();
 
+	double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
 protected:
 	std::string		m_strBroker;
 	std::string		m_strFront;
@@ -224,5 +288,7 @@ protected:
 	CTPCreator		m_funcCreator;
 
 	IniHelper		m_iniHelper;
+
+	std::string m_stra_name;
 };
 
