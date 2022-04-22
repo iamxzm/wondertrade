@@ -8,16 +8,15 @@
  * \brief 
  */
 #include "WTSHotMgr.h"
-#include "../WTSUtils/WTSCfgLoader.h"
-
 #include "../Includes/WTSHotItem.hpp"
-#include "../Includes/WTSVariant.hpp"
-
 #include "../Share/StrUtil.hpp"
 #include "../Share/TimeUtils.hpp"
 #include "../Share/CodeHelper.hpp"
 #include "../Share/StdUtils.hpp"
 
+#include <rapidjson/document.h>
+
+namespace rj = rapidjson;
 
 WTSHotMgr::WTSHotMgr()
 	: m_pExchgHotMap(NULL)
@@ -39,9 +38,13 @@ bool WTSHotMgr::loadHots(const char* filename)
 		return false;
 	}
 
-	WTSVariant* root = WTSCfgLoader::load_from_file(filename, true);
-	if (root == NULL)
+	std::string content;
+	StdFile::read_file_content(filename, content);
+	rj::Document root;
+	if (root.Parse(content.c_str()).HasParseError())
+	{
 		return false;
+	}
 
 	if (m_pExchgHotMap != NULL)
 	{
@@ -51,36 +54,37 @@ bool WTSHotMgr::loadHots(const char* filename)
 
 	m_pExchgHotMap = WTSExchgHotMap::create();
 
-	for(const std::string& exchg : root->memberNames())
+	for(auto& m : root.GetObject())
 	{
-		WTSVariant* jExchg = root->get(exchg);
+		const std::string& exchg = m.name.GetString();
+		const rj::Value& jExchg = m.value;
 
 		WTSProductHotMap* productMap = WTSProductHotMap::create();
 		m_pExchgHotMap->add(exchg, productMap, false);
 
-		for (const std::string& pid : jExchg->memberNames())
+		//auto products = jExchg.getMemberNames();
+		for (auto& pMember : jExchg.GetObject())
 		{
-			WTSVariant* jProduct = jExchg->get(pid);
+			const std::string& pid = pMember.name.GetString();
+			const rj::Value& jProduct = pMember.value;
 
 			WTSDateHotMap* dateMap = WTSDateHotMap::create();
 			productMap->add(pid.c_str(), dateMap, false);
 
 			std::string lastCode;
-			for (uint32_t i = 0; i < jProduct->size(); i++)
+			for (const rj::Value& jHotItem : jProduct.GetArray())
 			{
-				WTSVariant* jHotItem = jProduct->get(i);
 				WTSHotItem* pItem = WTSHotItem::create(exchg.c_str(), pid.c_str(),
-					jHotItem->getCString("from"), jHotItem->getCString("to"), jHotItem->getUInt32("date"));
+					jHotItem["from"].GetString(), jHotItem["to"].GetString(), jHotItem["date"].GetUint());
 				dateMap->add(pItem->switchdate(), pItem, false);
-				lastCode = jHotItem->getCString("to");
+				lastCode = jHotItem["to"].GetString();
 			}
 
-			std::string fullCode = fmt::format("{}.{}", exchg.c_str(), lastCode.c_str());
+			std::string fullCode = StrUtil::printf("%s.%s", exchg.c_str(), lastCode.c_str());
 			m_curHotCodes[fullCode] = pid + "0001";
 		}
 	}
 
-	root->release();
 	m_bInitialized = true;
 	return true;
 }
@@ -259,17 +263,16 @@ const char* WTSHotMgr::getRawCode(const char* exchg, const char* pid, uint32_t d
 
 const char* WTSHotMgr::getHotCode(const char* exchg, const char* rawCode, uint32_t dt)
 {
+	//if (dt == 0)
+	//	dt = TimeUtils::getCurDate();
+
 	if(strlen(exchg) == 0)
 		return "";
 
 	if(dt == 0)
 	{
-		thread_local static char buf[64] = { 0 };
-		auto len = strlen(exchg);
-		wt_strcpy(buf, exchg, len);
-		buf[len] = '.';
-		wt_strcpy(buf + len + 1, rawCode);
-
+		static char buf[64] = { 0 };
+		sprintf(buf, "%s.%s", exchg, rawCode);
 		auto it = m_curHotCodes.find(buf);
 		if (it == m_curHotCodes.end())
 			return "";
@@ -277,7 +280,7 @@ const char* WTSHotMgr::getHotCode(const char* exchg, const char* rawCode, uint32
 			return it->second.c_str();
 	}
 
-	std::string product = CodeHelper::rawMonthCodeToRawCommID(rawCode);
+	std::string product = CodeHelper::bscFutCodeToBscCommID(rawCode);
 
 	if(m_pExchgHotMap == NULL)
 		return "";
@@ -315,27 +318,13 @@ const char* WTSHotMgr::getHotCode(const char* exchg, const char* rawCode, uint32
 
 bool WTSHotMgr::isHot(const char* exchg, const char* rawCode, uint32_t dt)
 {
-	if (strlen(exchg) == 0)
-		return "";
-
 	if (dt == 0)
-	{
-		thread_local static char buf[64] = { 0 };
-		auto len = strlen(exchg);
-		wt_strcpy(buf, exchg, len);
-		buf[len] = '.';
-		wt_strcpy(buf + len + 1, rawCode);
-		len += strlen(rawCode)  + 1;
-		buf[len] = '\0';
+		dt = TimeUtils::getCurDate();
 
-		auto it = m_curHotCodes.find(buf);
-		if (it == m_curHotCodes.end())
-			return false;
-		else
-			return true;
-	}
+	std::string product = CodeHelper::bscFutCodeToBscCommID(rawCode);
 
-	std::string product = CodeHelper::rawMonthCodeToRawCommID(rawCode);
+	if(strlen(exchg) == 0)
+		false;
 
 	if(m_pExchgHotMap == NULL)
 		false;
@@ -430,7 +419,7 @@ void WTSHotMgr::getHotCodes(const char* exchg, std::map<std::string, std::string
 	WTSExchgHotMap::ConstIterator cit = m_pExchgHotMap->begin();
 	for(; cit != m_pExchgHotMap->end(); cit++)
 	{
-		if (strlen(exchg) == 0 || strcmp(cit->first.c_str(), exchg)==0)
+		if (strlen(exchg) == 0 || cit->first.compare(exchg)==0)
 		{
 			WTSProductHotMap* pMap = (WTSProductHotMap*)cit->second;
 			WTSProductHotMap::ConstIterator pit = pMap->begin();
@@ -470,9 +459,13 @@ bool WTSHotMgr::loadSeconds(const char* filename)
 		return false;
 	}
 
-	WTSVariant* root = WTSCfgLoader::load_from_file(filename, true);
-	if (root == NULL)
+	std::string content;
+	StdFile::read_file_content(filename, content);
+	rj::Document root;
+	if (root.Parse(content.c_str()).HasParseError())
+	{
 		return false;
+	}
 
 	if (m_pExchgScndMap != NULL)
 	{
@@ -482,31 +475,33 @@ bool WTSHotMgr::loadSeconds(const char* filename)
 
 	m_pExchgScndMap = WTSExchgHotMap::create();
 
-	for (const std::string& exchg : root->memberNames())
+	for (auto& m : root.GetObject())
 	{
-		WTSVariant* jExchg = root->get(exchg);
+		const std::string& exchg = m.name.GetString();
+		const rj::Value& jExchg = m.value;
 
 		WTSProductHotMap* productMap = WTSProductHotMap::create();
 		m_pExchgScndMap->add(exchg, productMap, false);
 
-		for (const std::string& pid : jExchg->memberNames())
+		//auto products = jExchg.getMemberNames();
+		for (auto& pMember : jExchg.GetObject())
 		{
-			WTSVariant* jProduct = jExchg->get(pid);
+			const std::string& pid = pMember.name.GetString();
+			const rj::Value& jProduct = pMember.value;
 
 			WTSDateHotMap* dateMap = WTSDateHotMap::create();
 			productMap->add(pid.c_str(), dateMap, false);
 
 			std::string lastCode;
-			for (uint32_t i = 0; i < jProduct->size(); i++)
+			for (const rj::Value& jHotItem : jProduct.GetArray())
 			{
-				WTSVariant* jHotItem = jProduct->get(i);
 				WTSHotItem* pItem = WTSHotItem::create(exchg.c_str(), pid.c_str(),
-					jHotItem->getCString("from"), jHotItem->getCString("to"), jHotItem->getUInt32("date"));
+					jHotItem["from"].GetString(), jHotItem["to"].GetString(), jHotItem["date"].GetUint());
 				dateMap->add(pItem->switchdate(), pItem, false);
-				lastCode = jHotItem->getCString("to");
+				lastCode = jHotItem["to"].GetString();
 			}
 
-			std::string fullCode = fmt::format("{}.{}", exchg.c_str(), lastCode.c_str());
+			std::string fullCode = StrUtil::printf("%s.%s", exchg.c_str(), lastCode.c_str());
 			m_curSecCodes[fullCode] = pid + "0002";
 		}
 	}
@@ -696,11 +691,8 @@ const char* WTSHotMgr::getSecondCode(const char* exchg, const char* rawCode, uin
 
 	if (dt == 0)
 	{
-		thread_local static char buf[64] = { 0 };
-		auto len = strlen(exchg);
-		wt_strcpy(buf, exchg, len);
-		buf[len] = '.';
-		wt_strcpy(buf + len + 1, rawCode);
+		static char buf[64] = { 0 };
+		sprintf(buf, "%s.%s", exchg, rawCode);
 		auto it = m_curSecCodes.find(buf);
 		if (it == m_curSecCodes.end())
 			return "";
@@ -708,7 +700,7 @@ const char* WTSHotMgr::getSecondCode(const char* exchg, const char* rawCode, uin
 			return it->second.c_str();
 	}
 
-	std::string product = CodeHelper::rawMonthCodeToRawCommID(rawCode);
+	std::string product = CodeHelper::bscFutCodeToBscCommID(rawCode);
 
 	if (m_pExchgScndMap == NULL)
 		return "";
@@ -746,27 +738,13 @@ const char* WTSHotMgr::getSecondCode(const char* exchg, const char* rawCode, uin
 
 bool WTSHotMgr::isSecond(const char* exchg, const char* rawCode, uint32_t dt)
 {
-	//if (dt == 0)
-	//	dt = TimeUtils::getCurDate();
+	if (dt == 0)
+		dt = TimeUtils::getCurDate();
+
+	std::string product = CodeHelper::bscFutCodeToBscCommID(rawCode);
 
 	if (strlen(exchg) == 0)
 		false;
-
-	if (dt == 0)
-	{
-		thread_local static char buf[64] = { 0 };
-		auto len = strlen(exchg);
-		wt_strcpy(buf, exchg, len);
-		buf[len] = '.';
-		wt_strcpy(buf + len + 1, rawCode);
-		auto it = m_curSecCodes.find(buf);
-		if (it == m_curSecCodes.end())
-			return false;
-		else
-			return true;
-	}
-
-	std::string product = CodeHelper::rawMonthCodeToRawCommID(rawCode);
 
 	if (m_pExchgScndMap == NULL)
 		false;

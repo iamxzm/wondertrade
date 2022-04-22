@@ -13,15 +13,15 @@
 
 #include "../Includes/WTSMarcos.h"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSVariant;
 class ICtaStraCtx;
 class ICtaTickStraCtx;
 class WTSTickData;
 struct WTSBarStruct;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class CtaStrategy
 {

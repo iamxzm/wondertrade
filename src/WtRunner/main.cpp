@@ -11,8 +11,9 @@
 #include "WtRunner.h"
 
 #include "../WTSTools/WTSLogger.h"
+#include "../Share/IniHelper.hpp"
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 #include "../Common/mdump.h"
 #endif
 
@@ -20,14 +21,14 @@
 
 int main()
 {
-#ifdef _MSC_VER
+#ifdef _WIN32
 	CMiniDumper::Enable("WtRunner.exe", true);
 #endif
 
 	WtRunner runner;
 	runner.init();
 
-	runner.config();
+	runner.config("config.json");
 
 	runner.run(false);
 	return 0;

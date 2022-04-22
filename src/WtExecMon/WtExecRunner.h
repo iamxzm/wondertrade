@@ -10,11 +10,11 @@
 #include "../WTSTools/WTSHotMgr.h"
 #include "../WTSTools/WTSBaseDataMgr.h"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSVariant;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WtExecRunner : public IParserStub, public IExecuterStub
 {
@@ -28,7 +28,7 @@ public:
 
 	bool config(const char* cfgFile, bool isFile = true);
 
-	void run();
+	void run(bool bAsync = false);
 
 	void release();
 
@@ -61,7 +61,7 @@ public:
 private:
 	bool initTraders(WTSVariant* cfgTrader);
 	bool initParsers(WTSVariant* cfgParser);
-	bool initExecuters(WTSVariant* cfgExecuter);
+	bool initExecuters();
 	bool initDataMgr();
 	bool initActionPolicy();
 

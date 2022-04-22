@@ -13,11 +13,10 @@
 #include "../Includes/WTSDataDef.hpp"
 
 #include "../Share/BoostFile.hpp"
-#include "../Share/fmtlib.h"
 
 class CtaStrategy;
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 
 class WtCtaEngine;
 
@@ -49,7 +48,7 @@ typedef struct _CondEntrust
 } CondEntrust;
 
 typedef std::vector<CondEntrust>	CondList;
-typedef faster_hashmap<LongKey, CondList>	CondEntrustMap;
+typedef faster_hashmap<std::string, CondList>	CondEntrustMap;
 
 
 class CtaStraBaseCtx : public ICtaStraCtx
@@ -78,27 +77,6 @@ private:
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
 	
-protected:
-	template<typename... Args>
-	void log_debug(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_debug(buffer);
-	}
-
-	template<typename... Args>
-	void log_info(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_info(buffer);
-	}
-
-	template<typename... Args>
-	void log_error(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_error(buffer);
-	}
 
 public:
 	virtual uint32_t id() { return _context_id; }
@@ -116,13 +94,13 @@ public:
 
 	//////////////////////////////////////////////////////////////////////////
 	//策略接口
-	virtual void stra_enter_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
-	virtual void stra_enter_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
-	virtual void stra_exit_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
-	virtual void stra_exit_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
+	virtual void stra_enter_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
+	virtual void stra_enter_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
+	virtual void stra_exit_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
+	virtual void stra_exit_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
 
-	virtual double stra_get_position(const char* stdCode, bool bOnlyValid = false, const char* userTag = "") override;
-	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
+	virtual double stra_get_position(const char* stdCode, const char* userTag = "") override;
+	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
 	virtual double stra_get_price(const char* stdCode) override;
 
 	virtual uint32_t stra_get_tdate() override;
@@ -149,9 +127,9 @@ public:
 
 	virtual void stra_sub_ticks(const char* stdCode) override;
 
-	virtual void stra_log_info(const char* message) override;
-	virtual void stra_log_debug(const char* message) override;
-	virtual void stra_log_error(const char* message) override;
+	virtual void stra_log_info(const char* fmt, ...) override;
+	virtual void stra_log_debug(const char* fmt, ...) override;
+	virtual void stra_log_error(const char* fmt, ...) override;
 
 	virtual void stra_save_user_data(const char* key, const char* val) override;
 
@@ -173,10 +151,10 @@ protected:
 		_KlineTag() :_closed(false){}
 
 	} KlineTag;
-	typedef faster_hashmap<LongKey, KlineTag> KlineTags;
+	typedef faster_hashmap<std::string, KlineTag> KlineTags;
 	KlineTags	_kline_tags;
 
-	typedef faster_hashmap<LongKey, double> PriceMap;
+	typedef faster_hashmap<std::string, double> PriceMap;
 	PriceMap		_price_map;
 
 	typedef struct _DetailInfo
@@ -207,9 +185,6 @@ protected:
 		uint64_t	_last_entertime;
 		uint64_t	_last_exittime;
 
-		double		_frozen;
-		uint32_t	_frozen_date;
-
 		std::vector<DetailInfo> _details;
 
 		_PosInfo()
@@ -219,11 +194,9 @@ protected:
 			_dynprofit = 0;
 			_last_entertime = 0;
 			_last_exittime = 0;
-			_frozen = 0;
-			_frozen_date = 0;
 		}
 	} PosInfo;
-	typedef faster_hashmap<LongKey, PosInfo> PositionMap;
+	typedef faster_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
 
 	typedef struct _SigInfo
@@ -242,7 +215,7 @@ protected:
 			_gentime = 0;
 		}
 	}SigInfo;
-	typedef faster_hashmap<LongKey, SigInfo>	SignalMap;
+	typedef faster_hashmap<std::string, SigInfo>	SignalMap;
 	SignalMap		_sig_map;
 
 	BoostFilePtr	_trade_logs;
@@ -256,9 +229,10 @@ protected:
 
 	//是否处于调度中的标记
 	bool			_is_in_schedule;	//是否在自动调度中
+	//bool _insert_mongo;
 
 	//用户数据
-	typedef faster_hashmap<LongKey, std::string> StringHashMap;
+	typedef faster_hashmap<std::string, std::string> StringHashMap;
 	StringHashMap	_user_datas;
 	bool			_ud_modified;
 
@@ -275,10 +249,7 @@ protected:
 	} StraFundInfo;
 
 	StraFundInfo		_fund_info;
-
-	//tick订阅列表
-	faster_hashset<LongKey> _tick_subs;
 };
 
 
-NS_WTP_END
+NS_OTP_END

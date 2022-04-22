@@ -6,45 +6,47 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.0.0)
 PROJECT(TraderXTP LANGUAGES CXX)
 SET(CMAKE_CXX_STANDARD 11)
 
+
+IF (WIN32)
+	IF("${CMAKE_GENERATOR}" MATCHES "(Win64|IA64)")
+		SET(INCS $ENV{MyDepends141}/include)
+		SET(LNKS $ENV{MyDepends141}/lib/x64)
+	ELSE()
+		SET(INCS $ENV{MyDepends141}/include)
+		SET(LNKS $ENV{MyDepends141}/lib/x86)
+	ENDIF()
+ELSE (UNIX)
+	SET (MyDeps "/home/mydeps")
+	SET(INCS ${MyDeps}/include)
+	SET(LNKS ${MyDeps}/lib)
+ENDIF ()
+
 SET(SRC  
 	${PROJECT_SOURCE_DIR}/TraderXTP.cpp
-	${PROJECT_SOURCE_DIR}/TraderXTP.h	
+	${PROJECT_SOURCE_DIR}/TraderXTP.h
+	
+	${PROJECT_SOURCE_DIR}/XTPApi/xoms_api_fund_struct.h
+	${PROJECT_SOURCE_DIR}/XTPApi/xoms_api_struct.h
+	${PROJECT_SOURCE_DIR}/XTPApi/xquote_api_struct.h
+	${PROJECT_SOURCE_DIR}/XTPApi/xtp_api_data_type.h
+	${PROJECT_SOURCE_DIR}/XTPApi/xtp_api_struct.h
+	${PROJECT_SOURCE_DIR}/XTPApi/xtp_api_struct_common.h
+	${PROJECT_SOURCE_DIR}/XTPApi/xtp_trader_api.h
+	
 )
+SET(LNKS "${LNKS} ${PROJECT_SOURCE_DIR}/XTPApi")
 
-SET(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/build_${PLATFORM}/${CMAKE_BUILD_TYPE}/bin)
+SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/bin)
 
 INCLUDE_DIRECTORIES(${INCS})
 LINK_DIRECTORIES(${LNKS})
 ADD_LIBRARY(TraderXTP SHARED ${SRC})
 
-IF(MSVC)
-	SET(LIBS
-		ws2_32
-		)
-ELSE(GNUCC)
-	IF(WIN32)
-		SET(LIBS
-			dl
-			boost_thread
-			boost_filesystem
-			ws2_32
-			)
-	ELSE(UNIX)
-		SET(LIBS
-			dl
-			boost_thread
-			boost_filesystem
-			)
-	ENDIF()
-ENDIF()
-TARGET_LINK_LIBRARIES(TraderXTP ${LIBS})
-
-IF (MSVC)
-ELSE (GNUCC)
+IF (WIN32)
+ELSE (UNIX)
 	SET_TARGET_PROPERTIES(TraderXTP PROPERTIES
 		CXX_VISIBILITY_PRESET hidden
 		C_VISIBILITY_PRESET hidden
-		VISIBILITY_INLINES_HIDDEN 1
-        LINK_FLAGS_RELEASE -s)
+		VISIBILITY_INLINES_HIDDEN 1)
 ENDIF ()
 

@@ -25,7 +25,7 @@
 #include "../Share/BoostFile.hpp"
 
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSSessionInfo;
 class WTSCommodityInfo;
 class WTSContractInfo;
@@ -41,7 +41,7 @@ class WTSTickSlice;
 class WTSKlineSlice;
 class WTSPortFundInfo;
 
-class WtDtMgr;
+class WtDataManager;
 class TraderAdapterMgr;
 
 class EventNotifier;
@@ -128,7 +128,7 @@ public:
 
 	virtual bool isInTrading() override;
 
-	virtual void writeRiskLog(const char* message) override;
+	virtual void writeRiskLog(const char* fmt, ...) override;
 
 	virtual uint32_t	getCurDate() override;
 	virtual uint32_t	getCurTime() override;
@@ -140,7 +140,7 @@ public:
 	virtual void handle_push_quote(WTSTickData* newTick, uint32_t hotFlag) override;
 
 public:
-	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDtMgr* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier);
+	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDataManager* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier);
 
 	virtual void run(bool bAsync = false) = 0;
 
@@ -160,9 +160,9 @@ protected:
 
 	void		save_datas();
 
-	void		append_signal(const char* stdCode, double qty, bool bStandBy);
+	void		append_signal(const char* stdCode, double qty);
 
-	void		do_set_position(const char* stdCode, double qty, double curPx = -1);
+	void		do_set_position(const char* stdCode, double qty);
 
 	void		task_loop();
 
@@ -178,31 +178,25 @@ private:
 	inline void	log_close(const char* stdCode, bool isLong, uint64_t openTime, double openpx, uint64_t closeTime, double closepx, double qty,
 		double profit, double totalprofit = 0);
 
+
 protected:
-	uint32_t		_cur_date;		//当前日期
+	uint32_t		_cur_date;	//当前日期
 	uint32_t		_cur_time;		//当前时间, 是1分钟线时间, 比如0900, 这个时候的1分钟线是0901, _cur_time也就是0901, 这个是为了CTA里面方便
 	uint32_t		_cur_raw_time;	//当前真实时间
-	uint32_t		_cur_secs;		//当前秒数, 包含毫秒
-	uint32_t		_cur_tdate;		//当前交易日
-
-	uint32_t		_fund_udt_span;	//组合资金更新时间间隔
+	uint32_t		_cur_secs;	//当前秒数, 包含毫秒
+	uint32_t		_cur_tdate;	//当前交易日
 
 	IBaseDataMgr*	_base_data_mgr;	//基础数据管理器
 	IHotMgr*		_hot_mgr;		//主力管理器
-	WtDtMgr*		_data_mgr;		//数据管理器
+	WtDataManager*	_data_mgr;		//数据管理器
 	IEngineEvtListener*	_evt_listener;
 
-	//By Wesley @ 2022.02.07
-	//tick数据订阅项，first是contextid，second是订阅选项，0-原始订阅，1-前复权，2-后复权
-	typedef std::pair<uint32_t, uint32_t> SubOpt;
-	typedef faster_hashmap<uint32_t, SubOpt> SubList;
-	typedef faster_hashmap<LongKey, SubList>	StraSubMap;
+	typedef faster_hashset<uint32_t> SIDSet;
+	typedef faster_hashmap<std::string, SIDSet>	StraSubMap;
 	StraSubMap		_tick_sub_map;	//tick数据订阅表
 	StraSubMap		_bar_sub_map;	//K线数据订阅表
 
-	//By Wesley @ 2022.02.07 
-	//这个好像没有用到，不需要了
-	//faster_hashset<std::string>		_ticksubed_raw_codes;	//tick订阅表（真实代码模式）
+	faster_hashset<std::string>		_ticksubed_raw_codes;	//tick订阅表（真实代码模式）
 	
 
 	//////////////////////////////////////////////////////////////////////////
@@ -218,7 +212,7 @@ protected:
 			_gentime = 0;
 		}
 	}SigInfo;
-	typedef faster_hashmap<LongKey, SigInfo>	SignalMap;
+	typedef faster_hashmap<std::string, SigInfo>	SignalMap;
 	SignalMap		_sig_map;
 
 	//////////////////////////////////////////////////////////////////////////
@@ -240,7 +234,7 @@ protected:
 			memset(this, 0, sizeof(_FeeItem));
 		}
 	} FeeItem;
-	typedef faster_hashmap<LongKey, FeeItem>	FeeMap;
+	typedef faster_hashmap<std::string, FeeItem>	FeeMap;
 	FeeMap		_fee_map;
 	
 
@@ -278,12 +272,12 @@ protected:
 			_dynprofit = 0;
 		}
 	} PosInfo;
-	typedef faster_hashmap<LongKey, PosInfo> PositionMap;
+	typedef faster_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
 
 	//////////////////////////////////////////////////////////////////////////
 	//
-	typedef faster_hashmap<LongKey, double> PriceMap;
+	typedef faster_hashmap<std::string, double> PriceMap;
 	PriceMap		_price_map;
 
 	//后台任务线程, 把风控和资金, 持仓更新都放到这个线程里去
@@ -291,7 +285,7 @@ protected:
 	StdThreadPtr	_thrd_task;
 	TaskQueue		_task_queue;
 	StdUniqueMutex	_mtx_task;
-	StdCondVariable	_cond_task;
+	StdCondVariable		_cond_task;
 	bool			_terminated;
 
 	typedef struct _RiskMonFactInfo
@@ -311,10 +305,5 @@ protected:
 
 	BoostFilePtr	_trade_logs;
 	BoostFilePtr	_close_logs;
-
-	faster_hashmap<LongKey, double>	_factors_cache;
-
-	//用于标记是否可以推送tickle
-	bool			_ready;
 };
-NS_WTP_END
+NS_OTP_END

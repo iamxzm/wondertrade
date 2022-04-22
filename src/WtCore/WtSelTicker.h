@@ -15,7 +15,7 @@
 #include "../Includes/WTSMarcos.h"
 #include "../Share/StdUtils.hpp"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSSessionInfo;
 class IDataReader;
 class WTSTickData;
@@ -56,4 +56,4 @@ private:
 	StdThreadPtr	_thrd;
 };
 
-NS_WTP_END
+NS_OTP_END

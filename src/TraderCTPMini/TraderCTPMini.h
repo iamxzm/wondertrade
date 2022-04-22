@@ -17,13 +17,14 @@
 #include "../Includes/ITraderApi.h"
 #include "../Includes/WTSCollection.hpp"
 
-#include "../API/CTPMini1.5.8/ThostFtdcTraderApi.h"
+// CTP2mini v1.5
+#include "./ThostTraderApi/ThostFtdcTraderApi.h"
 
+#include "../Share/IniHelper.hpp"
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
-#include "../Share/WtKVCache.hpp"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class TraderCTPMini : public ITraderApi, public CThostFtdcTraderSpi
 {
@@ -53,7 +54,7 @@ private:
 	//////////////////////////////////////////////////////////////////////////
 	//ITraderApi接口
 public:
-	virtual bool init(WTSVariant* params) override;
+	virtual bool init(WTSParams* params) override;
 
 	virtual void release() override;
 
@@ -144,7 +145,7 @@ protected:
 	WTSError*		makeError(CThostFtdcRspInfoField* rspInfo);
 	WTSTradeInfo*	makeTradeRecord(CThostFtdcTradeField *tradeField);
 
-	void			generateEntrustID(char* buffer, uint32_t frontid, uint32_t sessionid, uint32_t orderRef);
+	std::string		generateEntrustID(uint32_t frontid, uint32_t sessionid, uint32_t orderRef);
 	bool			extractEntrustID(const char* entrustid, uint32_t &frontid, uint32_t &sessionid, uint32_t &orderRef);
 
 	//uint64_t		calcCommission(uint32_t qty, uint32_t price, WTSOffsetType flag, WTSContractInfo* ct);
@@ -191,7 +192,6 @@ protected:
 	WTSArray*					m_ayTrades;
 	WTSArray*					m_ayOrders;
 	WTSArray*					m_ayPosDetail;
-	WTSArray*					m_ayFunds;
 
 	IBaseDataMgr*				m_bdMgr;
 
@@ -209,8 +209,6 @@ protected:
 	typedef CThostFtdcTraderApi* (*CTPCreator)(const char *);
 	CTPCreator		m_funcCreator;
 
-	//委托单标记缓存器
-	WtKVCache		m_eidCache;
-	//订单标记缓存器
-	WtKVCache		m_oidCache;
+	IniHelper		m_iniHelper;
 };
+

@@ -10,6 +10,7 @@
 #pragma once
 #include <sstream>
 #include <atomic>
+#include <math.h>
 #include "HisDataReplayer.h"
 
 #include "../Includes/FasterDefs.h"
@@ -19,13 +20,12 @@
 
 #include "../Share/DLLHelper.hpp"
 #include "../Share/StdUtils.hpp"
-#include "../Share/fmtlib.h"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class EventNotifier;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class HisDataReplayer;
 class CtaStrategy;
@@ -76,21 +76,23 @@ private:
 
 	void	update_dyn_profit(const char* stdCode, double price);
 
-	void	do_set_position(const char* stdCode, double qty, double price = 0.0, const char* userTag = "", bool bTriggered = false);
+	//void	do_set_position(const char* stdCode, double qty, SigInfo* sig_info, double price = 0.0, std::string instid = "", const char* userTag = "", bool bTriggered = false);//
 	void	append_signal(const char* stdCode, double qty, const char* userTag = "", double price = 0.0);
 
 	inline CondList& get_cond_entrusts(const char* stdCode);
 
+	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true);
 public:
 	bool	init_cta_factory(WTSVariant* cfg);
 	void	install_hook();
 	void	enable_hook(bool bEnabled = true);
 	bool	step_calc();
+	void    set_initacc(double money);
 
 public:
 	//////////////////////////////////////////////////////////////////////////
 	//IDataSink
-	virtual void	handle_tick(const char* stdCode, WTSTickData* curTick, bool isBarEnd = true) override;
+	virtual void	handle_tick(const char* stdCode, WTSTickData* curTick) override;
 	virtual void	handle_bar_close(const char* stdCode, const char* period, uint32_t times, WTSBarStruct* newBar) override;
 	virtual void	handle_schedule(uint32_t uDate, uint32_t uTime) override;
 
@@ -120,13 +122,13 @@ public:
 
 	//////////////////////////////////////////////////////////////////////////
 	//策略接口
-	virtual void stra_enter_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
-	virtual void stra_enter_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
-	virtual void stra_exit_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
-	virtual void stra_exit_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
+	virtual void stra_enter_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
+	virtual void stra_enter_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
+	virtual void stra_exit_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
+	virtual void stra_exit_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
 
-	virtual double stra_get_position(const char* stdCode, bool bOnlyValid = false, const char* userTag = "") override;
-	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) override;
+	virtual double stra_get_position(const char* stdCode, const char* userTag = "") override;
+	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) override;
 	virtual double stra_get_price(const char* stdCode) override;
 
 	virtual uint32_t stra_get_tdate() override;
@@ -153,35 +155,13 @@ public:
 
 	virtual void stra_sub_ticks(const char* stdCode) override;
 
-	virtual void stra_log_info(const char* message) override;
-	virtual void stra_log_debug(const char* message) override;
-	virtual void stra_log_error(const char* message) override;
+	virtual void stra_log_info(const char* fmt, ...) override;
+	virtual void stra_log_debug(const char* fmt, ...) override;
+	virtual void stra_log_error(const char* fmt, ...) override;
 
 	virtual void stra_save_user_data(const char* key, const char* val) override;
 
 	virtual const char* stra_load_user_data(const char* key, const char* defVal = "") override;
-
-private:
-	template<typename... Args>
-	void log_debug(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_debug(buffer);
-	}
-
-	template<typename... Args>
-	void log_info(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_info(buffer);
-	}
-
-	template<typename... Args>
-	void log_error(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_error(buffer);
-	}
 
 protected:
 	uint32_t			_context_id;
@@ -193,6 +173,36 @@ protected:
 	int32_t			_slippage;			//成交滑点
 
 	uint32_t		_schedule_times;	//调度次数
+
+	double		init_money = 100000;			//初始资金
+	double      _balance = 0;					//今总资产
+	double		_total_money = init_money;		//剩余资金
+	double		_static_balance = init_money;	//期初资产
+	double		_close_price = 0;				//昨结算价
+	double		_settlepx;						//今结算价
+	double        _used_margin = 0;				//占用保证金
+	double        _margin_rate = 0.5;			//保证金比例
+	uint64_t		_cur_multiplier = 100;		//当前合约乘数
+
+	std::string _per_strategy_id;
+
+	double		_day_profit = 0;
+	double		_total_profit = 0;				//策略收益
+	double		_benchmark_rate_of_return = 0;	//基准收益率
+	double		_benchmark_cumulative_rate = 0;
+	double		_strategy_cumulative_rate = 0;	//策略累计收益率
+	double		_daily_rate_of_return = 0;		//策略收益率
+	double		_abnormal_rate_of_return = 0;	//日超额收益率
+	int			_win_or_lose_flag;
+
+	bool			_new_trade_day = true;
+	bool		_dayacc_insert_flag = true;
+	bool		_changepos = true;
+	uint32_t    _traderday = 0;
+	uint32_t	_pretraderday;
+	uint32_t	_firstday = 0;
+	double		_firstprice = 0;
+
 
 	std::string		_main_key;
 
@@ -221,6 +231,7 @@ protected:
 		double		_profit;
 		char		_opentag[32];
 		uint32_t	_open_barno;
+		double		_margin;
 
 		_DetailInfo()
 		{
@@ -235,7 +246,6 @@ protected:
 		double		_dynprofit;
 		uint64_t	_last_entertime;
 		uint64_t	_last_exittime;
-		double		_frozen;
 
 		std::vector<DetailInfo> _details;
 
@@ -244,10 +254,7 @@ protected:
 			_volume = 0;
 			_closeprofit = 0;
 			_dynprofit = 0;
-			_frozen = 0;
 		}
-
-		inline double valid() const { return _volume - _frozen; }
 	} PosInfo;
 	typedef faster_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
@@ -337,9 +344,23 @@ protected:
 	bool			_in_backtest;
 	bool			_wait_calc;
 
-	//是否对回测结果持久化
 	bool			_persist_data;
 
-	//tick订阅列表
-	faster_hashset<std::string> _tick_subs;
+	void insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime);
+	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, const SigInfo* sig_info,
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
+	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, const SigInfo* sig_info,
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
+
+private:
+	void	do_set_position(const char* stdCode, double qty, const SigInfo* sig_info, double price = 0.0, std::string instid = "", const char* userTag = "", bool bTriggered = false);//
+
+	bool _insert_mongo;
+	//mongocxx::uri _uri;
+	//mongocxx::client _client;
+	/*mongocxx::database _db;
+	mongocxx::collection	_poscoll_1;*/
+	/*mongocxx::collection	_poscoll_2;
+	mongocxx::collection	_poscoll_3;*/
 };

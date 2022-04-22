@@ -12,10 +12,11 @@
 #include "StateMonitor.h"
 #include "WtHelper.h"
 
+#include "../Share/TimeUtils.hpp"
 #include "../Share/StrUtil.hpp"
 #include "../Share/DLLHelper.hpp"
 
-#include "../Includes/WTSVariant.hpp"
+#include "../Includes/WTSParams.hpp"
 #include "../Includes/WTSContractInfo.hpp"
 #include "../Includes/WTSDataDef.hpp"
 #include "../Includes/WTSVariant.hpp"
@@ -61,6 +62,7 @@ bool ParserAdapter::initExt(const char* id, IParserApi* api)
 			for (; it != ayContract->end(); it++)
 			{
 				WTSContractInfo* contract = STATIC_CONVERT(*it, WTSContractInfo*);
+				WTSCommodityInfo* pCommInfo = _bd_mgr->getCommodity(contract);
 				contractSet.insert(contract->getFullCode());
 			}
 
@@ -71,7 +73,7 @@ bool ParserAdapter::initExt(const char* id, IParserApi* api)
 		}
 		else
 		{
-			WTSLogger::log_dyn_f("parser", _id.c_str(), LL_ERROR, "[{}] Parser initializing failed: api initializing failed...", _id.c_str());
+			WTSLogger::log_dyn("parser", _id.c_str(), LL_ERROR, "[%s] Parser initializing failed: api initializing failed...", _id.c_str());
 		}
 	}
 
@@ -109,25 +111,25 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 		DllHandle hInst = DLLHelper::load_library(module.c_str());
 		if (hInst == NULL)
 		{
-			WTSLogger::log_dyn_f("parser", _id.c_str(), LL_ERROR, "[{}] Parser module {} loading failed", _id.c_str(), module.c_str());
+			WTSLogger::log_dyn("parser", _id.c_str(), LL_ERROR, "[%s] Parser module %s loading failed", _id.c_str(), module.c_str());
 			return false;
 		}
 		else
 		{
-			WTSLogger::log_dyn_f("parser", _id.c_str(), LL_INFO, "[{}] Parser module {} loaded", _id.c_str(), module.c_str());
+			WTSLogger::log_dyn("parser", _id.c_str(), LL_INFO, "[%s] Parser module %s loaded", _id.c_str(), module.c_str());
 		}
 
 		FuncCreateParser pFuncCreateParser = (FuncCreateParser)DLLHelper::get_symbol(hInst, "createParser");
 		if (NULL == pFuncCreateParser)
 		{
-			WTSLogger::log_dyn_f("parser", _id.c_str(), LL_FATAL, "[{}] Entrance function createParser not found", _id.c_str());
+			WTSLogger::log_dyn("parser", _id.c_str(), LL_FATAL, "[%s] Entrance function createParser not found", _id.c_str());
 			return false;
 		}
 
 		_parser_api = pFuncCreateParser();
 		if (NULL == _parser_api)
 		{
-			WTSLogger::log_dyn_f("parser", _id.c_str(), LL_FATAL, "[{}] Creating parser api failed", _id.c_str());
+			WTSLogger::log_dyn("parser", _id.c_str(), LL_FATAL, "[%s] Creating parser api failed", _id.c_str());
 			return false;
 		}
 
@@ -161,7 +163,8 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 	{
 		_parser_api->registerSpi(this);
 
-		if (_parser_api->init(cfg))
+		WTSParams* params = cfg->toParams();
+		if (_parser_api->init(params))
 		{
 			ContractSet contractSet;
 			if (!_code_filter.empty())//优先判断合约过滤器
@@ -180,6 +183,7 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 						code = ay[1];
 					}
 					WTSContractInfo* contract = _bd_mgr->getContract(code.c_str(), exchg.c_str());
+					WTSCommodityInfo* pCommInfo = _bd_mgr->getCommodity(contract);
 					contractSet.insert(contract->getFullCode());
 				}
 			}
@@ -193,6 +197,7 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 					for (; it != ayContract->end(); it++)
 					{
 						WTSContractInfo* contract = STATIC_CONVERT(*it, WTSContractInfo*);
+						WTSCommodityInfo* pCommInfo = _bd_mgr->getCommodity(contract);
 						contractSet.insert(contract->getFullCode());
 					}
 
@@ -206,6 +211,7 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 				for (; it != ayContract->end(); it++)
 				{
 					WTSContractInfo* contract = STATIC_CONVERT(*it, WTSContractInfo*);
+					WTSCommodityInfo* pCommInfo = _bd_mgr->getCommodity(contract);
 					contractSet.insert(contract->getFullCode());
 				}
 
@@ -217,12 +223,14 @@ bool ParserAdapter::init(const char* id, WTSVariant* cfg)
 		}
 		else
 		{
-			WTSLogger::log_dyn_f("parser", _id.c_str(), LL_ERROR, "[{}] Parser initializing failed: api initializing failed...", _id.c_str());
+			WTSLogger::log_dyn("parser", _id.c_str(), LL_ERROR, "[%s] Parser initializing failed: api initializing failed...", _id.c_str());
 		}
+
+		params->release();
 	}
 	else
 	{
-		WTSLogger::log_dyn_f("parser", _id.c_str(), LL_ERROR, "[{}] Parser initializing failed: creating api failed...", _id.c_str());
+		WTSLogger::log_dyn("parser", _id.c_str(), LL_ERROR, "[%s] Parser initializing failed: creating api failed...", _id.c_str());
 	}
 
 	return true;
@@ -302,7 +310,7 @@ void ParserAdapter::handleOrderQueue(WTSOrdQueData* ordQueData)
 	_dt_mgr->writeOrderQueue(ordQueData);
 }
 
-void ParserAdapter::handleQuote( WTSTickData *quote, uint32_t procFlag )
+void ParserAdapter::handleQuote( WTSTickData *quote, bool bNeedSlice )
 {
 	if (_stopped)
 		return;
@@ -310,26 +318,26 @@ void ParserAdapter::handleQuote( WTSTickData *quote, uint32_t procFlag )
 	if (quote->actiondate() == 0 || quote->tradingdate() == 0)
 		return;
 
-	WTSContractInfo* contract = quote->getContractInfo();
-	if (contract == NULL)
-	{
-		contract = _bd_mgr->getContract(quote->code(), quote->exchg());
-		quote->setContractInfo(contract);
-	}
-
+	WTSContractInfo* contract = _bd_mgr->getContract(quote->code(), quote->exchg());
 	if (contract == NULL)
 		return;
 
-	if (!_dt_mgr->writeTick(quote, procFlag))
+	if (!_dt_mgr->writeTick(quote, bNeedSlice))
 		return;
 }
 
-void ParserAdapter::handleParserLog( WTSLogLevel ll, const char* message)
+void ParserAdapter::handleParserLog( WTSLogLevel ll, const char* format, ... )
 {
 	if (_stopped)
 		return;
 
-	WTSLogger::log_raw_by_cat("parser", ll, message);
+	char szBuf[2048] = {0};
+	va_list args;
+	va_start(args, format);        
+	vsprintf(szBuf, format, args);
+	va_end(args);
+
+	WTSLogger::log2("parser", ll, szBuf);
 }
 
 IBaseDataMgr* ParserAdapter::getBaseDataMgr()
@@ -358,7 +366,7 @@ bool ParserAdapterMgr::addAdapter(const char* id, ParserAdapterPtr& adapter)
 	auto it = _adapters.find(id);
 	if (it != _adapters.end())
 	{
-		WTSLogger::error_f(" Same name of parsers: %s", id);
+		WTSLogger::error(" Same name of parsers: %s", id);
 		return false;
 	}
 
@@ -385,5 +393,5 @@ void ParserAdapterMgr::run()
 		it->second->run();
 	}
 
-	WTSLogger::info_f("{} parsers started", _adapters.size());
+	WTSLogger::info("%u parsers started", _adapters.size());
 }

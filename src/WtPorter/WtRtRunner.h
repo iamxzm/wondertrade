@@ -13,7 +13,6 @@
 #include "PorterDefs.h"
 
 #include "../Includes/ILogHandler.h"
-#include "../Includes/IDataReader.h"
 
 #include "../WtCore/EventNotifier.h"
 #include "../WtCore/CtaStrategyMgr.h"
@@ -26,18 +25,18 @@
 #include "../WtCore/WtDistExecuter.h"
 #include "../WtCore/TraderAdapter.h"
 #include "../WtCore/ParserAdapter.h"
-#include "../WtCore/WtDtMgr.h"
+#include "../WtCore/WtDataManager.h"
 #include "../WtCore/ActionPolicyMgr.h"
 
 #include "../WTSTools/WTSHotMgr.h"
 #include "../WTSTools/WTSBaseDataMgr.h"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSVariant;
 class WtDataStorage;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 typedef enum tagEngineType
 {
@@ -46,26 +45,11 @@ typedef enum tagEngineType
 	ET_SEL			//Ñ¡¹ÉÒýÇæ
 } EngineType;
 
-class WtRtRunner : public IEngineEvtListener, public ILogHandler, public IHisDataLoader
+class WtRtRunner : public IEngineEvtListener, public ILogHandler
 {
 public:
 	WtRtRunner();
 	~WtRtRunner();
-
-public:
-	//////////////////////////////////////////////////////////////////////////
-	//IBtDataLoader
-	virtual bool loadFinalHisBars(void* obj, const char* stdCode, WTSKlinePeriod period, FuncReadBars cb) override;
-
-	virtual bool loadRawHisBars(void* obj, const char* stdCode, WTSKlinePeriod period, FuncReadBars cb) override;
-
-	virtual bool loadAllAdjFactors(void* obj, FuncReadFactors cb) override;
-
-	virtual bool loadAdjFactors(void* obj, const char* stdCode, FuncReadFactors cb) override;
-
-	void feedRawBars(WTSBarStruct* bars, uint32_t count);
-
-	void feedAdjFactors(const char* stdCode, uint32_t* dates, double* factors, uint32_t count);
 
 public:
 	/*
@@ -83,20 +67,13 @@ public:
 	void registerSelCallbacks(FuncStraInitCallback cbInit, FuncStraTickCallback cbTick, FuncStraCalcCallback cbCalc, FuncStraBarCallback cbBar, FuncSessionEvtCallback cbSessEvt);
 	void registerHftCallbacks(FuncStraInitCallback cbInit, FuncStraTickCallback cbTick, FuncStraBarCallback cbBar,
 		FuncHftChannelCallback cbChnl, FuncHftOrdCallback cbOrd, FuncHftTrdCallback cbTrd, FuncHftEntrustCallback cbEntrust,
-		FuncStraOrdDtlCallback cbOrdDtl, FuncStraOrdQueCallback cbOrdQue, FuncStraTransCallback cbTrans, FuncSessionEvtCallback cbSessEvt, FuncHftPosCallback cbPosition);
+		FuncStraOrdDtlCallback cbOrdDtl, FuncStraOrdQueCallback cbOrdQue, FuncStraTransCallback cbTrans, FuncSessionEvtCallback cbSessEvt);
 
 	void registerEvtCallback(FuncEventCallback cbEvt);
 
 	void registerParserPorter(FuncParserEvtCallback cbEvt, FuncParserSubCallback cbSub);
 
 	void registerExecuterPorter(FuncExecInitCallback cbInit, FuncExecCmdCallback cbExec);
-
-	void		registerExtDataLoader(FuncLoadFnlBars fnlBarLoader, FuncLoadRawBars rawBarLoader, FuncLoadAdjFactors fctLoader, FuncLoadRawTicks tickLoader = NULL)
-	{
-		_ext_fnl_bar_loader = fnlBarLoader;
-		_ext_raw_bar_loader = rawBarLoader;
-		_ext_adj_fct_loader = fctLoader;
-	}
 
 	bool			createExtParser(const char* id);
 	bool			createExtExecuter(const char* id);
@@ -125,7 +102,7 @@ public:
 	void parser_subscribe(const char* id, const char* code);
 	void parser_unsubscribe(const char* id, const char* code);
 
-	void on_ext_parser_quote(const char* id, WTSTickStruct* curTick, uint32_t uProcFlag);
+	void on_parser_quote(const char* id, WTSTickStruct* curTick, bool bNeedSlice = true);
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -167,7 +144,6 @@ public:
 	void hft_on_order(uint32_t cHandle, WtUInt32 localid, const char* stdCode, bool isBuy, double totalQty, double leftQty, double price, bool isCanceled, const char* userTag);
 	void hft_on_trade(uint32_t cHandle, WtUInt32 localid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag);
 	void hft_on_entrust(uint32_t cHandle, WtUInt32 localid, const char* stdCode, bool bSuccess, const char* message, const char* userTag);
-	void hft_on_position(uint32_t cHandle, const char* stdCode, bool isLong, double prevol, double preavail, double newvol, double newavail);
 
 	void hft_on_order_queue(uint32_t id, const char* stdCode, WTSOrdQueData* newOrdQue);
 	void hft_on_order_detail(uint32_t id, const char* stdCode, WTSOrdDtlData* newOrdDtl);
@@ -212,7 +188,6 @@ private:
 	FuncHftOrdCallback		_cb_hft_ord;
 	FuncHftTrdCallback		_cb_hft_trd;
 	FuncHftEntrustCallback	_cb_hft_entrust;
-	FuncHftPosCallback		_cb_hft_position;
 
 	FuncStraOrdQueCallback	_cb_hft_ordque;
 	FuncStraOrdDtlCallback	_cb_hft_orddtl;
@@ -238,7 +213,7 @@ private:
 
 	WtDataStorage*		_data_store;
 
-	WtDtMgr				_data_mgr;
+	WtDataManager		_data_mgr;
 
 	WTSBaseDataMgr		_bd_mgr;
 	WTSHotMgr			_hot_mgr;
@@ -251,14 +226,5 @@ private:
 
 	bool				_is_hft;
 	bool				_is_sel;
-
-	FuncLoadFnlBars		_ext_fnl_bar_loader;
-	FuncLoadRawBars		_ext_raw_bar_loader;
-	FuncLoadAdjFactors	_ext_adj_fct_loader;
-
-	void*			_feed_obj;
-	FuncReadBars	_feeder_bars;
-	FuncReadFactors	_feeder_fcts;
-	StdUniqueMutex	_feed_mtx;
 };
 

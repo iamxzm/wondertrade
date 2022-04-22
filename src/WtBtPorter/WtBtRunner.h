@@ -12,15 +12,17 @@
 #include "../WtBtCore/EventNotifier.h"
 #include "../WtBtCore/HisDataReplayer.h"
 #include "../Includes/WTSMarcos.h"
+#include <rapidjson/writer.h>
+#include <rapidjson/stringbuffer.h>
 
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSTickData;
 struct WTSBarStruct;
 class WTSVariant;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 typedef enum tagEngineType
 {
@@ -34,33 +36,11 @@ class CtaMocker;
 class HftMocker;
 class ExecMocker;
 
-class WtBtRunner : public IBtDataLoader
+class WtBtRunner
 {
 public:
 	WtBtRunner();
 	~WtBtRunner();
-
-
-	//////////////////////////////////////////////////////////////////////////
-	//IBtDataLoader
-	virtual bool loadFinalHisBars(void* obj, const char* stdCode, WTSKlinePeriod period, FuncReadBars cb) override;
-
-	virtual bool loadRawHisBars(void* obj, const char* stdCode, WTSKlinePeriod period, FuncReadBars cb) override;
-
-	virtual bool loadAllAdjFactors(void* obj, FuncReadFactors cb) override;
-
-	virtual bool loadAdjFactors(void* obj, const char* stdCode, FuncReadFactors cb) override;
-
-	virtual bool loadRawHisTicks(void* obj, const char* stdCode, uint32_t uDate, FuncReadTicks cb) override;
-
-	virtual bool isAutoTrans() override
-	{
-		return _loader_auto_trans;
-	}
-
-	void feedRawBars(WTSBarStruct* bars, uint32_t count);
-	void feedRawTicks(WTSTickStruct* ticks, uint32_t count);
-	void feedAdjFactors(const char* stdCode, uint32_t* dates, double* factors, uint32_t count);
 
 public:
 	void	registerCtaCallbacks(FuncStraInitCallback cbInit, FuncStraTickCallback cbTick, FuncStraCalcCallback cbCalc, 
@@ -74,15 +54,6 @@ public:
 	void registerEvtCallback(FuncEventCallback cbEvt)
 	{
 		_cb_evt = cbEvt;
-	}
-
-	void		registerExtDataLoader(FuncLoadFnlBars fnlBarLoader, FuncLoadRawBars rawBarLoader, FuncLoadAdjFactors fctLoader, FuncLoadRawTicks tickLoader, bool bAutoTrans = true)
-	{
-		_ext_fnl_bar_loader = fnlBarLoader;
-		_ext_raw_bar_loader = rawBarLoader;
-		_ext_adj_fct_loader = fctLoader;
-		_ext_tick_loader = tickLoader;
-		_loader_auto_trans = bAutoTrans;
 	}
 
 	uint32_t	initCtaMocker(const char* name, int32_t slippage = 0, bool hook = false, bool persistData = true);
@@ -107,8 +78,9 @@ public:
 	void	hft_on_trade(uint32_t cHandle, WtUInt32 localid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag);
 	void	hft_on_entrust(uint32_t cHandle, WtUInt32 localid, const char* stdCode, bool bSuccess, const char* message, const char* userTag);
 
-	void	init(const char* logProfile = "", bool isFile = true, const char* outDir = "./outputs_bt");
+	void	init(const char* logProfile = "", bool isFile = true);
 	void	config(const char* cfgFile, bool isFile = true);
+	void	config_setting(const char* cfgFile, bool isFile = true);
 	void	run(bool bNeedDump = false, bool bAsync = false);
 	void	release();
 	void	stop();
@@ -183,12 +155,6 @@ private:
 
 	FuncEventCallback		_cb_evt;
 
-	FuncLoadFnlBars			_ext_fnl_bar_loader;//最终K线加载器
-	FuncLoadRawBars			_ext_raw_bar_loader;//原始K线加载器
-	FuncLoadAdjFactors		_ext_adj_fct_loader;//复权因子加载器
-	FuncLoadRawTicks		_ext_tick_loader;	//tick加载器
-	bool					_loader_auto_trans;	//是否自动转储
-
 	CtaMocker*		_cta_mocker;
 	SelMocker*		_sel_mocker;
 	ExecMocker*		_exec_mocker;
@@ -202,10 +168,6 @@ private:
 	StdThreadPtr	_worker;
 	bool			_async;
 
-	void*			_feed_obj;
-	FuncReadBars	_feeder_bars;
-	FuncReadTicks	_feeder_ticks;
-	FuncReadFactors	_feeder_fcts;
-	StdUniqueMutex	_feed_mtx;
+	double _init_money = 0;
 };
 

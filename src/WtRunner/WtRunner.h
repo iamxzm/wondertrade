@@ -25,18 +25,18 @@
 #include "../WtCore/WtDistExecuter.h"
 #include "../WtCore/TraderAdapter.h"
 #include "../WtCore/ParserAdapter.h"
-#include "../WtCore/WtDtMgr.h"
+#include "../WtCore/WtDataManager.h"
 #include "../WtCore/ActionPolicyMgr.h"
 
 #include "../WTSTools/WTSHotMgr.h"
 #include "../WTSTools/WTSBaseDataMgr.h"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSVariant;
 class WtDataStorage;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WtRunner : public ILogHandler
 {
@@ -50,7 +50,7 @@ public:
 	 */
 	bool init();
 
-	bool config();
+	bool config(const char* cfgFile);
 
 	void run(bool bAsync = false);
 
@@ -84,7 +84,7 @@ private:
 
 	WtDataStorage*		_data_store;
 
-	WtDtMgr				_data_mgr;
+	WtDataManager		_data_mgr;
 
 	WTSBaseDataMgr		_bd_mgr;
 	WTSHotMgr			_hot_mgr;

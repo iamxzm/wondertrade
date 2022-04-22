@@ -1,7 +1,7 @@
 #pragma once
 #include "../Includes/HftStrategyDefs.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WtHftStraFact : public IHftStrategyFact
 {

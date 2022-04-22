@@ -17,7 +17,7 @@
 #include "../Share/DLLHelper.hpp"
 #include "../Share/threadpool.hpp"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSVariant;
 class IDataManager;
 class TraderAdapter;
@@ -71,7 +71,7 @@ private:
 		FuncCreateExeFact	_creator;
 		FuncDeleteExeFact	_remover;
 	} ExeFactInfo;
-	typedef faster_hashmap<LongKey, ExeFactInfo> ExeFactMap;
+	typedef faster_hashmap<std::string, ExeFactInfo> ExeFactMap;
 
 	ExeFactMap	_factories;
 };
@@ -81,7 +81,7 @@ class WtLocalExecuter : public ExecuteContext,
 		public ITrdNotifySink, public IExecCommand
 {
 public:
-	typedef faster_hashmap<LongKey, ExecuteUnitPtr> ExecuteUnitMap;
+	typedef faster_hashmap<std::string, ExecuteUnitPtr> ExecuteUnitMap;
 
 public:
 	WtLocalExecuter(WtExecuterFactory* factory, const char* name, IDataManager* dataMgr);
@@ -102,7 +102,6 @@ public:
 
 private:
 	ExecuteUnitPtr	getUnit(const char* code, bool bAutoCreate = true);
-
 public:
 	//////////////////////////////////////////////////////////////////////////
 	//ExecuteContext
@@ -110,7 +109,7 @@ public:
 
 	virtual WTSTickData*	grabLastTick(const char* code) override;
 
-	virtual double		getPosition(const char* stdCode, bool validOnly = true, int32_t flag = 3) override;
+	virtual double		getPosition(const char* code, int32_t flag = 3) override;
 	virtual OrderMap*	getOrders(const char* code) override;
 	virtual double		getUndoneQty(const char* code) override;
 
@@ -118,7 +117,7 @@ public:
 	virtual OrderIDs	sell(const char* code, double price, double qty, bool bForceClose = false) override;
 	virtual bool		cancel(uint32_t localid) override;
 	virtual OrderIDs	cancel(const char* code, bool isBuy, double qty) override;
-	virtual void		writeLog(const char* message) override;
+	virtual void		writeLog(const char* fmt, ...) override;
 
 	virtual WTSCommodityInfo*	getCommodityInfo(const char* stdCode) override;
 	virtual WTSSessionInfo*		getSessionInfo(const char* stdCode) override;
@@ -129,7 +128,7 @@ public:
 	/*
 	 *	设置目标仓位
 	 */
-	virtual void set_position(const faster_hashmap<LongKey, double>& targets) override;
+	virtual void set_position(const faster_hashmap<std::string, double>& targets) override;
 
 
 	/*
@@ -180,17 +179,10 @@ private:
 	IDataManager*		_data_mgr;
 	WTSVariant*			_config;
 
-	double				_scale;				//放大倍数
-	bool				_auto_clear;		//是否自动清理上一期的主力合约头寸
-	bool				_strict_sync;		//是否严格同步目标仓位
-	bool				_channel_ready;
+	double			_scale;
+	bool			_channel_ready;
 
-	faster_hashset<LongKey>	_clear_includes;	//自动清理包含品种
-	faster_hashset<LongKey>	_clear_excludes;	//自动清理排除品种
-
-	faster_hashset<LongKey> _channel_holds;		//通道持仓
-
-	faster_hashmap<LongKey, double> _target_pos;
+	faster_hashmap<std::string, double> _target_pos;
 
 	typedef std::shared_ptr<boost::threadpool::pool> ThreadPoolPtr;
 	ThreadPoolPtr		_pool;
@@ -199,4 +191,4 @@ private:
 typedef std::shared_ptr<IExecCommand> ExecCmdPtr;
 typedef std::shared_ptr<WtLocalExecuter> WtExecuterPtr;
 
-NS_WTP_END
+NS_OTP_END

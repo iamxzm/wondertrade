@@ -13,15 +13,15 @@
 #include "../Share/StdUtils.hpp"
 #include "../Share/BoostMappingFile.hpp"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSTickData;
 class WTSOrdQueData;
 class WTSOrdDtlData;
 class WTSTransData;
 class WTSVariant;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WTSBaseDataMgr;
 class StateMonitor;
@@ -35,12 +35,9 @@ public:
 
 public:
 	bool init(WTSVariant* params, WTSBaseDataMgr* bdMgr, StateMonitor* stMonitor, UDPCaster* caster = NULL);
-
-	void add_ext_dumper(const char* id, IHisDataDumper* dumper);
-
 	void release();
 
-	bool writeTick(WTSTickData* curTick, uint32_t procFlag);
+	bool writeTick(WTSTickData* curTick, bool bNeedSlice = true);
 
 	bool writeOrderQueue(WTSOrdQueData* curOrdQue);
 
@@ -78,7 +75,7 @@ public:
 	*	@ll			日志级别
 	*	@message	日志内容
 	*/
-	virtual void outputLog(WTSLogLevel ll, const char* message) override;
+	virtual void outputWriterLog(WTSLogLevel ll, const char* format, ...) override;
 
 private:
 	IDataWriter*		_writer;

@@ -11,11 +11,11 @@
 #include "../Includes/WTSCollection.hpp"
 
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 	class WTSTickData;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 /*
  *	·ÂÕæ½»Ò×Æ÷
@@ -116,7 +116,7 @@ private:
 //////////////////////////////////////////////////////////////////////////
 //ITraderApi
 public:
-	virtual bool init(WTSVariant *params) override;
+	virtual bool init(WTSParams *params) override;
 
 	virtual void release() override;
 

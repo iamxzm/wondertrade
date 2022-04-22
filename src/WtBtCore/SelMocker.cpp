@@ -9,18 +9,24 @@
 */
 #include "SelMocker.h"
 #include "WtHelper.h"
+#include "HisDataReplayer.h"
 
 #include <exception>
+#include <rapidjson/document.h>
+#include <rapidjson/prettywriter.h>
 #include <boost/filesystem.hpp>
 
 #include "../Share/StdUtils.hpp"
 #include "../Share/StrUtil.hpp"
 #include "../Includes/WTSContractInfo.hpp"
 #include "../Includes/WTSSessionInfo.hpp"
+#include "../Includes/WTSTradeDef.hpp"
 #include "../Share/decimal.h"
 #include "../Includes/WTSVariant.hpp"
 
 #include "../WTSTools/WTSLogger.h"
+
+namespace rj = rapidjson;
 
 inline uint32_t makeSelCtxId()
 {
@@ -125,7 +131,7 @@ bool SelMocker::init_sel_factory(WTSVariant* cfg)
 		_strategy = _factory._fact->createStrategy(cfgStra->getCString("name"), cfgStra->getCString("id"));
 		if (_strategy)
 		{
-			WTSLogger::info_f("Strategy {}.{} created,strategy ID: {}", _factory._fact->getName(), _strategy->getName(), _strategy->id());
+			WTSLogger::info("Strategy %s.%s created,strategy ID: %s", _factory._fact->getName(), _strategy->getName(), _strategy->id());
 		}
 		_strategy->init(cfgStra->get("params"));
 		_name = _strategy->id();
@@ -166,76 +172,17 @@ void SelMocker::handle_session_end(uint32_t uCurDate)
 
 void SelMocker::handle_replay_done()
 {
-	WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_INFO, 
-		"Strategy has been scheduled for {} times,totally taking {} microsecs,average of {} microsecs",
-		_emit_times, _total_calc_time, _total_calc_time / _emit_times);
+	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_INFO, fmt::format("Strategy has been scheduled for {} times,totally taking {} microsecs,average of {} microsecs",
+		_emit_times, _total_calc_time, _total_calc_time / _emit_times).c_str());
 
 	dump_outputs();
 
 	this->on_bactest_end();
 }
 
-void SelMocker::handle_tick(const char* stdCode, WTSTickData* newTick, bool isBarEnd /* = true */)
+void SelMocker::handle_tick(const char* stdCode, WTSTickData* curTick)
 {
-	_price_map[stdCode].first = newTick->price();
-	_price_map[stdCode].second = (uint64_t)newTick->actiondate() * 1000000000 + newTick->actiontime();
-
-	//先检查是否要信号要触发
-	{
-		auto it = _sig_map.find(stdCode);
-		if (it != _sig_map.end())
-		{
-			//if (sInfo->isInTradingTime(_replayer->get_raw_time(), true))
-			{
-				const SigInfo& sInfo = it->second;
-				double price;
-				if (decimal::eq(sInfo._desprice, 0.0))
-					price = newTick->price();
-				else
-					price = sInfo._desprice;
-				do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str(), sInfo._triggered);
-				_sig_map.erase(it);
-			}
-
-		}
-	}
-
-	update_dyn_profit(stdCode, newTick->price());
-
-	on_tick_updated(stdCode, newTick);
-
-	/*
-	 *	By Wesley @ 2022.04.19
-	 *	isBarEnd，如果是逐tick回放，这个永远都是true，永远也不会触发下面这段逻辑
-	 *	如果是模拟的tick数据，用收盘价模拟tick的时候，isBarEnd才会为true
-	 *	如果不是收盘价模拟的tick，那么直接在当前tick触发撮合逻辑
-	 *	这样做的目的是为了让在模拟tick触发的ontick中下单的信号能够正常处理
-	 *	而不至于在回测的时候成交价偏离太远
-	 */
-	if (!isBarEnd)
-	{
-		//先检查是否要信号要触发
-		{
-			auto it = _sig_map.find(stdCode);
-			if (it != _sig_map.end())
-			{
-				//if (sInfo->isInTradingTime(_replayer->get_raw_time(), true))
-				{
-					const SigInfo& sInfo = it->second;
-					double price;
-					if (decimal::eq(sInfo._desprice, 0.0))
-						price = newTick->price();
-					else
-						price = sInfo._desprice;
-					do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str(), sInfo._triggered);
-					_sig_map.erase(it);
-				}
-
-			}
-		}
-
-		update_dyn_profit(stdCode, newTick->price());
-	}
+	this->on_tick(stdCode, curTick, true);
 }
 
 
@@ -264,7 +211,7 @@ void SelMocker::on_init()
 	if (_strategy)
 		_strategy->on_init(this);
 
-	WTSLogger::info_f("SEL Strategy initialized, with slippage: {}", _slippage);
+	WTSLogger::info("SEL Strategy initialized, with slippage: %d", _slippage);
 }
 
 void SelMocker::update_dyn_profit(const char* stdCode, double price)
@@ -298,7 +245,7 @@ void SelMocker::update_dyn_profit(const char* stdCode, double price)
 	}
 
 	double total_dynprofit = 0;
-	for (auto& v : _pos_map)
+	for (auto v : _pos_map)
 	{
 		const PosInfo& pInfo = v.second;
 		total_dynprofit += pInfo._dynprofit;
@@ -309,8 +256,33 @@ void SelMocker::update_dyn_profit(const char* stdCode, double price)
 
 void SelMocker::on_tick(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
 {
-	//By Wesley @ 2022.04.19
-	//这个逻辑迁移到handle_tick去了
+	_price_map[stdCode].first = newTick->price();
+	_price_map[stdCode].second = (uint64_t)newTick->actiondate() * 1000000000 + newTick->actiontime();
+
+	//先检查是否要信号要触发
+	{
+		auto it = _sig_map.find(stdCode);
+		if (it != _sig_map.end())
+		{
+			//if (sInfo->isInTradingTime(_replayer->get_raw_time(), true))
+			{
+				const SigInfo& sInfo = it->second;
+				double price;
+				if (decimal::eq(sInfo._desprice, 0.0))
+					price = newTick->price();
+				else
+					price = sInfo._desprice;
+				do_set_position(stdCode, sInfo._volume, price, sInfo._usertag.c_str(), sInfo._triggered);
+				_sig_map.erase(it);
+			}
+
+		}
+	}
+
+	update_dyn_profit(stdCode, newTick->price());
+
+	if (bEmitStrategy)
+		on_tick_updated(stdCode, newTick);
 }
 
 void SelMocker::on_bar_close(const char* code, const char* period, WTSBarStruct* newBar)
@@ -321,10 +293,6 @@ void SelMocker::on_bar_close(const char* code, const char* period, WTSBarStruct*
 
 void SelMocker::on_tick_updated(const char* code, WTSTickData* newTick)
 {
-	auto it = _tick_subs.find(code);
-	if (it == _tick_subs.end())
-		return;
-
 	if (_strategy)
 		_strategy->on_tick(this, code, newTick);
 }
@@ -369,23 +337,12 @@ bool SelMocker::on_schedule(uint32_t curDate, uint32_t curTime, uint32_t fireTim
 
 void SelMocker::on_session_begin(uint32_t curTDate)
 {
-	//每个交易日开始，要把冻结持仓置零
-	for (auto& it : _pos_map)
-	{
-		const char* stdCode = it.first.c_str();
-		PosInfo& pInfo = (PosInfo&)it.second;
-		if (!decimal::eq(pInfo._frozen, 0))
-		{
-			log_debug("{} of {} frozen released on {}", pInfo._frozen, stdCode, curTDate);
-			pInfo._frozen = 0;
-		}
-	}
 }
 
 void SelMocker::enum_position(FuncEnumSelPositionCallBack cb)
 {
 	faster_hashmap<std::string, double> desPos;
-	for (auto& it : _pos_map)
+	for (auto it : _pos_map)
 	{
 		const char* stdCode = it.first.c_str();
 		const PosInfo& pInfo = it.second;
@@ -440,38 +397,6 @@ double SelMocker::stra_get_price(const char* stdCode)
 
 void SelMocker::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */)
 {
-	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
-	if (commInfo == NULL)
-	{
-		log_error("Cannot find corresponding commodity info of {}", stdCode);
-		return;
-	}
-
-	//如果不能做空，则目标仓位不能设置负数
-	if (!commInfo->canShort() && decimal::lt(qty, 0))
-	{
-		log_error("Cannot short on {}", stdCode);
-		return;
-	}
-
-	double total = stra_get_position(stdCode, false);
-	//如果目标仓位和当前仓位是一致的，直接退出
-	if (decimal::eq(total, qty))
-		return;
-
-	if (commInfo->isT1())
-	{
-		double valid = stra_get_position(stdCode, true);
-		double frozen = total - valid;
-		//如果是T+1规则，则目标仓位不能小于冻结仓位
-		if (decimal::lt(qty, frozen))
-		{
-			WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_ERROR, 
-				"New position of {} cannot be set to {} due to {} being frozen", stdCode, qty, frozen);
-			return;
-		}
-	}
-
 	_replayer->sub_tick(id(), stdCode);
 	append_signal(stdCode, qty, userTag);
 }
@@ -506,50 +431,104 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 		return;
 
 	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
-	if (commInfo == NULL)
-		return;
 
 	//成交价
 	double trdPx = curPx;
-	double diff = qty - pInfo._volume;
-	bool isBuy = decimal::gt(diff, 0.0);
-	if (decimal::gt(pInfo._volume*diff, 0))//当前持仓和仓位变动方向一致,增加一条明细,增加数量即可
+
+	if (decimal::gt(pInfo._volume*qty, 0))//当前持仓和目标仓位方向一致,增加一条明细,增加数量即可
 	{
-		pInfo._volume = qty;
-
-		//如果T+1，则冻结仓位要增加
-		if (commInfo->isT1())
+		//目标仓位绝对值大于当前仓位绝对值,则是继续开仓,增加一条记录即可
+		if (decimal::gt(abs(qty), abs(pInfo._volume)))
 		{
-			//ASSERT(diff>0);
-			pInfo._frozen += diff;
-			log_debug("{} frozen position up to {}", stdCode, pInfo._frozen);
-		}
+			double diff = abs(qty - pInfo._volume);
+			pInfo._volume = qty;
 
-		if (_slippage != 0)
+			if (_slippage != 0)
+			{
+				bool isBuy = decimal::gt(qty, 0.0);
+				trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+			}
+
+			DetailInfo dInfo;
+			dInfo._long = decimal::gt(qty, 0);
+			dInfo._price = trdPx;
+			dInfo._volume = diff;
+			dInfo._opentime = curTm;
+			dInfo._opentdate = curTDate;
+			strcpy(dInfo._opentag, userTag);
+			pInfo._details.emplace_back(dInfo);
+
+			double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
+			_fund_info._total_fees += fee;
+			
+			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee);
+		}
+		else
 		{
-			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+			//目标仓位绝对值小于当前仓位绝对值,则要平仓
+			double left = abs(qty - pInfo._volume);
+
+			if (_slippage != 0)
+			{
+				//平仓的话,方向是反的
+				bool isBuy = !decimal::gt(qty, 0.0);
+				trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+			}
+
+			pInfo._volume = qty;
+			if (decimal::eq(pInfo._volume, 0))
+				pInfo._dynprofit = 0;
+			uint32_t count = 0;
+			for (auto it = pInfo._details.begin(); it != pInfo._details.end(); it++)
+			{
+				DetailInfo& dInfo = *it;
+				double maxQty = min(dInfo._volume, left);
+				if (decimal::eq(maxQty, 0))
+					continue;
+
+				dInfo._volume -= maxQty;
+				left -= maxQty;
+
+				if (decimal::eq(dInfo._volume, 0))
+					count++;
+
+				double profit = (trdPx - dInfo._price) * maxQty * commInfo->getVolScale();
+				if (!dInfo._long)
+					profit *= -1;
+				pInfo._closeprofit += profit;
+				pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//浮盈也要做等比缩放
+				_fund_info._total_profit += profit;
+
+				double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
+				_fund_info._total_fees += fee;
+				
+				//这里写成交记录
+				log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee);
+				//这里写平仓记录
+				log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, trdPx, maxQty, profit, pInfo._closeprofit, dInfo._opentag, userTag);
+
+				if (left == 0)
+					break;
+			}
+
+			//需要清理掉已经平仓完的明细
+			while (count > 0)
+			{
+				auto it = pInfo._details.begin();
+				pInfo._details.erase(it);
+				count--;
+			}
 		}
-
-		DetailInfo dInfo;
-		dInfo._long = decimal::gt(qty, 0);
-		dInfo._price = trdPx;
-		dInfo._volume = abs(diff);
-		dInfo._opentime = curTm;
-		dInfo._opentdate = curTDate;
-		strcpy(dInfo._opentag, userTag);
-		pInfo._details.emplace_back(dInfo);
-
-		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
-		_fund_info._total_fees += fee;
-
-		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), userTag, fee);
 	}
 	else
 	{//持仓方向和目标仓位方向不一致,需要平仓
-		double left = abs(diff);
-		bool isBuy = decimal::gt(diff, 0.0);
+		double left = abs(pInfo._volume) + abs(qty);
+
 		if (_slippage != 0)
+		{
+			bool isBuy = decimal::gt(qty, 0.0);
 			trdPx += _slippage * commInfo->getPriceTick()*(isBuy ? 1 : -1);
+		}
 
 		pInfo._volume = qty;
 		if (decimal::eq(pInfo._volume, 0))
@@ -562,9 +541,6 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 			if (decimal::eq(maxQty, 0))
 				continue;
 
-			double maxProf = dInfo._max_profit * maxQty / dInfo._volume;
-			double maxLoss = dInfo._max_loss * maxQty / dInfo._volume;
-
 			dInfo._volume -= maxQty;
 			left -= maxQty;
 
@@ -574,7 +550,6 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 			double profit = (trdPx - dInfo._price) * maxQty * commInfo->getVolScale();
 			if (!dInfo._long)
 				profit *= -1;
-
 			pInfo._closeprofit += profit;
 			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//浮盈也要做等比缩放
 			_fund_info._total_profit += profit;
@@ -584,8 +559,7 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 			//这里写成交记录
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, userTag, fee);
 			//这里写平仓记录
-			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, 
-				trdPx, maxQty, profit, pInfo._closeprofit, dInfo._opentag, userTag);
+			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, trdPx, maxQty, profit, pInfo._closeprofit, dInfo._opentag, userTag);
 
 			if (left == 0)
 				break;
@@ -604,13 +578,6 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 		{
 			left = left * qty / abs(qty);
 
-			//如果T+1，则冻结仓位要增加
-			if (commInfo->isT1())
-			{
-				pInfo._frozen += left;
-				log_debug("{} frozen position up to {}", stdCode, pInfo._frozen);
-			}
-
 			DetailInfo dInfo;
 			dInfo._long = decimal::gt(qty, 0);
 			dInfo._price = trdPx;
@@ -620,9 +587,11 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 			strcpy(dInfo._opentag, userTag);
 			pInfo._details.emplace_back(dInfo);
 
+			//TODO: 
 			//这里还需要写一笔成交记录
-			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
+			double fee = _replayer->calc_fee(stdCode, trdPx, abs(qty), 0);
 			_fund_info._total_fees += fee;
+
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), userTag, fee);
 		}
 	}
@@ -630,36 +599,39 @@ void SelMocker::do_set_position(const char* stdCode, double qty, double price /*
 
 WTSKlineSlice* SelMocker::stra_get_bars(const char* stdCode, const char* period, uint32_t count)
 {
-	thread_local static char key[64] = { 0 };
-	fmtutil::format_to(key, "{}#{}", stdCode, period);
+	std::string key = StrUtil::printf("%s#%s", stdCode, period);
 
-	thread_local static char basePeriod[2] = { 0 };
-	basePeriod[0] = period[0];
+	std::string basePeriod = "";
 	uint32_t times = 1;
 	if (strlen(period) > 1)
+	{
+		basePeriod.append(period, 1);
 		times = strtoul(period + 1, NULL, 10);
+	}
 	else
-		strcat(key, "1");
+	{
+		basePeriod = period;
+	}
 
-	WTSKlineSlice* kline = _replayer->get_kline_slice(stdCode, basePeriod, count, times, false);
+	WTSKlineSlice* kline = _replayer->get_kline_slice(stdCode, basePeriod.c_str(), count, times, false);
 
 	KlineTag& tag = _kline_tags[key];
 	tag._closed = false;
 
 	if (kline)
 	{
-		double lastClose = kline->at(-1)->close;
+		double lastClose = kline->close(-1);
 		uint64_t lastTime = 0;
 		if(basePeriod[0] == 'd')
 		{
-			lastTime = kline->at(-1)->date;
+			lastTime = kline->date(-1);
 			WTSSessionInfo* sInfo = _replayer->get_session_info(stdCode, true);
 			lastTime *= 1000000000;
 			lastTime += (uint64_t)sInfo->getCloseTime() * 100000;
 		}
 		else
 		{
-			lastTime = kline->at(-1)->time;
+			lastTime = kline->time(-1);
 			lastTime += 199000000000;
 			lastTime *= 100000;
 		}
@@ -686,13 +658,6 @@ WTSTickData* SelMocker::stra_get_last_tick(const char* stdCode)
 
 void SelMocker::stra_sub_ticks(const char* code)
 {
-	/*
-	 *	By Wesley @ 2022.03.01
-	 *	主动订阅tick会在本地记一下
-	 *	tick数据回调的时候先检查一下
-	 */
-	_tick_subs.insert(code);
-
 	_replayer->sub_tick(_context_id, code);
 }
 
@@ -717,19 +682,28 @@ uint32_t SelMocker::stra_get_time()
 	return _replayer->get_min_time();
 }
 
-void SelMocker::stra_log_info(const char* message)
+void SelMocker::stra_log_info(const char* fmt, ...)
 {
-	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_INFO, message);
+	va_list args;
+	va_start(args, fmt);
+	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_INFO, fmt, args);
+	va_end(args);
 }
 
-void SelMocker::stra_log_debug(const char* message)
+void SelMocker::stra_log_debug(const char* fmt, ...)
 {
-	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_DEBUG, message);
+	va_list args;
+	va_start(args, fmt);
+	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_DEBUG, fmt, args);
+	va_end(args);
 }
 
-void SelMocker::stra_log_error(const char* message)
+void SelMocker::stra_log_error(const char* fmt, ...)
 {
-	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_ERROR, message);
+	va_list args;
+	va_start(args, fmt);
+	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_ERROR, fmt, args);
+	va_end(args);
 }
 
 const char* SelMocker::stra_load_user_data(const char* key, const char* defVal /*= ""*/)
@@ -747,7 +721,7 @@ void SelMocker::stra_save_user_data(const char* key, const char* val)
 	_ud_modified = true;
 }
 
-double SelMocker::stra_get_position(const char* stdCode, bool bOnlyValid/* = false*/, const char* userTag /* = "" */)
+double SelMocker::stra_get_position(const char* stdCode, const char* userTag /* = "" */)
 {
 	auto it = _pos_map.find(stdCode);
 	if (it == _pos_map.end())
@@ -755,17 +729,7 @@ double SelMocker::stra_get_position(const char* stdCode, bool bOnlyValid/* = fal
 
 	const PosInfo& pInfo = it->second;
 	if (strlen(userTag) == 0)
-	{
-		//只有userTag为空的时候时候，才会用bOnlyValid
-		if (bOnlyValid)
-		{
-			//这里理论上，只有多头才会进到这里
-			//其他地方要保证，空头持仓的话，_frozen要为0
-			return pInfo._volume - pInfo._frozen;
-		}
-		else
-			return pInfo._volume;
-	}
+		return pInfo._volume;
 
 	for (auto it = pInfo._details.begin(); it != pInfo._details.end(); it++)
 	{

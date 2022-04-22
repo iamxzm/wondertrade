@@ -11,7 +11,7 @@
 
 #include "../Share/StrUtil.hpp"
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 #include <direct.h>
 #else	//UNIX
 #include <unistd.h>
@@ -25,7 +25,7 @@ const char* WtHelper::get_cwd()
 	if(_cwd.empty())
 	{
 		char   buffer[255];
-#ifdef _MSC_VER
+#ifdef _WIN32
 		_getcwd(buffer, 255);
 #else	//UNIX
 		getcwd(buffer, 255);

@@ -15,7 +15,7 @@
 #include "../Includes/FasterDefs.h"
 #include "../Share/StdUtils.hpp"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class MQManager;
 
 class MQClient
@@ -65,7 +65,6 @@ private:
 	FuncMQCallback	_cb_message;
 
 	faster_hashset<std::string> _topics;
-	char			_recv_buf[1024 * 1024];
 };
 
-NS_WTP_END
+NS_OTP_END

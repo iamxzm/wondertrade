@@ -10,7 +10,7 @@
 #include "../Includes/ExecuteDefs.h"
 #include "WtOrdMon.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WtMinImpactExeUnit : public ExecuteUnit
 {

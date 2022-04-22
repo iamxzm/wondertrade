@@ -6,40 +6,45 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.0.0)
 PROJECT(WtDtServo LANGUAGES CXX)
 SET(CMAKE_CXX_STANDARD 11)
 
-SET(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/build_${PLATFORM}/${CMAKE_BUILD_TYPE}/bin/WtDtPorter)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+
+#3. 环境判断
+IF (WIN32)
+	IF("${CMAKE_GENERATOR}" MATCHES "(Win64|IA64)")
+		SET(INCS $ENV{MyDepends141}/include)
+		SET(LNKS $ENV{MyDepends141}/lib/x64)
+	ELSE()
+		SET(INCS $ENV{MyDepends141}/include)
+		SET(LNKS $ENV{MyDepends141}/lib/x86)
+	ENDIF()
+ELSE (UNIX)
+	SET (MyDeps "/home/mydeps")
+	SET(INCS ${MyDeps}/include)
+	SET(LNKS ${MyDeps}/lib)
+ENDIF ()
+
+SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/bin/WtDtPorter)
 
 #7. 添加源码
 file(GLOB SRCS *.cpp)
 file(GLOB HDRS *.h)
-
-IF(MSVC)
-    list (APPEND SRCS ../Common/mdump.cpp)
-ENDIF()
 
 INCLUDE_DIRECTORIES(${INCS})
 LINK_DIRECTORIES(${LNKS})
 ADD_LIBRARY(WtDtServo SHARED ${SRCS} ${HDRS})
 
 SET(LIBS
-    WTSTools
-    WTSUtils
+	${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/libs/libWTSTools.a
+	${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/libs/libWTSUtils.a
+	
+	dl
+	boost_filesystem
 )
-IF (MSVC)
-ELSE (GNUCC)
-    LIST(APPEND LIBS
-        dl
-        boost_filesystem
-        )
-    IF(WIN32)
-        LIST(APPEND LIBS iconv)
-    ENDIF()
-ENDIF()
 
 TARGET_LINK_LIBRARIES(WtDtServo ${LIBS})
-IF (MSVC)
-ELSE (GNUCC)
-    SET_TARGET_PROPERTIES(WtDtServo PROPERTIES
-        CXX_VISIBILITY_PRESET hidden
-        VISIBILITY_INLINES_HIDDEN 1
-        LINK_FLAGS_RELEASE -s)
+IF (WIN32)
+ELSE (UNIX)
+	SET_TARGET_PROPERTIES(WtDtServo PROPERTIES
+		CXX_VISIBILITY_PRESET hidden
+		VISIBILITY_INLINES_HIDDEN 1)
 ENDIF ()

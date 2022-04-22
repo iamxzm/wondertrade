@@ -12,17 +12,26 @@
 #include <stdint.h>
 #include "../Includes/WTSTypes.h"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 struct WTSBarStruct;
 struct WTSTickStruct;
 struct WTSOrdDtlStruct;
 struct WTSOrdQueStruct;
 struct WTSTransStruct;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
+
+#ifdef _WIN32
+#	define PORTER_FLAG _cdecl
+#else
+#	define PORTER_FLAG __attribute__((_cdecl))
+#endif
 
 typedef unsigned long		CtxHandler;
+typedef unsigned long		WtUInt32;
+typedef unsigned long long	WtUInt64;
+typedef const char*			WtString;
 
 static const WtUInt32	EVENT_ENGINE_INIT	= 1;	//框架初始化
 static const WtUInt32	EVENT_SESSION_BEGIN = 2;	//交易日开始
@@ -57,7 +66,6 @@ typedef void(PORTER_FLAG *FuncHftChannelCallback)(CtxHandler cHandle, const char
 typedef void(PORTER_FLAG *FuncHftOrdCallback)(CtxHandler cHandle, WtUInt32 localid, const char* stdCode, bool isBuy, double totalQty, double leftQty, double price, bool isCanceled, const char* userTag);
 typedef void(PORTER_FLAG *FuncHftTrdCallback)(CtxHandler cHandle, WtUInt32 localid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag);
 typedef void(PORTER_FLAG *FuncHftEntrustCallback)(CtxHandler cHandle, WtUInt32 localid, const char* stdCode, bool bSuccess, const char* message, const char* userTag);
-typedef void(PORTER_FLAG *FuncHftPosCallback)(CtxHandler cHandle, const char* stdCode, bool isLong, double prevol, double preavail, double newvol, double newavail);
 
 
 typedef void(PORTER_FLAG *FuncEventCallback)(WtUInt32 evtId, WtUInt32 curDate, WtUInt32 curTime);
@@ -76,10 +84,3 @@ typedef void(PORTER_FLAG *FuncParserSubCallback)(const char* id, const char* ful
 //扩展Executer回调函数
 typedef void(PORTER_FLAG *FuncExecInitCallback)(const char* id);
 typedef void(PORTER_FLAG *FuncExecCmdCallback)(const char* id, const char* StdCode, double targetPos);
-
-//////////////////////////////////////////////////////////////////////////
-//外部数据加载模块
-typedef bool(PORTER_FLAG *FuncLoadFnlBars)(const char* stdCode, const char* period);
-typedef bool(PORTER_FLAG *FuncLoadRawBars)(const char* stdCode, const char* period);
-typedef bool(PORTER_FLAG *FuncLoadAdjFactors)(const char* stdCode);
-typedef bool(PORTER_FLAG *FuncLoadRawTicks)(const char* stdCode, uint32_t uDate);

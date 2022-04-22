@@ -9,17 +9,20 @@
  */
 #include "WtLocalExecuter.h"
 #include "TraderAdapter.h"
+#include "../Includes/IDataManager.h"
 #include "WtEngine.h"
 
 #include "../Share/CodeHelper.hpp"
-#include "../Includes/IDataManager.h"
+#include "../Share/StrUtil.hpp"
+#include "../Share/StdUtils.hpp"
 #include "../Includes/WTSVariant.hpp"
+#include "../Share/TimeUtils.hpp"
 #include "../Includes/IHotMgr.h"
 #include "../Share/decimal.h"
 
 #include "../WTSTools/WTSLogger.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 
 WtLocalExecuter::WtLocalExecuter(WtExecuterFactory* factory, const char* name, IDataManager* dataMgr)
@@ -27,8 +30,6 @@ WtLocalExecuter::WtLocalExecuter(WtExecuterFactory* factory, const char* name, I
 	, _factory(factory)
 	, _data_mgr(dataMgr)
 	, _channel_ready(false)
-	, _scale(1.0)
-	, _auto_clear(true)
 {
 }
 
@@ -48,50 +49,12 @@ bool WtLocalExecuter::init(WTSVariant* params)
 	_config->retain();
 
 	_scale = params->getDouble("scale");
-	_strict_sync  = params->getBoolean("strict_sync");
 	uint32_t poolsize = params->getUInt32("poolsize");
 	if(poolsize > 0)
 	{
 		_pool.reset(new boost::threadpool::pool(poolsize));
+		writeLog("Executer thread poolsize %u", poolsize);
 	}
-
-	/*
-	 *	By Wesley @ 2021.12.14
-	 *	从配置文件中读取自动清理的策略
-	 *	active: 是否启用
-	 *	includes: 包含列表，格式如CFFEX.IF
-	 *	excludes: 排除列表，格式如CFFEX.IF
-	 */
-	WTSVariant* cfgClear = params->get("clear");
-	if(cfgClear)
-	{
-		_auto_clear = cfgClear->getBoolean("active");
-		WTSVariant* cfgItem = cfgClear->get("includes");
-		if(cfgItem)
-		{
-			if (cfgItem->type() == WTSVariant::VT_String)
-				_clear_includes.insert(cfgItem->asCString());
-			else if (cfgItem->type() == WTSVariant::VT_Array)
-			{
-				for(uint32_t i = 0; i < cfgItem->size(); i++)
-					_clear_includes.insert(cfgItem->get(i)->asCString());
-			}
-		}
-
-		cfgItem = cfgClear->get("excludes");
-		if (cfgItem)
-		{
-			if (cfgItem->type() == WTSVariant::VT_String)
-				_clear_excludes.insert(cfgItem->asCString());
-			else if (cfgItem->type() == WTSVariant::VT_Array)
-			{
-				for (uint32_t i = 0; i < cfgItem->size(); i++)
-					_clear_excludes.insert(cfgItem->get(i)->asCString());
-			}
-		}
-	}
-
-	WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "Local executer inited, scale: {}, auto_clear: {}, strict_sync: {}, thread poolsize: {}", _scale, _auto_clear, _strict_sync, poolsize);
 
 	return true;
 }
@@ -150,9 +113,9 @@ WTSTickData* WtLocalExecuter::grabLastTick(const char* stdCode)
 	return _data_mgr->grab_last_tick(stdCode);
 }
 
-double WtLocalExecuter::getPosition(const char* stdCode, bool validOnly /* = true */, int32_t flag /* = 3 */)
+double WtLocalExecuter::getPosition(const char* stdCode, int32_t flag /* = 3 */)
 {
-	return _trader->getPosition(stdCode, validOnly, flag);
+	return _trader->getPosition(stdCode, flag);
 }
 
 double WtLocalExecuter::getUndoneQty(const char* stdCode)
@@ -169,7 +132,7 @@ OrderIDs WtLocalExecuter::buy(const char* stdCode, double price, double qty, boo
 {
 	if (!_channel_ready)
 		return OrderIDs();
-	return _trader->buy(stdCode, price, qty, 0, bForceClose);
+	return _trader->buy(stdCode, price, qty, bForceClose);
 }
 
 OrderIDs WtLocalExecuter::sell(const char* stdCode, double price, double qty, bool bForceClose/* = false*/)
@@ -177,7 +140,7 @@ OrderIDs WtLocalExecuter::sell(const char* stdCode, double price, double qty, bo
 	if (!_channel_ready)
 		return OrderIDs();
 
-	return _trader->sell(stdCode, price, qty, 0, bForceClose);
+	return _trader->sell(stdCode, price, qty, bForceClose);
 }
 
 bool WtLocalExecuter::cancel(uint32_t localid)
@@ -196,11 +159,15 @@ OrderIDs WtLocalExecuter::cancel(const char* stdCode, bool isBuy, double qty)
 	return _trader->cancel(stdCode, isBuy, qty);
 }
 
-void WtLocalExecuter::writeLog(const char* message)
+void WtLocalExecuter::writeLog(const char* fmt, ...)
 {
-	static thread_local char szBuf[2048] = { 0 };
-	fmt::format_to(szBuf, "[{}]{}", _name.c_str(), message);
-	WTSLogger::log_dyn_raw("executer", _name.c_str(), LL_INFO, szBuf);
+	char szBuf[2048] = { 0 };
+	uint32_t length = sprintf(szBuf, "[%s]", _name.c_str());
+	strcat(szBuf, fmt);
+	va_list args;
+	va_start(args, fmt);
+	WTSLogger::vlog_dyn("executer", _name.c_str(), LL_INFO, szBuf, args);
+	va_end(args);
 }
 
 WTSCommodityInfo* WtLocalExecuter::getCommodityInfo(const char* stdCode)
@@ -239,19 +206,19 @@ void WtLocalExecuter::on_position_changed(const char* stdCode, double targetPos)
 
 	if(!decimal::eq(oldVol, targetPos))
 	{
-		WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "Target position of {} changed: {} -> {}", stdCode, oldVol, targetPos);
+		writeLog(fmt::format("Target position of {} changed: {} -> {}", stdCode, oldVol, targetPos).c_str());
 	}
 
 	if (_trader && !_trader->checkOrderLimits(stdCode))
 	{
-		WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "{} is disabled", stdCode);
+		writeLog("%s is disabled", stdCode);
 		return;
 	}
 
 	unit->self()->set_position(stdCode, targetPos);
 }
 
-void WtLocalExecuter::set_position(const faster_hashmap<LongKey, double>& targets)
+void WtLocalExecuter::set_position(const faster_hashmap<std::string, double>& targets)
 {
 	for (auto it = targets.begin(); it != targets.end(); it++)
 	{
@@ -266,12 +233,12 @@ void WtLocalExecuter::set_position(const faster_hashmap<LongKey, double>& target
 		_target_pos[stdCode] = newVol;
 		if(!decimal::eq(oldVol, newVol))
 		{
-			WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "Target position of {} changed: {} -> {}", stdCode, oldVol, newVol);
+			writeLog(fmt::format("Target position of {} changed: {} -> {}", stdCode, oldVol, newVol).c_str());
 		}
 
 		if (_trader && !_trader->checkOrderLimits(stdCode))
 		{
-			WTSLogger::log_dyn_f("executer", _name.c_str(), LL_WARN, "{} is disabled due to entrust limit control ", stdCode);
+			writeLog("%s is disabled", stdCode);
 			continue;
 		}
 
@@ -288,7 +255,6 @@ void WtLocalExecuter::set_position(const faster_hashmap<LongKey, double>& target
 		}
 	}
 
-	//在原来的目标头寸中，但是不在新的目标头寸中，则需要自动设置为0
 	for (auto it = _target_pos.begin(); it != _target_pos.end(); it++)
 	{
 		const char* code = it->first.c_str();
@@ -296,8 +262,6 @@ void WtLocalExecuter::set_position(const faster_hashmap<LongKey, double>& target
 		auto tit = targets.find(code);
 		if(tit != targets.end())
 			continue;
-
-		WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "{} is not in target, set to 0 automatically", code);
 
 		ExecuteUnitPtr unit = getUnit(code);
 		if (unit == NULL)
@@ -316,36 +280,6 @@ void WtLocalExecuter::set_position(const faster_hashmap<LongKey, double>& target
 		}
 
 		pos = 0;
-	}
-
-	//如果开启了严格同步，则需要检查通道持仓
-	//如果通道持仓不在管理中，则直接平掉
-	if(_strict_sync)
-	{
-		for(const LongKey& stdCode : _channel_holds)
-		{
-			auto it = _target_pos.find(stdCode.c_str());
-			if(it != _target_pos.end())
-				continue;
-
-			WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "{} is not in management, set to 0 due to strict sync mode", stdCode.c_str());
-
-			ExecuteUnitPtr unit = getUnit(stdCode.c_str());
-			if (unit == NULL)
-				continue;
-
-			if (_pool)
-			{
-				std::string code = stdCode.c_str();
-				_pool->schedule([unit, code]() {
-					unit->self()->set_position(code.c_str(), 0);
-				});
-			}
-			else
-			{
-				unit->self()->set_position(stdCode.c_str(), 0);
-			}
-		}
 	}
 }
 
@@ -479,70 +413,34 @@ void WtLocalExecuter::on_channel_lost()
 
 void WtLocalExecuter::on_position(const char* stdCode, bool isLong, double prevol, double preavail, double newvol, double newavail, uint32_t tradingday)
 {
-	_channel_holds.insert(stdCode);
-
-	/*
-	 *	By Wesley @ 2021.12.14
-	 *	先检查自动清理过期主力合约的标记是否为true
-	 *	如果不为true，则直接退出该逻辑
-	 */
-	if (!_auto_clear)
-		return;
-
-	//如果不是分月期货合约，直接退出
-	if (!CodeHelper::isStdMonthlyFutCode(stdCode))
-		return;
-
 	IHotMgr* hotMgr = _stub->get_hot_mon();
-	CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
-	//获取上一期的主力合约
-	std::string prevCode = hotMgr->getPrevRawCode(cInfo._exchg, cInfo._product, tradingday);
-
-	//如果当前合约不是上一期的主力合约，则直接退出
-	if (prevCode != cInfo._code)
-		return;
-
-	WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "Prev hot contract of {}.{} on {} is {}", cInfo._exchg, cInfo._product, tradingday, prevCode);
-
-	thread_local static char fullPid[64] = { 0 };
-	fmtutil::format_to(fullPid, "{}.{}", cInfo._exchg, cInfo._product);
-
-	//先检查排除列表
-	//如果在排除列表中，则直接退出
-	auto it = _clear_excludes.find(fullPid);
-	if(it != _clear_excludes.end())
+	if(CodeHelper::isStdFutCode(stdCode))
 	{
-		WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "Position of {}, as prev hot contract, won't be cleared for it's in exclude list", stdCode);
-		return;
-	}
-
-	//如果包含列表不为空，再检查是否在包含列表中
-	//如果为空，则全部清理，不再进入该逻辑
-	if(!_clear_includes.empty())
-	{
-		it = _clear_includes.find(fullPid);
-		if (it == _clear_includes.end())
+		CodeHelper::CodeInfo cInfo;
+		CodeHelper::extractStdFutCode(stdCode, cInfo);
+		std::string code = hotMgr->getPrevRawCode(cInfo._exchg, cInfo._product, tradingday);
+		writeLog("Prev hot contract of %s.%s on %u is %s", cInfo._exchg, cInfo._product, tradingday, code.c_str());
+		if (code == cInfo._code)
 		{
-			WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "Position of {}, as prev hot contract, won't be cleared for it's not in include list", stdCode);
-			return;
-		}
-	}
-
-	//最后再进行自动清理
-	WTSLogger::log_dyn_f("executer", _name.c_str(), LL_INFO, "Position of {}, as prev hot contract, will be cleared", stdCode);
-	ExecuteUnitPtr unit = getUnit(stdCode);
-	if (unit)
-	{
-		if (_pool)
-		{
-			std::string code = stdCode;
-			_pool->schedule([unit, code](){
-				unit->self()->clear_all_position(code.c_str());
-			});
-		}
-		else
-		{
-			unit->self()->clear_all_position(stdCode);
+			//上期主力合约,需要清理仓位
+			//writeLog("%s 为上一期主力合约,仓位即将自动清理");
+			writeLog("Position of %s, as prev hot contract, will be cleared", stdCode);
+			ExecuteUnitPtr unit = getUnit(stdCode);
+			if (unit)
+			{
+				//unit->self()->set_position(stdCode, 0);
+				if (_pool)
+				{
+					std::string code = stdCode;
+					_pool->schedule([unit, code](){
+						unit->self()->clear_all_position(code.c_str());
+					});
+				}
+				else
+				{
+					unit->self()->clear_all_position(stdCode);
+				}
+			}
 		}
 	}
 }
@@ -556,7 +454,7 @@ bool WtExecuterFactory::loadFactories(const char* path)
 {
 	if (!StdFile::exists(path))
 	{
-		WTSLogger::error_f("Directory {} of executer factory not exists", path);
+		WTSLogger::error("Directory %s of executer factory not exists", path);
 		return false;
 	}
 
@@ -599,7 +497,7 @@ bool WtExecuterFactory::loadFactories(const char* path)
 
 		_factories[fInfo._fact->getName()] = fInfo;
 
-		WTSLogger::info_f("Executer factory {} loaded", fInfo._fact->getName());
+		WTSLogger::info("Executer factory %s loaded", fInfo._fact->getName());
 	}
 
 	return true;
@@ -615,7 +513,7 @@ ExecuteUnitPtr WtExecuterFactory::createExeUnit(const char* factname, const char
 	ExecuteUnit* unit = fInfo._fact->createExeUnit(unitname);
 	if(unit == NULL)
 	{
-		WTSLogger::error_f("Createing execution unit failed: {}.{}", factname, unitname);
+		WTSLogger::error("Createing execution unit failed: %s.%s", factname, unitname);
 		return ExecuteUnitPtr();
 	}
 	return ExecuteUnitPtr(new ExeUnitWrapper(unit, fInfo._fact));
@@ -638,7 +536,7 @@ ExecuteUnitPtr WtExecuterFactory::createExeUnit(const char* name)
 	ExecuteUnit* unit = fInfo._fact->createExeUnit(unitname);
 	if (unit == NULL)
 	{
-		WTSLogger::error_f("Createing execution unit failed: {}", name);
+		WTSLogger::error("Createing execution unit failed: %s", name);
 		return ExecuteUnitPtr();
 	}
 	return ExecuteUnitPtr(new ExeUnitWrapper(unit, fInfo._fact));

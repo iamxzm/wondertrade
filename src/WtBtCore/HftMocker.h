@@ -10,6 +10,7 @@
 #pragma once
 #include <queue>
 #include <sstream>
+#include <math.h>
 
 #include "HisDataReplayer.h"
 
@@ -19,7 +20,18 @@
 
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
-#include "../Share/fmtlib.h"
+
+#include <bsoncxx/builder/stream/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/kvp.hpp>
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/types.hpp>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/instance.hpp>
+#include <mongocxx/uri.hpp>
+#include <mongocxx/database.hpp>
 
 class HisDataReplayer;
 
@@ -29,32 +41,10 @@ public:
 	HftMocker(HisDataReplayer* replayer, const char* name);
 	virtual ~HftMocker();
 
-private:
-	template<typename... Args>
-	void log_debug(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_debug(buffer);
-	}
-
-	template<typename... Args>
-	void log_info(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_info(buffer);
-	}
-
-	template<typename... Args>
-	void log_error(const char* format, const Args& ...args)
-	{
-		const char* buffer = fmtutil::format(format, args...);
-		stra_log_error(buffer);
-	}
-
 public:
 	//////////////////////////////////////////////////////////////////////////
 	//IDataSink
-	virtual void	handle_tick(const char* stdCode, WTSTickData* curTick, bool isBarEnd = true) override;
+	virtual void	handle_tick(const char* stdCode, WTSTickData* curTick) override;
 	virtual void	handle_order_queue(const char* stdCode, WTSOrdQueData* curOrdQue) override;
 	virtual void	handle_order_detail(const char* stdCode, WTSOrdDtlData* curOrdDtl) override;
 	virtual void	handle_transaction(const char* stdCode, WTSTransData* curTrans) override;
@@ -97,9 +87,9 @@ public:
 
 	virtual OrderIDs stra_cancel(const char* stdCode, bool isBuy, double qty = 0) override;
 
-	virtual OrderIDs stra_buy(const char* stdCode, double price, double qty, const char* userTag, int flag = 0) override;
+	virtual OrderIDs stra_buy(const char* stdCode, double price, double qty, const char* userTag) override;
 
-	virtual OrderIDs stra_sell(const char* stdCode, double price, double qty, const char* userTag, int flag = 0) override;
+	virtual OrderIDs stra_sell(const char* stdCode, double price, double qty, const char* userTag) override;
 
 	virtual WTSCommodityInfo* stra_get_comminfo(const char* stdCode) override;
 
@@ -115,7 +105,7 @@ public:
 
 	virtual WTSTickData* stra_get_last_tick(const char* stdCode) override;
 
-	virtual double stra_get_position(const char* stdCode, bool bOnlyValid = false) override;
+	virtual double stra_get_position(const char* stdCode) override;
 
 	virtual double stra_get_position_profit(const char* stdCode) override;
 
@@ -137,16 +127,16 @@ public:
 
 	virtual void stra_sub_transactions(const char* stdCode) override;
 
-	virtual void stra_log_info(const char* message) override;
-	virtual void stra_log_debug(const char* message) override;
-	virtual void stra_log_error(const char* message) override;
+	virtual void stra_log_info(const char* fmt, ...) override;
+	virtual void stra_log_debug(const char* fmt, ...) override;
+	virtual void stra_log_error(const char* fmt, ...) override;
 
 	virtual void stra_save_user_data(const char* key, const char* val) override;
 
 	virtual const char* stra_load_user_data(const char* key, const char* defVal = "") override;
 
 	//////////////////////////////////////////////////////////////////////////
-	virtual void on_trade(uint32_t localid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag);
+	virtual void on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag, time_t insert_date_time);
 
 	virtual void on_order(uint32_t localid, const char* stdCode, bool isBuy, double totalQty, double leftQty, double price, bool isCanceled, const char* userTag);
 
@@ -159,15 +149,18 @@ public:
 	void	install_hook();
 	void	enable_hook(bool bEnabled = true);
 	void	step_tick();
+	void	set_initacc(double money);
+
+	std::time_t getTimeStamp();
 
 private:
 	typedef std::function<void()> Task;
 	void	postTask(Task task);
 	void	procTask();
 
-	bool	procOrder(uint32_t localid);
+	bool	procOrder(uint32_t localid, std::string instid);
 
-	void	do_set_position(const char* stdCode, double qty, double price = 0.0, const char* userTag = "");
+	void	do_set_position(const char* stdCode, std::string instid, double qty, time_t insert_date_time, double price = 0.0, const char* userTag = "");
 	void	update_dyn_profit(const char* stdCode, WTSTickData* newTick);
 
 	void	dump_outputs();
@@ -175,12 +168,44 @@ private:
 	inline void	log_close(const char* stdCode, bool isLong, uint64_t openTime, double openpx, uint64_t closeTime, double closepx, double qty,
 		double profit, double maxprofit, double maxloss, double totalprofit, const char* enterTag, const char* exitTag);
 
+	void set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy = true);
+
 private:
 	HisDataReplayer*	_replayer;
 
+	double		init_money = 100000;			//初始资金
+	double      _balance = 0;					//今总资产
+	double		_total_money = init_money;		//剩余资金
+	double		_static_balance = init_money;	//期初资产
+	double		_close_price = 0;				//昨结算价
+	double		_settlepx;						//今结算价
+	double        _used_margin = 0;				//占用保证金
+	double        _margin_rate = 0.5;			//保证金比例
+	uint64_t		_cur_multiplier = 100;		//当前合约乘数
+
+	std::string _per_strategy_id;
+
+	double		_day_profit = 0;
+	double		_total_profit = 0;				//策略收益
+	double		_benchmark_rate_of_return = 0;	//基准收益率
+	double		_benchmark_cumulative_rate = 0;
+	double		_strategy_cumulative_rate = 0;	//策略累计收益率
+	double		_daily_rate_of_return = 0;		//策略收益率
+	double		_abnormal_rate_of_return = 0;	//日超额收益率
+	int			_win_or_lose_flag;
+
+	bool			_new_trade_day = true;
+	bool		_dayacc_insert_flag = true;
+	bool		_changepos = true;
+	uint32_t    _traderday = 0;
+	uint32_t	_pretraderday;
+	uint32_t	_firstday = 0;
+	double		_firstprice = 0;
+	
+	double		_total_closeprofit = 0;
+
 	bool			_use_newpx;
 	uint32_t		_error_rate;
-	bool			_match_this_tick;	//是否在当前tick撮合
 
 	typedef faster_hashmap<std::string, double> PriceMap;
 	PriceMap		_price_map;
@@ -225,6 +250,7 @@ private:
 		double	_total;
 		double	_left;
 		char	_usertag[32];
+		time_t insert_date_time;
 		
 		uint32_t	_localid;
 
@@ -257,6 +283,7 @@ private:
 		double		_max_loss;
 		double		_profit;
 		char		_usertag[32];
+		double		_margin;
 
 		_DetailInfo()
 		{
@@ -269,7 +296,6 @@ private:
 		double		_volume;
 		double		_closeprofit;
 		double		_dynprofit;
-		double		_frozen;
 
 		std::vector<DetailInfo> _details;
 
@@ -278,11 +304,15 @@ private:
 			_volume = 0;
 			_closeprofit = 0;
 			_dynprofit = 0;
-			_frozen = 0;
 		}
-
-		inline double valid() const { return _volume - _frozen; }
 	} PosInfo;
+
+	void insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee, 
+		std::string exch_id, std::string inst_id, uint64_t curTime);
+	void insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset);
+	void insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee,
+		std::string exch_id, std::string inst_id, uint64_t curTime, int offset, time_t insert_date_time);
 	typedef faster_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
 
@@ -313,8 +343,5 @@ protected:
 	bool			_has_hook;		//这是人为控制是否启用钩子
 	bool			_hook_valid;	//这是根据是否是异步回测模式而确定钩子是否可用
 	std::atomic<bool>	_resumed;	//临时变量，用于控制状态
-
-	//tick订阅列表
-	faster_hashset<std::string> _tick_subs;
 };
 

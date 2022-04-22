@@ -8,30 +8,69 @@
  * \brief 
  */
 #include "ParserXTP.h"
-
-#include "../Includes/WTSDataDef.hpp"
-#include "../Includes/WTSContractInfo.hpp"
-#include "../Includes/WTSVariant.hpp"
-#include "../Includes/IBaseDataMgr.h"
-
+#include "../Share/StrUtil.hpp"
 #include "../Share/TimeUtils.hpp"
-#include "../Share/ModuleHelper.hpp"
+#include "../Includes/WTSDataDef.hpp"
+#include "../Share/BoostFile.hpp"
+#include "../Includes/WTSContractInfo.hpp"
+#include "../Includes/WTSParams.hpp"
+#include "../Share/StrUtil.hpp"
+#include "../Includes/IBaseDataMgr.h"
+#include "../Share/DLLHelper.hpp"
 
-#include <boost/filesystem.hpp>
+#ifdef _WIN32
+#include <wtypes.h>
+HMODULE	g_dllModule = NULL;
 
- //By Wesley @ 2022.01.05
-#include "../Share/fmtlib.h"
-template<typename... Args>
-inline void write_log(IParserSpi* sink, WTSLogLevel ll, const char* format, const Args&... args)
+BOOL APIENTRY DllMain(
+	HANDLE hModule,
+	DWORD  ul_reason_for_call,
+	LPVOID lpReserved
+	)
 {
-	if (sink == NULL)
-		return;
+	switch (ul_reason_for_call)
+	{
+	case DLL_PROCESS_ATTACH:
+		g_dllModule = (HMODULE)hModule;
+		break;
+	}
+	return TRUE;
+}
+#else
+#include <dlfcn.h>
 
-	static thread_local char buffer[512] = { 0 };
-	memset(buffer, 0, 512);
-	fmt::format_to(buffer, format, args...);
+std::string	g_moduleName;
 
-	sink->handleParserLog(ll, buffer);
+__attribute__((constructor))
+void on_load(void) {
+	Dl_info dl_info;
+	dladdr((void *)on_load, &dl_info);
+	g_moduleName = dl_info.dli_fname;
+}
+#endif
+
+
+std::string getBinDir()
+{
+	static std::string _bin_dir;
+	if (_bin_dir.empty())
+	{
+
+
+#ifdef _WIN32
+		char strPath[MAX_PATH];
+		GetModuleFileName(g_dllModule, strPath, MAX_PATH);
+
+		_bin_dir = StrUtil::standardisePath(strPath, false);
+#else
+		_bin_dir = g_moduleName;
+#endif
+
+		uint32_t nPos = _bin_dir.find_last_of('/');
+		_bin_dir = _bin_dir.substr(0, nPos + 1);
+	}
+
+	return _bin_dir;
 }
 
 extern "C"
@@ -89,7 +128,7 @@ ParserXTP::~ParserXTP()
 	m_pUserAPI = NULL;
 }
 
-bool ParserXTP::init(WTSVariant* config)
+bool ParserXTP::init(WTSParams* config)
 {
 	m_strHost	= config->getCString("host");
 	m_iPort		= config->getInt32("port");
@@ -111,7 +150,7 @@ bool ParserXTP::init(WTSVariant* config)
 		module = "xtpquoteapi";
 
 	std::string path = StrUtil::printf("%s/%s/", m_strFlowDir.c_str(), m_strUser.c_str());
-	boost::filesystem::create_directories(path.c_str());
+	BoostFile::create_directories(path.c_str());
 
 	std::string dllpath = getBinDir() + DLLHelper::wrap_module(module.c_str(), "lib");;
 	m_hInst = DLLHelper::load_library(dllpath.c_str());
@@ -165,7 +204,7 @@ void ParserXTP::OnFrontConnected()
 {
 	if (m_sink)
 	{
-		write_log(m_sink, LL_INFO, "[ParserXTP]CTP行情服务已连接");
+		m_sink->handleParserLog(LL_INFO, "[ParserXTP]CTP行情服务已连接");
 		m_sink->handleEvent(WPE_Connect, 0);
 	}
 
@@ -193,7 +232,7 @@ void ParserXTP::OnDisconnected(int nReason)
 {
 	if(m_sink)
 	{
-		write_log(m_sink, LL_ERROR, "[ParserXTP] Market data server disconnected: {}...", nReason);
+		m_sink->handleParserLog(LL_ERROR, "[ParserXTP] Market data server disconnected: %d...", nReason);
 		m_sink->handleEvent(WPE_Close, 0);
 	}
 }
@@ -229,13 +268,12 @@ void ParserXTP::OnDepthMarketData(XTPMD *market_data, int64_t bid1_qty[], int32_
 	if(ct == NULL)
 	{
 		if (m_sink)
-			write_log(m_sink, LL_ERROR, "[ParserXTP] Instrument {}.{} not exists...", exchg.c_str(), market_data->ticker);
+			m_sink->handleParserLog(LL_ERROR, "[ParserXTP] Instrument %s.%s not exists...", exchg.c_str(), market_data->ticker);
 		return;
 	}
-	WTSCommodityInfo* commInfo = ct->getCommInfo();
+	WTSCommodityInfo* commInfo = m_pBaseDataMgr->getCommodity(ct);
 
 	WTSTickData* tick = WTSTickData::create(code.c_str());
-	tick->setContractInfo(ct);
 	WTSTickStruct& quote = tick->getTickStruct();
 	strcpy(quote.exchg, commInfo->getExchg());
 	
@@ -275,7 +313,7 @@ void ParserXTP::OnDepthMarketData(XTPMD *market_data, int64_t bid1_qty[], int32_
 	}
 
 	if(m_sink)
-		m_sink->handleQuote(tick, 1);
+		m_sink->handleQuote(tick, true);
 
 	tick->release();
 }
@@ -289,7 +327,7 @@ void ParserXTP::OnSubMarketData(XTPST *ticker, XTPRI *error_info, bool is_last)
 	else
 	{
 		if(m_sink)
-			write_log(m_sink, LL_ERROR, "[ParserXTP] Market data subscribe faile, code: {}.{}", ticker->exchange_id == XTP_EXCHANGE_SH ? "SSE" : "SZSE", ticker->ticker);
+			m_sink->handleParserLog(LL_ERROR, "[ParserXTP] Market data subscribe faile, code: %s%s", ticker->exchange_id == XTP_EXCHANGE_SH ? "SSE." : "SZSE.", ticker->ticker);
 	}
 }
 
@@ -313,7 +351,7 @@ void ParserXTP::DoLogin()
 			{
 				m_sink->handleEvent(WPE_Connect, 0);
 
-				write_log(m_sink, LL_ERROR, "[ParserXTP] Sending login request failed: {}", iResult);
+				m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserXTP] Sending login request failed: %d", iResult).c_str());
 			}
 			
 		}
@@ -350,12 +388,12 @@ void ParserXTP::DoSubscribeMD()
 			if (iResult != 0)
 			{
 				if (m_sink)
-					write_log(m_sink, LL_ERROR, "[ParserXTP] Sending md subscribe request of SSE failed: {}", iResult);
+					m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserXTP] Sending md subscribe request of SSE failed: %d", iResult).c_str());
 			}
 			else
 			{
 				if (m_sink)
-					write_log(m_sink, LL_INFO, "[ParserXTP] Market data of {} instruments of SSE subscribed", nCount);
+					m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserXTP] Market data of %u instruments of SSE subscribed", nCount).c_str());
 			}
 		}
 		codeFilter.clear();
@@ -380,12 +418,12 @@ void ParserXTP::DoSubscribeMD()
 			if (iResult != 0)
 			{
 				if (m_sink)
-					write_log(m_sink, LL_ERROR, "[ParserXTP] Sending md subscribe request of SZSE failed: {}", iResult);
+					m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserXTP] Sending md subscribe request of SZSE failed: %d", iResult).c_str());
 			}
 			else
 			{
 				if (m_sink)
-					write_log(m_sink, LL_INFO, "[ParserXTP] Market data of {} instruments of SZSE subscribed", nCount);
+					m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserXTP] Market data of %u instruments of SZSE subscribed", nCount).c_str());
 			}
 		}
 		codeFilter.clear();
@@ -410,11 +448,11 @@ void ParserXTP::subscribe(const CodeSet &vecSymbols)
 		{
 			if (strncmp(code.c_str(), "SSE.", 4) == 0)
 			{
-				m_fitSHSubs.insert(code.c_str() + 4);
+				m_fitSHSubs.insert(code.substr(4));
 			}
 			else if (strncmp(code.c_str(), "SZSE.", 5) == 0)
 			{
-				m_fitSZSubs.insert(code.c_str() + 5);
+				m_fitSZSubs.insert(code.substr(5));
 			}
 		}
 	}
@@ -425,13 +463,13 @@ void ParserXTP::subscribe(const CodeSet &vecSymbols)
 		{
 			if (strncmp(code.c_str(), "SSE.", 4) == 0)
 			{
-				m_fitSHSubs.insert(code.c_str() + 4);
-				setSH.insert(code.c_str() + 4);
+				m_fitSHSubs.insert(code.substr(4));
+				setSH.insert(code.substr(4));
 			}
 			else if (strncmp(code.c_str(), "SZSE.", 5) == 0)
 			{
-				m_fitSZSubs.insert(code.c_str() + 5);
-				setSZ.insert(code.c_str() + 5);
+				m_fitSZSubs.insert(code.substr(5));
+				setSZ.insert(code.substr(5));
 			}
 		}
 
@@ -451,12 +489,12 @@ void ParserXTP::subscribe(const CodeSet &vecSymbols)
 				if (iResult != 0)
 				{
 					if (m_sink)
-						write_log(m_sink, LL_ERROR, "[ParserXTP] Sending md subscribe request of SSE failed: {}", iResult);
+						m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserXTP] Sending md subscribe request of SSE failed: %d", iResult).c_str());
 				}
 				else
 				{
 					if (m_sink)
-						write_log(m_sink, LL_INFO, "[ParserXTP] Market data of {} instruments of SSE subscribed", nCount);
+						m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserXTP] Market data of %u instruments of SSE subscribed", nCount).c_str());
 				}
 			}
 			delete[] subscribe;
@@ -478,12 +516,12 @@ void ParserXTP::subscribe(const CodeSet &vecSymbols)
 				if (iResult != 0)
 				{
 					if (m_sink)
-						write_log(m_sink, LL_ERROR, "[ParserXTP] Sending md subscribe request of SZSE failed: {}", iResult);
+						m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserXTP] Sending md subscribe request of SZSE failed: %d", iResult).c_str());
 				}
 				else
 				{
 					if (m_sink)
-						write_log(m_sink, LL_INFO, "[ParserXTP] Market data of {} instruments of SZSE subscribed", nCount);
+						m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserXTP] Market data of %u instruments of SZSE subscribed", nCount).c_str());
 				}
 			}
 			delete[] subscribe;

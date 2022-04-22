@@ -6,7 +6,7 @@
 #include "../Includes/FasterDefs.h"
 #include "../Share/StdUtils.hpp"
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 
 #pragma warning(disable:4200)
 
@@ -53,4 +53,4 @@ private:
 	FuncLogCallback	_cb_log;
 };
 
-NS_WTP_END
+NS_OTP_END

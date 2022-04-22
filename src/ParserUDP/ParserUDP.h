@@ -17,7 +17,7 @@
 #include <boost/array.hpp>
 #include <boost/asio/io_service.hpp>
 
-USING_NS_WTP;
+USING_NS_OTP;
 using namespace boost::asio;
 
 class ParserUDP : public IParserApi
@@ -28,7 +28,7 @@ public:
 
 	//IQuoteParser ½Ó¿Ú
 public:
-	virtual bool init(WTSVariant* config) override;
+	virtual bool init(WTSParams* config) override;
 
 	virtual void release() override;
 
@@ -64,7 +64,6 @@ private:
 	std::string	_hots;
 	int			_bport;
 	int			_sport;
-	uint32_t	_gpsize;
 
 	ip::udp::endpoint	_broad_ep;
 	ip::udp::endpoint	_server_ep;

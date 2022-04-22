@@ -7,7 +7,7 @@
 
 class WtExecRunner;
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSVariant;
 class WTSHisTickData;
 class WTSKlineData;
@@ -49,7 +49,7 @@ public:
 	virtual uint32_t	get_min_time()override;
 	virtual uint32_t	get_secs() override;
 
-	virtual void		reader_log(WTSLogLevel ll, const char* message) override;
+	virtual void		reader_log(WTSLogLevel ll, const char* fmt, ...) override;
 
 	inline IDataReader* reader() { return _reader; }
 
@@ -74,4 +74,4 @@ private:
 
 };
 
-NS_WTP_END
+NS_OTP_END

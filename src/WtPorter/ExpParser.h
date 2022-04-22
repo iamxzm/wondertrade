@@ -1,7 +1,7 @@
 #pragma once
 #include "../Includes/IParserApi.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class ExpParser : public IParserApi
 {
@@ -10,7 +10,7 @@ public:
 	virtual ~ExpParser(){}
 
 public:
-	virtual bool init(WTSVariant* config) override;
+	virtual bool init(WTSParams* config) override;
 
 
 	virtual void release() override;

@@ -1,7 +1,7 @@
 #pragma once
 #include "../WtCore/SelStraBaseCtx.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class ExpSelContext : public SelStraBaseCtx
 {

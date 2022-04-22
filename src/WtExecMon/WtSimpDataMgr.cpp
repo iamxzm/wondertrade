@@ -20,7 +20,7 @@
 #include "../WTSTools/WTSLogger.h"
 #include "../WTSTools/WTSDataFactory.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 
 WTSDataFactory g_dataFact;
@@ -47,21 +47,25 @@ bool WtSimpDataMgr::initStore(WTSVariant* cfg)
 
 	std::string module = cfg->getCString("module");
 	if (module.empty())
-		module = WtHelper::getInstDir() + DLLHelper::wrap_module("WtDataStorage");
-	else
-		module = WtHelper::getInstDir() + DLLHelper::wrap_module(module.c_str());
-
+	{
+		module = WtHelper::getInstDir();
+#ifdef _WIN32
+		module += "WtDataReader.dll";
+#else
+		module += "libWtDataReader.so";
+#endif
+	}
 	DllHandle hInst = DLLHelper::load_library(module.c_str());
 	if (hInst == NULL)
 	{
-		WTSLogger::error_f("Data reader {} loading failed", module.c_str());
+		WTSLogger::error("Data reader %s loading failed", module.c_str());
 		return false;
 	}
 
 	FuncCreateDataReader funcCreator = (FuncCreateDataReader)DLLHelper::get_symbol(hInst, "createDataReader");
 	if (funcCreator == NULL)
 	{
-		WTSLogger::error_f("Data reader {} loading failed: entrance function createDataReader not found", module.c_str());
+		WTSLogger::error("Data reader %s loading failed: entrance function createDataReader not found", module.c_str());
 		DLLHelper::free_library(hInst);
 		return false;
 	}
@@ -69,7 +73,7 @@ bool WtSimpDataMgr::initStore(WTSVariant* cfg)
 	_reader = funcCreator();
 	if (_reader == NULL)
 	{
-		WTSLogger::error_f("Data reader {} creating api failed", module.c_str());
+		WTSLogger::error("Data reader %s creating api failed", module.c_str());
 		DLLHelper::free_library(hInst);
 		return false;
 	}
@@ -117,9 +121,12 @@ uint32_t WtSimpDataMgr::get_secs()
 	return _cur_secs;
 }
 
-void WtSimpDataMgr::reader_log(WTSLogLevel ll, const char* message)
+void WtSimpDataMgr::reader_log(WTSLogLevel ll, const char* fmt, ...)
 {
-	WTSLogger::log_raw(ll, message);
+	va_list args;
+	va_start(args, fmt);
+	WTSLogger::vlog(ll, fmt, args);
+	va_end(args);
 }
 
 void WtSimpDataMgr::on_bar(const char* code, WTSKlinePeriod period, WTSBarStruct* newBar)
@@ -228,6 +235,6 @@ WTSKlineSlice* WtSimpDataMgr::get_kline_slice(const char* stdCode, WTSKlinePerio
 	uint32_t rtCnt = min(kData->size(), count);
 	sIdx = kData->size() - rtCnt;
 	WTSBarStruct* rtHead = kData->at(sIdx);
-	WTSKlineSlice* slice = WTSKlineSlice::create(stdCode, period, times, rtHead, rtCnt);
+	WTSKlineSlice* slice = WTSKlineSlice::create(stdCode, period, times, NULL, 0, rtHead, rtCnt);
 	return slice;
 }

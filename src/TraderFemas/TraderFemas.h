@@ -28,11 +28,11 @@
 #include "../Includes/WTSVariant.hpp"
 
 //Femas v3.02
-#include "../API/Femas3.02/USTPFtdcTraderApi.h"
+#include "./ustptraderapi/USTPFtdcTraderApi.h"
 
 #include "../Share/DLLHelper.hpp"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 typedef std::unordered_map<std::string, std::string>	StringMap;
 
@@ -65,7 +65,7 @@ private:
 //////////////////////////////////////////////////////////////////////////
 //ITraderApi½Ó¿Ú
 public:
-	virtual bool init(WTSVariant* params);
+	virtual bool init(WTSParams* params);
 
 	virtual void release();
 

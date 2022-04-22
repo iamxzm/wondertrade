@@ -13,8 +13,6 @@
 #include "../Includes/WTSSessionInfo.hpp"
 #include "../Share/TimeUtils.hpp"
 
-using namespace std;
-
 
 WTSBarStruct* WTSDataFactory::updateKlineData(WTSKlineData* klineData, WTSTickData* tick, WTSSessionInfo* sInfo)
 {
@@ -92,13 +90,13 @@ WTSBarStruct* WTSDataFactory::updateMin1Data(WTSSessionInfo* sInfo, WTSKlineData
 	uint32_t uMinute = sInfo->timeToMinutes(uTime) - 1;
 
 	uint32_t uBarMin = (uMinute / steplen)*steplen + steplen;
-	uint64_t uBarTime = sInfo->minuteToTime(uBarMin);
+	uint32_t uBarTime = sInfo->minuteToTime(uBarMin);
 	//if(uBarTime > uTime && !sInfo->isInAuctionTime(uTime))
 	//{
 	//	//这种情况只可能是日期倒退
 	//	uDate = TimeUtils::getNextDate(uDate, -1);
 	//}
-	uBarTime = TimeUtils::timeToMinBar(uDate, (uint32_t)uBarTime);
+	uBarTime = TimeUtils::timeToMinBar(uDate, uBarTime);
 
 	WTSBarStruct* lastBar = NULL;
 	if (klineData->size() > 0)
@@ -187,9 +185,9 @@ WTSBarStruct* WTSDataFactory::updateMin1Data(WTSSessionInfo* sInfo, WTSKlineData
 	{
 		uDate = TimeUtils::getNextDate(uDate);
 	}
-	uint64_t uBarTime = TimeUtils::timeToMinBar(uDate, uOnlyMin);
+	uint32_t uBarTime = TimeUtils::timeToMinBar(uDate, uOnlyMin);
 
-	uint64_t lastTime = klineData->time(-1);
+	uint32_t lastTime = klineData->time(-1);
 	uint32_t lastDate = klineData->date(-1);
 	if (lastTime == INVALID_UINT32 || uBarTime > lastTime || tick->tradingdate() > lastDate)
 	{
@@ -253,8 +251,8 @@ WTSBarStruct* WTSDataFactory::updateMin5Data(WTSSessionInfo* sInfo, WTSKlineData
 
 
 	uint32_t uBarMin = (uMinute / steplen)*steplen + steplen;
-	uint64_t uBarTime = sInfo->minuteToTime(uBarMin);
-	uBarTime = TimeUtils::timeToMinBar(uDate, (uint32_t)uBarTime);
+	uint32_t uBarTime = sInfo->minuteToTime(uBarMin);
+	uBarTime = TimeUtils::timeToMinBar(uDate, uBarTime);
 
 	WTSBarStruct* lastBar = NULL;
 	if (klineData->size() > 0)
@@ -326,9 +324,9 @@ WTSBarStruct* WTSDataFactory::updateMin5Data(WTSSessionInfo* sInfo, WTSKlineData
 	{
 		uDate = TimeUtils::getNextDate(uDate);
 	}
-	uint64_t uBarTime = TimeUtils::timeToMinBar(uDate, uOnlyMin);
+	uint32_t uBarTime = TimeUtils::timeToMinBar(uDate, uOnlyMin);
 
-	uint64_t lastTime = klineData->time(klineData->size()-1);
+	uint32_t lastTime = klineData->time(klineData->size()-1);
 	if(lastTime == INVALID_UINT32 || uBarTime != lastTime)
 	{
 		//如果时间不一致,则新增一条K线
@@ -413,7 +411,7 @@ WTSBarStruct* WTSDataFactory::updateSecData(WTSSessionInfo* sInfo, WTSKlineData*
 		barTime = (uint32_t)(TimeUtils::makeTime(uDate, barTime * 1000) / 1000);
 	}	
 
-	uint64_t lastTime = klineData->time(klineData->size()-1);
+	uint32_t lastTime = klineData->time(klineData->size()-1);
 	if(lastTime == INVALID_UINT32 || lastTime != barTime)
 	{
 		WTSBarStruct *day = new WTSBarStruct;
@@ -516,13 +514,13 @@ WTSKlineData* WTSDataFactory::extractMin1Data(WTSKlineSlice* baseKline, uint32_t
 		uint32_t uMinute = sInfo->timeToMinutes(uTime)-1;
 
 		uint32_t uBarMin = (uMinute/steplen)*steplen + steplen;
-		uint64_t uBarTime = sInfo->minuteToTime(uBarMin);
+		uint32_t uBarTime = sInfo->minuteToTime(uBarMin);
 		//if(uBarTime > uTime && !sInfo->isInAuctionTime(uTime))
 		//{
 		//	//这种情况只可能是日期倒退
 		//	uDate = TimeUtils::getNextDate(uDate, -1);
 		//}
-		uBarTime = TimeUtils::timeToMinBar(uDate, (uint32_t)uBarTime);
+		uBarTime = TimeUtils::timeToMinBar(uDate, uBarTime);
 
 		WTSBarStruct* lastBar = NULL;
 		if(ret->size() > 0)
@@ -613,8 +611,8 @@ WTSKlineData* WTSDataFactory::extractMin5Data(WTSKlineSlice* baseKline, uint32_t
 
 
 		uint32_t uBarMin = (uMinute/steplen)*steplen+steplen;
-		uint64_t uBarTime = sInfo->minuteToTime(uBarMin);
-		uBarTime = TimeUtils::timeToMinBar(uDate, (uint32_t)uBarTime);
+		uint32_t uBarTime = sInfo->minuteToTime(uBarMin);
+		uBarTime = TimeUtils::timeToMinBar(uDate, uBarTime);
 
 		WTSBarStruct* lastBar = NULL;
 		if(ret->size() > 0)
@@ -766,22 +764,17 @@ WTSKlineData* WTSDataFactory::extractKlineData(WTSTickSlice* ayTicks, uint32_t s
 		uint32_t uDate = curTick->trading_date;
 		uint32_t curSeconds = sInfo->timeToSeconds(curTick->action_time/1000);
 		uint32_t barSeconds = (curSeconds/seconds)*seconds + seconds;
-		uint64_t barTime = sInfo->secondsToTime(barSeconds);
+		uint32_t barTime = sInfo->secondsToTime(barSeconds);
 
 		//如果计算出来的K线时间戳小于tick数据的时间戳
-		uint32_t actDt = curTick->action_date;
-		if (barTime < curTick->action_time / 1000)
-		{
-			actDt = TimeUtils::getNextDate(actDt);
-		}
-
 		if(bUnixTime)
 		{
-			barTime = (uint64_t)TimeUtils::makeTime(actDt, barTime * 1000) / 1000;
-		}
-		else
-		{
-			barTime = (uint64_t)actDt * 1000000 + barTime;
+			uint32_t actDt = curTick->action_date;
+			if (barTime < curTick->action_time / 1000)
+			{
+				actDt = TimeUtils::getNextDate(actDt);
+			}
+			barTime = (uint32_t)(TimeUtils::makeTime(actDt, barTime * 1000) / 1000);
 		}
 
 		bool bNewBar = false;
@@ -844,7 +837,7 @@ bool WTSDataFactory::mergeKlineData(WTSKlineData* klineData, WTSKlineData* newKl
 	}
 	else
 	{
-		uint64_t sTime,eTime;
+		uint32_t sTime, eTime;
 		if(klineData->period() == KP_DAY)
 		{
 			sTime = bars[0].date;
@@ -862,7 +855,7 @@ bool WTSDataFactory::mergeKlineData(WTSKlineData* klineData, WTSKlineData* newKl
 		{
 			WTSBarStruct& curBar = newBars[i];
 
-			uint64_t curTime;
+			uint32_t curTime;
 			if (klineData->period() == KP_DAY)
 				curTime = curBar.date;
 			else

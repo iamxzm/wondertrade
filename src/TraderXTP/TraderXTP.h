@@ -12,7 +12,8 @@
 #include <stdint.h>
 #include <boost/asio/io_service.hpp>
 
-#include "../API/XTP2.2.32.2/xtp_trader_api.h"
+//XTP v1.1.19.2
+#include "./XTPApi/xtp_trader_api.h"
 
 #include "../Includes/ITraderApi.h"
 #include "../Includes/WTSCollection.hpp"
@@ -21,7 +22,7 @@
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class TraderXTP : public XTP::API::TraderSpi, public ITraderApi
 {
@@ -62,7 +63,7 @@ public:
 public:
 	//////////////////////////////////////////////////////////////////////////
 	//ITraderApi ½Ó¿Ú
-	virtual bool init(WTSVariant *params) override;
+	virtual bool init(WTSParams *params) override;
 
 	virtual void release() override;
 

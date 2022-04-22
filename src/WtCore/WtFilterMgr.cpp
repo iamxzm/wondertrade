@@ -2,13 +2,23 @@
 #include "EventNotifier.h"
 
 #include "../Share/CodeHelper.hpp"
-#include "../Includes/WTSVariant.hpp"
-#include "../WTSUtils/WTSCfgLoader.h"
+#include "../Share/JsonToVariant.hpp"
+#include "../Share/StdUtils.hpp"
+
 #include "../WTSTools/WTSLogger.h"
 
 #include <boost/filesystem.hpp>
 
-USING_NS_WTP;
+#include <rapidjson/document.h>
+namespace rj = rapidjson;
+
+#ifdef _WIN32
+#define my_stricmp _stricmp
+#else
+#define my_stricmp strcasecmp
+#endif
+
+USING_NS_OTP;
 
 void WtFilterMgr::load_filters(const char* fileName)
 {
@@ -20,7 +30,7 @@ void WtFilterMgr::load_filters(const char* fileName)
 
 	if (!StdFile::exists(_filter_file.c_str()))
 	{
-		WTSLogger::debug_f("Filters configuration file {} not exists", _filter_file);
+		WTSLogger::error("Filters configuration file %s not exists", _filter_file.c_str());
 		return;
 	}
 
@@ -30,12 +40,34 @@ void WtFilterMgr::load_filters(const char* fileName)
 
 	if (_filter_timestamp != 0)
 	{
-		WTSLogger::info_f("Filters configuration file {} modified, will be reloaded", _filter_file);
+		WTSLogger::info("Filters configuration file %s modified, will be reloaded", _filter_file.c_str());
 		if (_notifier)
 			_notifier->notifyEvent("Filter file has been reloaded");
 	}
 
-	WTSVariant* cfg = WTSCfgLoader::load_from_file(_filter_file.c_str(), true);
+	std::string content;
+	StdFile::read_file_content(_filter_file.c_str(), content);
+	if (content.empty())
+	{
+		WTSLogger::error("Filters configuration file %s is empty", _filter_file.c_str());
+		return;
+	}
+
+	rj::Document root;
+	root.Parse(content.c_str());
+
+	if (root.HasParseError())
+	{
+		WTSLogger::error("Filters configuration file %s parsing failed", _filter_file.c_str());
+		return;
+	}
+
+	WTSVariant* cfg = WTSVariant::createObject();
+	if (!jsonToVariant(root, cfg))
+	{
+		WTSLogger::error("Filters configuration file %s converting failed", _filter_file.c_str());
+		return;
+	}
 
 	_filter_timestamp = lastModTime;
 
@@ -53,14 +85,14 @@ void WtFilterMgr::load_filters(const char* fileName)
 			WTSVariant* cfgItem = filterStra->get(key.c_str());
 			const char* action = cfgItem->getCString("action");
 			FilterAction fAct = FA_None;
-			if (wt_stricmp(action, "ignore") == 0)
+			if (my_stricmp(action, "ignore") == 0)
 				fAct = FA_Ignore;
-			else if (wt_stricmp(action, "redirect") == 0)
+			else if (my_stricmp(action, "redirect") == 0)
 				fAct = FA_Redirect;
 
 			if (fAct == FA_None)
 			{
-				WTSLogger::error_f("Action {} of strategy filter {} not recognized", action, key);
+				WTSLogger::error("Action %s of strategy filter %s not recognized", action, key.c_str());
 				continue;
 			}
 
@@ -69,7 +101,7 @@ void WtFilterMgr::load_filters(const char* fileName)
 			fItem._action = fAct;
 			fItem._target = cfgItem->getDouble("target");
 
-			WTSLogger::info_f("Strategy filter {} loaded", key);
+			WTSLogger::info("Strategy filter %s loaded", key.c_str());
 		}
 	}
 
@@ -84,14 +116,14 @@ void WtFilterMgr::load_filters(const char* fileName)
 			WTSVariant* cfgItem = filterCodes->get(stdCode.c_str());
 			const char* action = cfgItem->getCString("action");
 			FilterAction fAct = FA_None;
-			if (wt_stricmp(action, "ignore") == 0)
+			if (my_stricmp(action, "ignore") == 0)
 				fAct = FA_Ignore;
-			else if (wt_stricmp(action, "redirect") == 0)
+			else if (my_stricmp(action, "redirect") == 0)
 				fAct = FA_Redirect;
 
 			if (fAct == FA_None)
 			{
-				WTSLogger::error_f("Action {} of code filter {} not recognized", action, stdCode);
+				WTSLogger::error("Action %s of code filter %s not recognized", action, stdCode.c_str());
 				continue;
 			}
 
@@ -100,7 +132,7 @@ void WtFilterMgr::load_filters(const char* fileName)
 			fItem._action = fAct;
 			fItem._target = cfgItem->getDouble("target");
 
-			WTSLogger::info_f("Code filter {} loaded", stdCode);
+			WTSLogger::info("Code filter %s loaded", stdCode.c_str());
 		}
 	}
 
@@ -112,7 +144,7 @@ void WtFilterMgr::load_filters(const char* fileName)
 		for (const std::string& execid : executer_ids)
 		{
 			bool bDisabled = filterExecuters->getBoolean(execid.c_str());
-			WTSLogger::info_f("Executer {} is %s", execid, bDisabled?"disabled":"enabled");
+			WTSLogger::info("Executer %s is %s", execid.c_str(), bDisabled?"disabled":"enabled");
 			_exec_filters[execid] = bDisabled;
 		}
 	}
@@ -141,19 +173,12 @@ bool WtFilterMgr::is_filtered_by_strategy(const char* straName, double& targetPo
 	if (it != _stra_filters.end())
 	{
 		const FilterItem& fItem = it->second;
-		if(isDiff)
-		{
-			//如果过滤器触发，并且是增量头寸，则直接过滤掉
-			WTSLogger::info_f("[Filters] Strategy filter {} triggered, the change of position ignored directly", straName);
-			return true;
-		}
-
-		WTSLogger::info_f("[Filters] Strategy filter {} triggered, action: {}", straName, fItem._action <= FA_Redirect ? FLTACT_NAMEs[fItem._action] : "Unknown");
+		WTSLogger::info("[Filters] Strategy filter %s triggered, action: %s", straName, fItem._action <= FA_Redirect ? FLTACT_NAMEs[fItem._action] : "Unknown");
 		if (fItem._action == FA_Ignore)
 		{
 			return true;
 		}
-		else if (fItem._action == FA_Redirect)
+		else if (fItem._action == FA_Redirect && !isDiff)
 		{
 			//只有不是增量的时候,才有效
 			targetPos = fItem._target;
@@ -171,7 +196,7 @@ bool WtFilterMgr::is_filtered_by_code(const char* stdCode, double& targetPos)
 	if (cit != _code_filters.end())
 	{
 		const FilterItem& fItem = cit->second;
-		WTSLogger::info_f("[Filters] Code filter {} triggered, action: {}", stdCode, fItem._action <= FA_Redirect ? FLTACT_NAMEs[fItem._action] : "Unknown");
+		WTSLogger::info("[Filters] Code filter %s triggered, action: %s", stdCode, fItem._action <= FA_Redirect ? FLTACT_NAMEs[fItem._action] : "Unknown");
 		if (fItem._action == FA_Ignore)
 		{
 			return true;
@@ -189,7 +214,7 @@ bool WtFilterMgr::is_filtered_by_code(const char* stdCode, double& targetPos)
 	if (cit != _code_filters.end())
 	{
 		const FilterItem& fItem = cit->second;
-		WTSLogger::info_f("[Filters] CommID filter {} triggered, action: {}", stdPID.c_str(), fItem._action <= FA_Redirect ? FLTACT_NAMEs[fItem._action] : "Unknown");
+		WTSLogger::info("[Filters] CommID filter %s triggered, action: %s", stdPID.c_str(), fItem._action <= FA_Redirect ? FLTACT_NAMEs[fItem._action] : "Unknown");
 		if (fItem._action == FA_Ignore)
 		{
 			return true;

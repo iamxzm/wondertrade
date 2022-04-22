@@ -10,7 +10,7 @@
 #pragma once
 #include "../WtBtCore/CtaMocker.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class ExpCtaMocker : public CtaMocker
 {

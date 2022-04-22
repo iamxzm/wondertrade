@@ -8,25 +8,11 @@
  * \brief 
  */
 #include "ParserUDP.h"
-#include "../Includes/WTSVariant.hpp"
+#include "../Includes/WTSParams.hpp"
 #include "../Includes/WTSDataDef.hpp"
 
 #include <boost/bind.hpp>
 
- //By Wesley @ 2022.01.05
-#include "../Share/fmtlib.h"
-template<typename... Args>
-inline void write_log(IParserSpi* sink, WTSLogLevel ll, const char* format, const Args&... args)
-{
-	if (sink == NULL)
-		return;
-
-	static thread_local char buffer[512] = { 0 };
-	memset(buffer, 0, 512);
-	fmt::format_to(buffer, format, args...);
-
-	sink->handleParserLog(ll, buffer);
-}
 
 #define UDP_MSG_SUBSCRIBE	0x100
 #define UDP_MSG_PUSHTICK	0x200
@@ -94,14 +80,11 @@ ParserUDP::~ParserUDP()
 {
 }
 
-bool ParserUDP::init( WTSVariant* config )
+bool ParserUDP::init( WTSParams* config )
 {
 	_hots = config->getCString("host");
 	_bport = config->getInt32("bport");
 	_sport = config->getInt32("sport");
-	_gpsize = config->getUInt32("gpsize");
-	if (_gpsize == 0)
-		_gpsize = 1000;
 
 	ip::address addr = ip::address::from_string(_hots);
 	_server_ep = ip::udp::endpoint(addr, _sport);
@@ -177,7 +160,7 @@ void ParserUDP::subscribe()
 			length++;
 		}
 
-		std::size_t pos = code.find('.');
+		std::size_t pos = code.find(".");
 		if (pos != std::string::npos)
 			strcpy(req->_data + length, (char*)code.c_str() + pos + 1);
 		else
@@ -198,7 +181,8 @@ void ParserUDP::subscribe()
 
 	do_send();
 
-	write_log(_sink, LL_INFO, "[ParserUDP] Ticks subscribing sent");
+	if (_sink)
+		_sink->handleParserLog(LL_INFO, "[ParserUDP] Ticks subscribing sent");
 }
 
 void ParserUDP::do_send()
@@ -216,7 +200,8 @@ void ParserUDP::handle_write(const boost::system::error_code& e)
 {
 	if (e)
 	{
-		write_log(_sink, LL_ERROR, "[ParserUDP] Error occured while receiving: {}({})", e.message().c_str(), e.value());
+		if (_sink)
+			_sink->handleParserLog(LL_ERROR, "[ParserUDP] Error occured while receiving: %s(%d)", e.message().c_str(), e.value());
 	}
 	else
 	{
@@ -266,7 +251,7 @@ void ParserUDP::subscribe( const CodeSet &vecSymbols )
 	auto cit = vecSymbols.begin();
 	for(; cit != vecSymbols.end(); cit++)
 	{
-		const auto &code = *cit;
+		const std::string &code = *cit;
 		if(_set_subs.find(code) == _set_subs.end())
 		{
 			_set_subs.insert(code);
@@ -285,7 +270,7 @@ void ParserUDP::registerSpi( IParserSpi* listener )
 	_sink = listener;
 	if(bReplaced && _sink)
 	{
-		write_log(_sink, LL_WARN, "Listener is replaced");
+		_sink->handleParserLog(LL_WARN, "Listener is replaced");
 	}
 }
 
@@ -297,7 +282,8 @@ void ParserUDP::handle_read(const boost::system::error_code& e, std::size_t byte
 		if(_sink)
 			_sink->handleEvent(WPE_Close, 0);
 
-		write_log(_sink, LL_ERROR, "[ParserUDP] Error occured while receiving: {}({})", e.message().c_str(), e.value());
+		if(_sink)
+			_sink->handleParserLog(LL_ERROR, "[ParserUDP] Error occured while receiving: %s(%d)", e.message().c_str(), e.value());
 
 		if (!_stopped && !_connecting)
 		{
@@ -342,14 +328,14 @@ void ParserUDP::extract_buffer(uint32_t length, bool isBroad /* = true */)
 		UDPTickPacket* packet = (UDPTickPacket*)header;
 		WTSTickData* curTick = WTSTickData::create(packet->_data);
 		if (_sink)
-			_sink->handleQuote(curTick, 0);
+			_sink->handleQuote(curTick, false);
 
 		curTick->release();
 
 		static uint32_t recv_cnt = 0;
 		recv_cnt++;
-		if (recv_cnt % _gpsize == 0)
-			write_log(_sink, LL_DEBUG, "[ParserUDP] {} ticks received in total", recv_cnt);
+		if (recv_cnt % 10000 == 0 && _sink)
+			_sink->handleParserLog(LL_DEBUG, "[ParserUDP] %u ticks received in total", recv_cnt);
 	}
 	else if (header->_type == UDP_MSG_PUSHORDDTL)
 	{
@@ -362,8 +348,8 @@ void ParserUDP::extract_buffer(uint32_t length, bool isBroad /* = true */)
 
 		static uint32_t recv_cnt = 0;
 		recv_cnt++;
-		if (recv_cnt % _gpsize == 0)
-			write_log(_sink, LL_DEBUG, "[ParserUDP] {} order details received in total", recv_cnt);
+		if (recv_cnt % 10000 == 0 && _sink)
+			_sink->handleParserLog(LL_DEBUG, "[ParserUDP] %u order details received in total", recv_cnt);
 	}
 	else if (header->_type == UDP_MSG_PUSHORDQUE)
 	{
@@ -376,8 +362,8 @@ void ParserUDP::extract_buffer(uint32_t length, bool isBroad /* = true */)
 
 		static uint32_t recv_cnt = 0;
 		recv_cnt++;
-		if (recv_cnt % _gpsize == 0)
-			write_log(_sink, LL_DEBUG, "[ParserUDP] {} order queues received in total", recv_cnt);
+		if (recv_cnt % 10000 == 0 && _sink)
+			_sink->handleParserLog(LL_DEBUG, "[ParserUDP] %u order queues received in total", recv_cnt);
 	}
 	else if (header->_type == UDP_MSG_PUSHTRANS)
 	{
@@ -390,8 +376,8 @@ void ParserUDP::extract_buffer(uint32_t length, bool isBroad /* = true */)
 
 		static uint32_t recv_cnt = 0;
 		recv_cnt++;
-		if (recv_cnt % _gpsize == 0)
-			write_log(_sink, LL_DEBUG, "[ParserUDP] {} transactions received in total", recv_cnt);
+		if (recv_cnt % 10000 == 0 && _sink)
+			_sink->handleParserLog(LL_DEBUG, "[ParserUDP] %u transactions received in total", recv_cnt);
 	}
 }
 

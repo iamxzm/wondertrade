@@ -8,32 +8,83 @@
  * \brief 
  */
 #include "ParserCTPOpt.h"
-
-#include "../Includes/WTSDataDef.hpp"
-#include "../Includes/WTSContractInfo.hpp"
-#include "../Includes/WTSVariant.hpp"
-#include "../Includes/IBaseDataMgr.h"
-
+#include "../Share/StrUtil.hpp"
 #include "../Share/TimeUtils.hpp"
+#include "../Includes/WTSDataDef.hpp"
 #include "../Share/StdUtils.hpp"
-#include "../Share/ModuleHelper.hpp"
+#include "../Includes/WTSContractInfo.hpp"
+#include "../Includes/WTSParams.hpp"
+#include "../Share/StrUtil.hpp"
+#include "../Includes/IBaseDataMgr.h"
+#include "../Includes/IBaseDataMgr.h"
+#include "../Share/DLLHelper.hpp"
 
 #include <boost/filesystem.hpp>
 
- //By Wesley @ 2022.01.05
-#include "../Share/fmtlib.h"
-template<typename... Args>
-inline void write_log(IParserSpi* sink, WTSLogLevel ll, const char* format, const Args&... args)
+#ifndef FLT_MAX
+#define FLT_MAX 3.402823466e+38F
+#endif
+
+std::string g_bin_dir;
+
+void inst_hlp() {}
+
+#ifdef _WIN32
+#include <wtypes.h>
+HMODULE	g_dllModule = NULL;
+
+BOOL APIENTRY DllMain(
+	HANDLE hModule,
+	DWORD  ul_reason_for_call,
+	LPVOID lpReserved
+	)
 {
-	if (sink == NULL)
-		return;
-
-	static thread_local char buffer[512] = { 0 };
-	memset(buffer, 0, 512);
-	fmt::format_to(buffer, format, args...);
-
-	sink->handleParserLog(ll, buffer);
+	switch (ul_reason_for_call)
+	{
+	case DLL_PROCESS_ATTACH:
+		g_dllModule = (HMODULE)hModule;
+		break;
+	}
+	return TRUE;
 }
+#else
+#include <dlfcn.h>
+
+char PLATFORM_NAME[] = "UNIX";
+
+const std::string& getInstPath()
+{
+	static std::string moduleName;
+	if (moduleName.empty())
+	{
+		Dl_info dl_info;
+		dladdr((void *)inst_hlp, &dl_info);
+		moduleName = dl_info.dli_fname;
+		//printf("1:%s\n", moduleName.c_str());
+	}
+
+	return moduleName;
+}
+#endif
+
+const char* getBinDir()
+{
+	if (g_bin_dir.empty())
+	{
+#ifdef _WIN32
+		char strPath[MAX_PATH];
+		GetModuleFileName(g_dllModule, strPath, MAX_PATH);
+
+		g_bin_dir = StrUtil::standardisePath(strPath, false);
+#else
+		g_bin_dir = getInstPath();
+#endif
+		boost::filesystem::path p(g_bin_dir);
+		g_bin_dir = p.branch_path().string() + "/";
+	}
+
+	return g_bin_dir.c_str();
+	}
 
 extern "C"
 {
@@ -92,7 +143,7 @@ ParserCTPOpt::~ParserCTPOpt()
 	m_pUserAPI = NULL;
 }
 
-bool ParserCTPOpt::init(WTSVariant* config)
+bool ParserCTPOpt::init(WTSParams* config)
 {
 	m_strFrontAddr = config->getCString("front");
 	m_strBroker = config->getCString("broker");
@@ -169,7 +220,7 @@ void ParserCTPOpt::OnFrontConnected()
 {
 	if(m_sink)
 	{
-		write_log(m_sink, LL_INFO, "[ParserCTPOpt] Market data server connected");
+		m_sink->handleParserLog(LL_INFO, "[ParserCTPOpt] Market data server connected");
 		m_sink->handleEvent(WPE_Connect, 0);
 	}
 
@@ -204,7 +255,7 @@ void ParserCTPOpt::OnFrontDisconnected( int nReason )
 {
 	if(m_sink)
 	{
-		write_log(m_sink, LL_ERROR, "[ParserCTPOpt] Market data server disconnected: {}", nReason);
+		m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserCTPOpt] Market data server disconnected: %d...", nReason).c_str());
 		m_sink->handleEvent(WPE_Close, 0);
 	}
 }
@@ -260,11 +311,8 @@ void ParserCTPOpt::OnRtnDepthMarketData( CThostFtdcDepthMarketDataField *pDepthM
 		}
 	}
 
-	WTSContractInfo* cInfo = m_pBaseDataMgr->getContract(pDepthMarketData->InstrumentID, pDepthMarketData->ExchangeID);
-	if (cInfo == NULL)
-		return;
-
-	WTSCommodityInfo* pCommInfo = cInfo->getCommInfo();
+	WTSContractInfo* contract = m_pBaseDataMgr->getContract(pDepthMarketData->InstrumentID, pDepthMarketData->ExchangeID);
+	WTSCommodityInfo* pCommInfo = m_pBaseDataMgr->getCommodity(contract);
 
 	//if (strcmp(contract->getExchg(), "CZCE") == 0)
 	//{
@@ -272,7 +320,6 @@ void ParserCTPOpt::OnRtnDepthMarketData( CThostFtdcDepthMarketDataField *pDepthM
 	//}
 
 	WTSTickData* tick = WTSTickData::create(pDepthMarketData->InstrumentID);
-	tick->setContractInfo(cInfo);
 	WTSTickStruct& quote = tick->getTickStruct();
 	strcpy(quote.exchg, pCommInfo->getExchg());
 	
@@ -335,7 +382,7 @@ void ParserCTPOpt::OnRtnDepthMarketData( CThostFtdcDepthMarketDataField *pDepthM
 	quote.bid_qty[4] = pDepthMarketData->BidVolume5;
 
 	if(m_sink)
-		m_sink->handleQuote(tick, 1);
+		m_sink->handleQuote(tick, true);
 
 	tick->release();
 }
@@ -355,7 +402,7 @@ void ParserCTPOpt::OnRspSubMarketData( CThostFtdcSpecificInstrumentField *pSpeci
 void ParserCTPOpt::OnHeartBeatWarning( int nTimeLapse )
 {
 	if (m_sink)
-		write_log(m_sink, LL_INFO, "[ParserCTPOpt] Heartbeating, elapse: {}", nTimeLapse);
+		m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserCTPOpt] Heartbeating, elapse: %d...", nTimeLapse).c_str());
 }
 
 void ParserCTPOpt::ReqUserLogin()
@@ -374,7 +421,7 @@ void ParserCTPOpt::ReqUserLogin()
 	if(iResult != 0)
 	{
 		if(m_sink)
-			write_log(m_sink, LL_ERROR, "[ParserCTPOpt] Sending login request failed: {}", iResult);
+			m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserCTPOpt] Sending login request failed: %d", iResult).c_str());
 	}
 }
 
@@ -390,7 +437,7 @@ void ParserCTPOpt::SubscribeMarketData()
 	int nCount = 0;
 	for(auto& code : codeFilter)
 	{
-		std::size_t pos = code.find('.');
+		std::size_t pos = code.find(".");
 		if (pos != std::string::npos)
 			subscribe[nCount++] = (char*)code.c_str() + pos + 1;
 		else
@@ -403,12 +450,12 @@ void ParserCTPOpt::SubscribeMarketData()
 		if (iResult != 0)
 		{
 			if (m_sink)
-				write_log(m_sink, LL_ERROR, "[ParserCTPOpt] Sending md subscribe request failed: {}", iResult);
+				m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserCTPOpt] Sending md subscribe request failed: %d", iResult).c_str());
 		}
 		else
 		{
 			if (m_sink)
-				write_log(m_sink, LL_INFO, "[ParserCTPOpt] Market data of {} contracts subscribed in total", nCount);
+				m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserCTPOpt] Market data of %u contracts subscribed in total", nCount).c_str());
 		}
 	}
 	codeFilter.clear();
@@ -433,7 +480,7 @@ void ParserCTPOpt::subscribe(const CodeSet &vecSymbols)
 		int nCount = 0;
 		for (auto& code  : vecSymbols)
 		{
-			std::size_t pos = code.find('.');
+			std::size_t pos = code.find(".");
 			if (pos != std::string::npos)
 				subscribe[nCount++] = (char*)code.c_str() + pos + 1;
 			else
@@ -446,12 +493,12 @@ void ParserCTPOpt::subscribe(const CodeSet &vecSymbols)
 			if (iResult != 0)
 			{
 				if (m_sink)
-					write_log(m_sink, LL_ERROR, "[ParserCTPOpt] Sending md subscribe request failed: {}", iResult);
+					m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserCTPOpt] Sending md subscribe request failed: %d", iResult).c_str());
 			}
 			else
 			{
 				if (m_sink)
-					write_log(m_sink, LL_INFO, "[ParserCTPOpt] Market data of {} contracts subscribed in total", nCount);
+					m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserCTPOpt] Market data of %u contracts subscribed in total", nCount).c_str());
 			}
 		}
 	}

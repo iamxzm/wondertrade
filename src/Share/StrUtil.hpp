@@ -49,7 +49,7 @@ public:
 		if(left)
 			ret.erase(0, ret.find_first_not_of(delims));
 
-		return std::move(ret);
+		return ret;
 	}
 
 	//去掉所有空格
@@ -66,23 +66,6 @@ public:
 	{
 		std::string::iterator destEnd=std::remove_if(str.begin(),str.end(),std::bind1st(std::equal_to<char>(),ch));
 		str.resize(destEnd-str.begin());
-	}
-
-	static inline std::size_t findFirst(const char* str, char ch)
-	{
-		std::size_t i = 0;
-		for(;;)
-		{
-			if (str[i] == ch)
-				return i;
-
-			if(str[i] == '\0')
-				break;
-
-			i++;
-		}
-
-		return std::string::npos;
 	}
 
 	/** Returns a std::stringVector that contains all the substd::strings delimited
@@ -127,7 +110,7 @@ public:
 			++numSplits;
 
 		} while (pos != std::string::npos);
-		return std::move(ret);
+		return ret;
 	}
 
 	/** Returns a std::stringVector that contains all the substd::strings delimited
@@ -204,7 +187,7 @@ public:
 			strRet.end(),
 			strRet.begin(),
 			(int(*)(int))tolower);
-		return std::move(strRet);
+		return strRet;
 	}
 
 	static inline std::string makeUpperCase(const char* str)
@@ -215,63 +198,60 @@ public:
 			strRet.end(),
 			strRet.begin(),
 			(int(*)(int))toupper);
-		return std::move(strRet);
+		return strRet;
 	}
 
-	/*
-	 *	检查是否以指定的字符串开始
-	 *	@str		要检查的字符串
-	 *	@pattern	要匹配的模板
-	 *	@ignroreCase是否忽略大小写
-	 */
-	static inline bool startsWith(const char* str, const char* pattern, bool ignoreCase = true)
+	/** Converts the contents of the std::string to a float.
+	@remarks
+	Assumes the only contents of the std::string are a valid parsable float. Defaults to  a
+	value of 0.0 if conversion is not possible.
+	*/
+	static inline float toFloat( const std::string& str )
 	{
-		size_t thisLen = strlen(str);
-		size_t patternLen = strlen(pattern);
+		return (float)atof(str.c_str());
+	}
+
+	static inline double toDouble( const std::string& str )
+	{
+		return atof(str.c_str());
+	}
+
+	/** Returns whether the std::string begins with the pattern passed in.
+	@param pattern The pattern to compare with.
+	@param lowerCase If true, the end of the std::string will be lower cased before
+	comparison, pattern should also be in lower case.
+	*/
+	static inline bool startsWith(const std::string& str, const std::string& pattern, bool lowerCase = true)
+	{
+		size_t thisLen = str.length();
+		size_t patternLen = pattern.length();
 		if (thisLen < patternLen || patternLen == 0)
 			return false;
 
-		if(ignoreCase)
-		{
-#ifdef _MSC_VER
-			return _strnicmp(str, pattern, patternLen) == 0;
-#else
-			return strncasecmp(str, pattern, patternLen) == 0;
-#endif
-		}
-		else
-		{
-			return strncmp(str, pattern, patternLen) == 0;
-		}
+		std::string startOfThis = str.substr(0, patternLen);
+		if (lowerCase)
+			toLowerCase(startOfThis);
+
+		return (startOfThis == pattern);
 	}
 
-	/*
-	 *	检查是否以指定的字符串结束
-	 *	@str		要检查的字符串
-	 *	@pattern	要匹配的模板
-	 *	@ignroreCase是否忽略大小写
-	 */
-	static inline bool endsWith(const char* str, const char* pattern, bool ignoreCase = true)
+	/** Returns whether the std::string ends with the pattern passed in.
+	@param pattern The pattern to compare with.
+	@param lowerCase If true, the end of the std::string will be lower cased before
+	comparison, pattern should also be in lower case.
+	*/
+	static inline bool endsWith(const std::string& str, const std::string& pattern, bool lowerCase = true)
 	{
-		size_t thisLen = strlen(str);
-		size_t patternLen = strlen(pattern);
+		size_t thisLen = str.length();
+		size_t patternLen = pattern.length();
 		if (thisLen < patternLen || patternLen == 0)
 			return false;
 
-		const char* s = str + (thisLen - patternLen);
+		std::string endOfThis = str.substr(thisLen - patternLen, patternLen);
+		if (lowerCase)
+			toLowerCase(endOfThis);
 
-		if (ignoreCase)
-		{
-#ifdef _MSC_VER
-			return _strnicmp(s, pattern, patternLen) == 0;
-#else
-			return strncasecmp(s, pattern, patternLen) == 0;
-#endif
-		}
-		else
-		{
-			return strncmp(s, pattern, patternLen) == 0;
-		}
+		return (endOfThis == pattern);
 	}
 
 	/** Method for standardising paths - use forward slashes only, end with slash.
@@ -284,7 +264,7 @@ public:
 		if (path[path.length() - 1] != '/' && bIsDir)
 			path += '/';
 
-		return std::move(path);
+		return path;
 	}
 
 	/** Method for splitting a fully qualified filename into the base name
@@ -389,7 +369,7 @@ public:
 	static inline const std::string BLANK()
 	{
 		static const std::string temp = std::string("");
-		return std::move(temp);
+		return temp;
 	}
 
 	//地球人都知道,恶心的std::string是没有CString的Format这个函数的,所以我们自己造
@@ -399,7 +379,7 @@ public:
 		va_start(argptr, pszFormat);
 		std::string result=printf(pszFormat,argptr);
 		va_end(argptr);
-		return std::move(result);
+		return result;
 	}
 
 	//地球人都知道,恶心的std::string是没有CString的Format这个函数的,所以我们自己造
@@ -409,7 +389,7 @@ public:
 		va_start(argptr, pszFormat);
 		std::string result=printf2(pszFormat,argptr);
 		va_end(argptr);
-		return std::move(result);
+		return result;
 	}
 
 	//地球人都知道,恶心的std::string是没有CString的Format这个函数的,所以我们自己造
@@ -420,7 +400,7 @@ public:
 
 		while (1)
 		{
-#ifdef _MSC_VER
+#ifdef _WIN32
 			int n = _vsnprintf(buffer, size, pszFormat, argptr);
 #else
 			int n = vsnprintf(buffer, size, pszFormat, argptr);
@@ -460,7 +440,7 @@ public:
 		{
 			ret += " ";
 		}
-		return std::move(ret);
+		return ret;
 	}
 
 	//地球人都知道,恶心的std::string是没有CString的Format这个函数的,所以我们自己造
@@ -481,7 +461,7 @@ public:
 			va_list argptrcopy;
 			va_copy(argptrcopy, argptr);
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 			len = _vsnprintf(buf, size, pszFormat, argptrcopy);
 #else
 			len = vsnprintf(buf, size, pszFormat, argptrcopy);
@@ -496,7 +476,7 @@ public:
 			size *= 2;
 		}
 		ret.resize(len);
-		return std::move(ret);
+		return ret;
 	}
 
 	//取得右边的N个字符
@@ -504,13 +484,13 @@ public:
 	{
 		if(nCount>src.length())
 			return BLANK();
-		return std::move(src.substr(src.length()-nCount,nCount));
+		return src.substr(src.length()-nCount,nCount);
 	}
 
 	//取左边的N个字符
 	static inline std::string left(const std::string &src,size_t nCount)
 	{
-		return std::move(src.substr(0,nCount));
+		return src.substr(0,nCount);
 	}
 
 	static inline size_t charCount(const std::string &src,char ch)
@@ -540,5 +520,27 @@ public:
 		ret += str.substr(lastPos, pos);
 
 		str = ret;
+	}
+
+	static inline std::string fmtInt64(int64_t v)
+	{
+		char buf[64] = { 0 };
+#ifdef _WIN32
+		int pos = sprintf(buf, "%I64d", v);
+#else
+		int pos = sprintf(buf, "%lld", (long long)v);
+#endif
+		return buf;
+	}
+
+	static inline std::string fmtUInt64(uint64_t v)
+	{
+		char buf[64] = { 0 };
+#ifdef _WIN32
+		int pos = sprintf(buf, "%I64u", v);
+#else
+		int pos = sprintf(buf, "%llu", (unsigned long long)v);
+#endif
+		return buf;
 	}
 };

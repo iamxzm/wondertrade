@@ -13,19 +13,19 @@
 #include "../Includes/WTSCollection.hpp"
 #include <string>
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 	class IMarketMgr;
 	class WTSHotItem;
-NS_WTP_END
+NS_OTP_END
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 //换月主力映射
 typedef WTSMap<uint32_t>		WTSDateHotMap;
 //品种主力映射
-typedef WTSMap<ShortKey>		WTSProductHotMap;
+typedef WTSMap<std::string>		WTSProductHotMap;
 //分市场主力映射
-typedef WTSMap<ShortKey>		WTSExchgHotMap;
+typedef WTSMap<std::string>		WTSExchgHotMap;
 
 class WTSHotMgr : public IHotMgr
 {
@@ -68,8 +68,8 @@ public:
 private:
 	WTSExchgHotMap*	m_pExchgHotMap;
 	WTSExchgHotMap*	m_pExchgScndMap;
-	faster_hashmap<ShortKey, std::string>	m_curHotCodes;
-	faster_hashmap<ShortKey, std::string>	m_curSecCodes;
+	faster_hashmap<std::string, std::string>	m_curHotCodes;
+	faster_hashmap<std::string, std::string>	m_curSecCodes;
 	bool			m_bInitialized;
 };
 

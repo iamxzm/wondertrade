@@ -23,7 +23,7 @@ typedef void(*FuncLogCallback)(unsigned long, const char*, bool);
 typedef void(*FuncRegCallbacks)(FuncLogCallback);
 
 
-NS_WTP_BEGIN
+NS_OTP_BEGIN
 class WTSTradeInfo;
 class WTSOrderInfo;
 class WTSVariant;
@@ -59,4 +59,4 @@ private:
 	FuncRegCallbacks	_register;
 };
 
-NS_WTP_END
+NS_OTP_END

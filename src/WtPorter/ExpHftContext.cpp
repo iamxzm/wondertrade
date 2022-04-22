@@ -9,10 +9,13 @@ void ExpHftContext::on_bar(const char* code, const char* period, uint32_t times,
 	if (newBar == NULL)
 		return;
 
-	thread_local static char realPeriod[8] = { 0 };
-	fmtutil::format_to(realPeriod, "{}{}", period[0], times);
+	std::string realPeriod;
+	if (period[0] == 'd')
+		realPeriod = StrUtil::printf("%s%u", period, times);
+	else
+		realPeriod = StrUtil::printf("m%u", times);
 
-	getRunner().ctx_on_bar(_context_id, code, realPeriod, newBar, ET_HFT);
+	getRunner().ctx_on_bar(_context_id, code, realPeriod.c_str(), newBar, ET_HFT);
 
 	HftStraBaseCtx::on_bar(code, period, times, newBar);
 }
@@ -69,20 +72,11 @@ void ExpHftContext::on_order(uint32_t localid, const char* stdCode, bool isBuy, 
 	HftStraBaseCtx::on_order(localid, stdCode, isBuy, totalQty, leftQty, price, isCanceled);
 }
 
-void ExpHftContext::on_position(const char* stdCode, bool isLong, double prevol, double preavail, double newvol, double newavail, uint32_t tradingday)
-{
-	getRunner().hft_on_position(_context_id, stdCode, isLong, prevol, preavail, newvol, newavail);
-}
-
 void ExpHftContext::on_tick(const char* code, WTSTickData* newTick)
 {
 	update_dyn_profit(code, newTick);
 
-	auto it = _tick_subs.find(code);
-	if (it != _tick_subs.end())
-	{
-		getRunner().ctx_on_tick(_context_id, code, newTick, ET_HFT);
-	}
+	getRunner().ctx_on_tick(_context_id, code, newTick, ET_HFT);
 
 	HftStraBaseCtx::on_tick(code, newTick);
 }

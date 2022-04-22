@@ -8,32 +8,83 @@
  * \brief 
  */
 #include "ParserCTP.h"
-
-#include "../Includes/WTSDataDef.hpp"
-#include "../Includes/WTSContractInfo.hpp"
-#include "../Includes/WTSVariant.hpp"
-#include "../Includes/IBaseDataMgr.h"
-
-#include "../Share/ModuleHelper.hpp"
+#include "../Share/StrUtil.hpp"
 #include "../Share/TimeUtils.hpp"
+#include "../Includes/WTSDataDef.hpp"
 #include "../Share/StdUtils.hpp"
+#include "../Includes/WTSContractInfo.hpp"
+#include "../Includes/WTSParams.hpp"
+#include "../Share/StrUtil.hpp"
+#include "../Includes/IBaseDataMgr.h"
+#include "../Includes/IBaseDataMgr.h"
+#include "../Share/DLLHelper.hpp"
 
 #include <boost/filesystem.hpp>
 
- //By Wesley @ 2022.01.05
-#include "../Share/fmtlib.h"
-template<typename... Args>
-inline void write_log(IParserSpi* sink, WTSLogLevel ll, const char* format, const Args&... args)
+#ifndef FLT_MAX
+#define FLT_MAX 3.402823466e+38F
+#endif
+
+std::string g_bin_dir;
+
+void inst_hlp() {}
+
+#ifdef _WIN32
+#include <wtypes.h>
+HMODULE	g_dllModule = NULL;
+
+BOOL APIENTRY DllMain(
+	HANDLE hModule,
+	DWORD  ul_reason_for_call,
+	LPVOID lpReserved
+	)
 {
-	if (sink == NULL)
-		return;
-
-	static thread_local char buffer[512] = { 0 };
-	memset(buffer, 0, 512);
-	fmt::format_to(buffer, format, args...);
-
-	sink->handleParserLog(ll, buffer);
+	switch (ul_reason_for_call)
+	{
+	case DLL_PROCESS_ATTACH:
+		g_dllModule = (HMODULE)hModule;
+		break;
+	}
+	return TRUE;
 }
+#else
+#include <dlfcn.h>
+
+char PLATFORM_NAME[] = "UNIX";
+
+const std::string& getInstPath()
+{
+	static std::string moduleName;
+	if (moduleName.empty())
+	{
+		Dl_info dl_info;
+		dladdr((void *)inst_hlp, &dl_info);
+		moduleName = dl_info.dli_fname;
+		//printf("1:%s\n", moduleName.c_str());
+	}
+
+	return moduleName;
+}
+#endif
+
+const char* getBinDir()
+{
+	if (g_bin_dir.empty())
+	{
+#ifdef _WIN32
+		char strPath[MAX_PATH];
+		GetModuleFileName(g_dllModule, strPath, MAX_PATH);
+
+		g_bin_dir = StrUtil::standardisePath(strPath, false);
+#else
+		g_bin_dir = getInstPath();
+#endif
+		boost::filesystem::path p(g_bin_dir);
+		g_bin_dir = p.branch_path().string() + "/";
+	}
+
+	return g_bin_dir.c_str();
+	}
 
 extern "C"
 {
@@ -60,7 +111,7 @@ inline uint32_t strToTime(const char* strTime)
 	const char *pos = strTime;
 	int idx = 0;
 	auto len = strlen(strTime);
-	for(std::size_t i = 0; i < len; i++)
+	for(auto i = 0; i < len; i++)
 	{
 		if(strTime[i] != ':')
 		{
@@ -85,7 +136,6 @@ ParserCTP::ParserCTP()
 	:m_pUserAPI(NULL)
 	,m_iRequestID(0)
 	,m_uTradingDate(0)
-    ,m_bLocaltime(false)
 {
 }
 
@@ -95,20 +145,13 @@ ParserCTP::~ParserCTP()
 	m_pUserAPI = NULL;
 }
 
-bool ParserCTP::init(WTSVariant* config)
+bool ParserCTP::init(WTSParams* config)
 {
 	m_strFrontAddr = config->getCString("front");
 	m_strBroker = config->getCString("broker");
 	m_strUserID = config->getCString("user");
 	m_strPassword = config->getCString("pass");
 	m_strFlowDir = config->getCString("flowdir");
-    /*
-     * By Wesley @ 2022.03.09
-     * 这个参数主要是给非标准CTP环境用的
-     * 如simnow全天候行情，openctp等环境
-     * 如果为true，就用本地时间戳，默认为false
-     */
-    m_bLocaltime = config->getBoolean("localtime");
 
 	if (m_strFlowDir.empty())
 		m_strFlowDir = "CTPMDFlow";
@@ -179,7 +222,7 @@ void ParserCTP::OnFrontConnected()
 {
 	if(m_sink)
 	{
-		write_log(m_sink, LL_INFO, "[ParserCTP] Market data server connected");
+		m_sink->handleParserLog(LL_INFO, "[ParserCTP] Market data server connected");
 		m_sink->handleEvent(WPE_Connect, 0);
 	}
 
@@ -191,10 +234,6 @@ void ParserCTP::OnRspUserLogin( CThostFtdcRspUserLoginField *pRspUserLogin, CTho
 	if(bIsLast && !IsErrorRspInfo(pRspInfo))
 	{
 		m_uTradingDate = strtoul(m_pUserAPI->GetTradingDay(), NULL, 10);
-        //By Wesley @ 2022.03.09
-        //这里加一个判断，但是这样的交易日不准确，在夜盘会出错
-        if(m_uTradingDate == 0)
-            m_uTradingDate = TimeUtils::getCurDate();
 		
 		if(m_sink)
 		{
@@ -202,7 +241,7 @@ void ParserCTP::OnRspUserLogin( CThostFtdcRspUserLoginField *pRspUserLogin, CTho
 		}
 
 		//订阅行情数据
-		DoSubscribeMD();
+		SubscribeMarketData();
 	}
 }
 
@@ -218,7 +257,7 @@ void ParserCTP::OnFrontDisconnected( int nReason )
 {
 	if(m_sink)
 	{
-		write_log(m_sink, LL_ERROR, "[ParserCTP] Market data server disconnected: {}", nReason);
+		m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserCTP] Market data server disconnected: %d...", nReason).c_str());
 		m_sink->handleEvent(WPE_Close, 0);
 	}
 }
@@ -235,52 +274,49 @@ void ParserCTP::OnRtnDepthMarketData( CThostFtdcDepthMarketDataField *pDepthMark
 		return;
 	}
 
-    WTSContractInfo* contract = m_pBaseDataMgr->getContract(pDepthMarketData->InstrumentID, pDepthMarketData->ExchangeID);
-    if (contract == NULL)
-        return;
+	uint32_t actDate = strtoul(pDepthMarketData->ActionDay, NULL, 10);
+	uint32_t actTime = strToTime(pDepthMarketData->UpdateTime) * 1000 + pDepthMarketData->UpdateMillisec;
+	uint32_t actHour = actTime / 10000000;
 
-    uint32_t actDate, actTime, actHour;
+	if (actDate == m_uTradingDate && actHour >= 20)
+	{
+		//这样的时间是有问题,因为夜盘时发生日期不可能等于交易日
+		//这就需要手动设置一下
+		uint32_t curDate, curTime;
+		TimeUtils::getDateTime(curDate, curTime);
+		uint32_t curHour = curTime / 10000000;
 
-    if(m_bLocaltime)
-    {
-        TimeUtils::getDateTime(actDate, actTime);
-        actHour = actTime / 10000000;
-    }
-    else
-    {
-        actDate = strtoul(pDepthMarketData->ActionDay, NULL, 10);
-        actTime = strToTime(pDepthMarketData->UpdateTime) * 1000 + pDepthMarketData->UpdateMillisec;
-        actHour = actTime / 10000000;
+		//早上启动以后,会收到昨晚12点以前收盘的行情,这个时候可能会有发生日期=交易日的情况出现
+		//这笔数据直接丢掉
+		if (curHour >= 3 && curHour < 9)
+			return;
 
-        if (actDate == m_uTradingDate && actHour >= 20) {
-            //这样的时间是有问题,因为夜盘时发生日期不可能等于交易日
-            //这就需要手动设置一下
-            uint32_t curDate, curTime;
-            TimeUtils::getDateTime(curDate, curTime);
-            uint32_t curHour = curTime / 10000000;
+		actDate = curDate;
 
-            //早上启动以后,会收到昨晚12点以前收盘的行情,这个时候可能会有发生日期=交易日的情况出现
-            //这笔数据直接丢掉
-            if (curHour >= 3 && curHour < 9)
-                return;
+		if (actHour == 23 && curHour == 0)
+		{
+			//行情时间慢于系统时间
+			actDate = TimeUtils::getNextDate(curDate, -1);
+		}
+		else if (actHour == 0 && curHour == 23)
+		{
+			//系统时间慢于行情时间
+			actDate = TimeUtils::getNextDate(curDate, 1);
+		}
+	}
 
-            actDate = curDate;
+	WTSContractInfo* contract = m_pBaseDataMgr->getContract(pDepthMarketData->InstrumentID, pDepthMarketData->ExchangeID);
+	if (contract == NULL)
+		return;
 
-            if (actHour == 23 && curHour == 0) {
-                //行情时间慢于系统时间
-                actDate = TimeUtils::getNextDate(curDate, -1);
-            } else if (actHour == 0 && curHour == 23) {
-                //系统时间慢于行情时间
-                actDate = TimeUtils::getNextDate(curDate, 1);
-            }
-        }
-    }
+	WTSCommodityInfo* pCommInfo = m_pBaseDataMgr->getCommodity(contract);
 
-	WTSCommodityInfo* pCommInfo = contract->getCommInfo();
+	//if (strcmp(contract->getExchg(), "CZCE") == 0)
+	//{
+	//	actTime += (uint32_t)(TimeUtils::getLocalTimeNow() % 1000);
+	//}
 
 	WTSTickData* tick = WTSTickData::create(pDepthMarketData->InstrumentID);
-	tick->setContractInfo(contract);
-
 	WTSTickStruct& quote = tick->getTickStruct();
 	strcpy(quote.exchg, pCommInfo->getExchg());
 	
@@ -305,14 +341,14 @@ void ParserCTP::OnRtnDepthMarketData( CThostFtdcDepthMarketDataField *pDepthMark
 			quote.total_turnover = pDepthMarketData->Turnover;
 	}
 
-	quote.open_interest = pDepthMarketData->OpenInterest;
+	quote.open_interest = (uint32_t)pDepthMarketData->OpenInterest;
 
 	quote.upper_limit = checkValid(pDepthMarketData->UpperLimitPrice);
 	quote.lower_limit = checkValid(pDepthMarketData->LowerLimitPrice);
 
 	quote.pre_close = checkValid(pDepthMarketData->PreClosePrice);
 	quote.pre_settle = checkValid(pDepthMarketData->PreSettlementPrice);
-	quote.pre_interest = pDepthMarketData->PreOpenInterest;
+	quote.pre_interest = (uint32_t)pDepthMarketData->PreOpenInterest;
 
 	//委卖价格
 	quote.ask_prices[0] = checkValid(pDepthMarketData->AskPrice1);
@@ -343,7 +379,7 @@ void ParserCTP::OnRtnDepthMarketData( CThostFtdcDepthMarketDataField *pDepthMark
 	quote.bid_qty[4] = pDepthMarketData->BidVolume5;
 
 	if(m_sink)
-		m_sink->handleQuote(tick, 1);
+		m_sink->handleQuote(tick, true);
 
 	tick->release();
 }
@@ -363,7 +399,7 @@ void ParserCTP::OnRspSubMarketData( CThostFtdcSpecificInstrumentField *pSpecific
 void ParserCTP::OnHeartBeatWarning( int nTimeLapse )
 {
 	if(m_sink)
-		write_log(m_sink, LL_INFO, "[ParserCTP] Heartbeating, elapse: {}", nTimeLapse);
+		m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserCTP] Heartbeating, elapse: %d...", nTimeLapse).c_str());
 }
 
 void ParserCTP::ReqUserLogin()
@@ -382,11 +418,11 @@ void ParserCTP::ReqUserLogin()
 	if(iResult != 0)
 	{
 		if(m_sink)
-			write_log(m_sink, LL_ERROR, "[ParserCTP] Sending login request failed: {}", iResult);
+			m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserCTP] Sending login request failed: %d", iResult).c_str());
 	}
 }
 
-void ParserCTP::DoSubscribeMD()
+void ParserCTP::SubscribeMarketData()
 {
 	CodeSet codeFilter = m_filterSubs;
 	if(codeFilter.empty())
@@ -398,7 +434,7 @@ void ParserCTP::DoSubscribeMD()
 	int nCount = 0;
 	for(auto& code : codeFilter)
 	{
-		std::size_t pos = code.find('.');
+		std::size_t pos = code.find(".");
 		if (pos != std::string::npos)
 			subscribe[nCount++] = (char*)code.c_str() + pos + 1;
 		else
@@ -411,12 +447,12 @@ void ParserCTP::DoSubscribeMD()
 		if(iResult != 0)
 		{
 			if(m_sink)
-				write_log(m_sink, LL_ERROR, "[ParserCTP] Sending md subscribe request failed: {}", iResult);
+				m_sink->handleParserLog(LL_ERROR, StrUtil::printf("[ParserCTP] Sending md subscribe request failed: %d", iResult).c_str());
 		}
 		else
 		{
 			if(m_sink)
-				write_log(m_sink, LL_INFO, "[ParserCTP] Market data of {} contracts subscribed totally", nCount);
+				m_sink->handleParserLog(LL_INFO, StrUtil::printf("[ParserCTP] Market data of %u contracts subscribed in total", nCount).c_str());
 		}
 	}
 	codeFilter.clear();
@@ -437,7 +473,7 @@ void ParserCTP::subscribe(const CodeSet &vecSymbols)
 	else
 	{
 		m_filterSubs = vecSymbols;
-		DoSubscribeMD();
+		SubscribeMarketData();
 	}
 }
 

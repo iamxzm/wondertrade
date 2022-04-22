@@ -11,6 +11,7 @@
 #include "WtHelper.h"
 
 #include <stdarg.h>
+#include <math.h>
 
 #include <boost/filesystem.hpp>
 
@@ -18,9 +19,30 @@
 #include "../Includes/WTSContractInfo.hpp"
 #include "../Share/decimal.h"
 #include "../Share/TimeUtils.hpp"
+#include "../Share/StdUtils.hpp"
 #include "../Share/StrUtil.hpp"
 
 #include "../WTSTools/WTSLogger.h"
+
+
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::to_json;
+
+using bsoncxx::builder::stream::close_array;
+using bsoncxx::builder::stream::close_document;
+using bsoncxx::builder::stream::document;
+using bsoncxx::builder::stream::finalize;
+using bsoncxx::builder::stream::open_array;
+using bsoncxx::builder::stream::open_document;
+
+using namespace mongocxx;
+
+namespace rj = rapidjson;
+using namespace std;
+
+std::mutex c1_mtx_1{};
 
 uint32_t makeLocalOrderID()
 {
@@ -36,8 +58,6 @@ uint32_t makeLocalOrderID()
 
 std::vector<uint32_t> splitVolume(uint32_t vol)
 {
-	if (vol == 0) return std::move(std::vector<uint32_t>());
-
 	uint32_t minQty = 1;
 	uint32_t maxQty = 100;
 	uint32_t length = maxQty - minQty + 1;
@@ -65,37 +85,7 @@ std::vector<uint32_t> splitVolume(uint32_t vol)
 		}
 	}
 
-	return std::move(ret);
-}
-
-std::vector<double> splitVolume(double vol, double minQty = 1.0, double maxQty = 100.0, double qtyTick = 1.0)
-{
-	auto length = (std::size_t)round((maxQty - minQty)/qtyTick) + 1;
-	std::vector<double> ret;
-	if (vol <= minQty)
-	{
-		ret.emplace_back(vol);
-	}
-	else
-	{
-		double left = vol;
-		srand((uint32_t)time(NULL));
-		while (left > 0)
-		{
-			double curVol = minQty + (rand() % length)*qtyTick;
-
-			if (curVol >= left)
-				curVol = left;
-
-			if (curVol == 0)
-				continue;
-
-			ret.emplace_back(curVol);
-			left -= curVol;
-		}
-	}
-
-	return std::move(ret);
+	return ret;
 }
 
 uint32_t genRand(uint32_t maxVal = 10000)
@@ -118,7 +108,6 @@ HftMocker::HftMocker(HisDataReplayer* replayer, const char* name)
 	, _stopped(false)
 	, _use_newpx(false)
 	, _error_rate(0)
-	, _match_this_tick(false)
 	, _has_hook(false)
 	, _hook_valid(true)
 	, _resumed(false)
@@ -211,9 +200,6 @@ bool HftMocker::init_hft_factory(WTSVariant* cfg)
 	
 	_use_newpx = cfg->getBoolean("use_newpx");
 	_error_rate = cfg->getUInt32("error_rate");
-	_match_this_tick = cfg->getBoolean("match_this_tick");
-
-	log_info("UFT match params: use_newpx-{}, error_rate-{}, match_this_tick-{}", _use_newpx, _error_rate, _match_this_tick);
 
 	DllHandle hInst = DLLHelper::load_library(module);
 	if (hInst == NULL)
@@ -241,7 +227,7 @@ bool HftMocker::init_hft_factory(WTSVariant* cfg)
 	return true;
 }
 
-void HftMocker::handle_tick(const char* stdCode, WTSTickData* curTick, bool isBarEnd /* = true */)
+void HftMocker::handle_tick(const char* stdCode, WTSTickData* curTick)
 {
 	on_tick(stdCode, curTick);
 }
@@ -304,14 +290,14 @@ void HftMocker::enable_hook(bool bEnabled /* = true */)
 {
 	_hook_valid = bEnabled;
 
-	WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "Calculating hook {}", bEnabled ? "enabled" : "disabled");
+	WTSLogger::log_dyn("strategy", _name.c_str(), LL_DEBUG, "Calculating hook %s", bEnabled ? "enabled" : "disabled");
 }
 
 void HftMocker::install_hook()
 {
 	_has_hook = true;
 
-	WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "HFT hook installed");
+	WTSLogger::log_dyn("strategy", _name.c_str(), LL_DEBUG, "HFT hook installed");
 }
 
 void HftMocker::step_tick()
@@ -319,14 +305,14 @@ void HftMocker::step_tick()
 	if (!_has_hook)
 		return;
 
-	WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "Notify calc thread, wait for calc done");
+	WTSLogger::log_dyn("strategy", _name.c_str(), LL_DEBUG, "Notify calc thread, wait for calc done");
 	while (!_resumed)
 		_cond_calc.notify_all();
 
 	{
 		StdUniqueLock lock(_mtx_calc);
 		_cond_calc.wait(_mtx_calc);
-		WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "Calc done notified");
+		WTSLogger::log_dyn("strategy", _name.c_str(), LL_DEBUG, "Calc done notified");
 		_resumed = false;
 	}
 }
@@ -338,89 +324,101 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 		std::unique_lock<std::recursive_mutex> lck(_mtx_control);
 	}
 
+	//Ωª“◊»’
+	if (_traderday < _replayer->get_trading_date())
+	{
+		_new_trade_day = true;
+		_dayacc_insert_flag = true;
+		_traderday = _replayer->get_trading_date();
+	}
+
+	_pretraderday = _replayer->getPrevTDate(stdCode, _traderday);
+
+	//◊ÚΩ·
+	_close_price = newTick->presettle();
+	if (decimal::eq(_close_price, 0.0))
+	{
+		_close_price = newTick->open();
+	}
+	//Ω·À„º€
+	_settlepx = newTick->price();
+
+	std::string inst = "";
+	auto barinstdate = _replayer->get_barinstdate();
+	for (auto it = barinstdate->begin(); it != barinstdate->end(); it++)
+	{
+		bool quit = false;
+		for (auto iit = it->second.begin(); iit != it->second.end(); iit++)
+		{
+			if (iit->second._s_date <= newTick->actiondate() && iit->second._e_date >= newTick->actiondate())
+			{
+				inst = iit->first;
+				quit = true;
+				break;
+			}
+		}
+		if (quit) break;
+	}
+
 	update_dyn_profit(stdCode, newTick);
 
 	procTask();
 	
-	//Â¶ÇÊûúÂºÄÂêØ‰∫ÜÂêåtickÊíÆÂêàÔºåÂàôÂÖàËß¶ÂèëÁ≠ñÁï•ÁöÑontickÔºåÂÜçÂ§ÑÁêÜËÆ¢Âçï
-	//Â¶ÇÊûúÊ≤°ÂºÄÂêØÂêåtickÊíÆÂêàÔºåÂàôÂÖàÂ§ÑÁêÜËÆ¢ÂçïÔºåÂÜçËß¶ÂèëÁ≠ñÁï•ÁöÑontick
-	if (_match_this_tick)
+	if (!_orders.empty())
 	{
-		if (_has_hook && _hook_valid)
+		OrderIDs ids;
+		for (auto it = _orders.begin(); it != _orders.end(); it++)
 		{
-			WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "Waiting for resume notify");
-			StdUniqueLock lock(_mtx_calc);
-			_cond_calc.wait(_mtx_calc);
-			WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "Calc resumed");
-			_resumed = true;
+			uint32_t localid = it->first;
+			bool bNeedErase = procOrder(localid, inst);
+			if (bNeedErase)
+			{
+				_changepos = true;  //≥÷≤÷±‰ªØ
+				if (_firstday == 0)
+				{
+					_firstday = _replayer->get_trading_date();
+				}
+				ids.emplace_back(localid);
+			}
+				
 		}
 
-		on_tick_updated(stdCode, newTick);
-
-		if (!_orders.empty())
+		for(uint32_t localid : ids)
 		{
-			OrderIDs ids;
-			for (auto it = _orders.begin(); it != _orders.end(); it++)
-			{
-				uint32_t localid = it->first;
-				bool bNeedErase = procOrder(localid);
-				if (bNeedErase)
-					ids.emplace_back(localid);
-			}
-
-			for (uint32_t localid : ids)
-			{
-				auto it = _orders.find(localid);
-				_orders.erase(it);
-			}
+			auto it = _orders.find(localid);
+			_orders.erase(it);
 		}
-	}
-	else
-	{
-		if (!_orders.empty())
-		{
-			OrderIDs ids;
-			for (auto it = _orders.begin(); it != _orders.end(); it++)
-			{
-				uint32_t localid = it->first;
-				bool bNeedErase = procOrder(localid);
-				if (bNeedErase)
-					ids.emplace_back(localid);
-			}
-
-			for (uint32_t localid : ids)
-			{
-				auto it = _orders.find(localid);
-				_orders.erase(it);
-			}
-		}
-
-		if (_has_hook && _hook_valid)
-		{
-			WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "Waiting for resume notify");
-			StdUniqueLock lock(_mtx_calc);
-			_cond_calc.wait(_mtx_calc);
-			WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "Calc resumed");
-			_resumed = true;
-		}
-
-		on_tick_updated(stdCode, newTick);
 	}
 
 	if (_has_hook && _hook_valid)
 	{
-		WTSLogger::log_dyn_f("strategy", _name.c_str(), LL_DEBUG, "Calc done, notify control thread");
+		WTSLogger::log_dyn("strategy", _name.c_str(), LL_DEBUG, "Waiting for resume notify");
+		StdUniqueLock lock(_mtx_calc);
+		_cond_calc.wait(_mtx_calc);
+		WTSLogger::log_dyn("strategy", _name.c_str(), LL_DEBUG, "Calc resumed");
+		_resumed = true;
+	}
+
+	on_tick_updated(stdCode, newTick);
+
+	if (_has_hook && _hook_valid)
+	{
+		WTSLogger::log_dyn("strategy", _name.c_str(), LL_DEBUG, "Calc done, notify control thread");
 		while (_resumed)
 			_cond_calc.notify_all();
 	}
+
+	//≥÷≤÷±‰ªØ∏¸–¬ ˝æ›
+	if (_changepos)
+	{
+		_changepos = false;
+		set_dayaccount(stdCode, newTick);
+	}
+
 }
 
 void HftMocker::on_tick_updated(const char* stdCode, WTSTickData* newTick)
 {
-	auto it = _tick_subs.find(stdCode);
-	if (it == _tick_subs.end())
-		return;
-
 	if (_strategy)
 		_strategy->on_tick(this, stdCode, newTick);
 }
@@ -471,20 +469,7 @@ void HftMocker::on_init()
 
 void HftMocker::on_session_begin(uint32_t curTDate)
 {
-	//ÊØè‰∏™‰∫§ÊòìÊó•ÂºÄÂßãÔºåË¶ÅÊääÂÜªÁªìÊåÅ‰ªìÁΩÆÈõ∂
-	for (auto& it : _pos_map)
-	{
-		const char* stdCode = it.first.c_str();
-		PosInfo& pInfo = (PosInfo&)it.second;
-		if (!decimal::eq(pInfo._frozen, 0))
-		{
-			log_debug("{} of {} frozen released on {}", pInfo._frozen, stdCode, curTDate);
-			pInfo._frozen = 0;
-		}
-	}
 
-	if (_strategy)
-		_strategy->on_session_begin(this, curTDate);
 }
 
 void HftMocker::on_session_end(uint32_t curTDate)
@@ -502,12 +487,9 @@ void HftMocker::on_session_end(uint32_t curTDate)
 		total_dynprofit += pInfo._dynprofit;
 	}
 
-	_fund_logs << fmt::format("{},{:.2f},{:.2f},{:.2f},{:.2f}\n", curDate,
+	_fund_logs << StrUtil::printf("%d,%.2f,%.2f,%.2f,%.2f\n", curDate,
 		_fund_info._total_profit, _fund_info._total_dynprofit,
 		_fund_info._total_profit + _fund_info._total_dynprofit - _fund_info._total_fees, _fund_info._total_fees);
-
-	if (_strategy)
-		_strategy->on_session_end(this, curTDate);
 }
 
 double HftMocker::stra_get_undone(const char* stdCode)
@@ -566,21 +548,8 @@ OrderIDs HftMocker::stra_cancel(const char* stdCode, bool isBuy, double qty /* =
 	return ret;
 }
 
-OrderIDs HftMocker::stra_buy(const char* stdCode, double price, double qty, const char* userTag, int flag /* = 0 */)
+otp::OrderIDs HftMocker::stra_buy(const char* stdCode, double price, double qty, const char* userTag)
 {
-	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
-	if (commInfo == NULL)
-	{
-		log_error("Cannot find corresponding commodity info of {}", stdCode);
-		return OrderIDs();
-	}
-
-	if (decimal::le(qty, 0))
-	{
-		log_error("Entrust error: qty {} <= 0", qty);
-		return OrderIDs();
-	}
-
 	uint32_t localid = makeLocalOrderID();
 
 	OrderInfo order;
@@ -591,16 +560,23 @@ OrderIDs HftMocker::stra_buy(const char* stdCode, double price, double qty, cons
 	order._price = price;
 	order._total = qty;
 	order._left = qty;
+	order.insert_date_time = getTimeStamp();
 
 	{
 		_mtx_ords.lock();
 		_orders[localid] = order;
 		_mtx_ords.unlock();
 	}
-
+	//WTSLogger::info("localid%u,isBuy%d,price%f,total%f,left%f\n", order._localid, order._isBuy, order._price, order._total, order._left);
 	postTask([this, localid](){
 		const OrderInfo& ordInfo = _orders[localid];
-		on_entrust(localid, ordInfo._code, true, "‰∏ãÂçïÊàêÂäü", ordInfo._usertag);
+		on_entrust(localid, ordInfo._code, true, "œ¬µ•≥…π¶", ordInfo._usertag);
+		//bool bNeedErase = procOrder(localid);
+		//if(bNeedErase)
+		//{
+		//	auto it = _orders.find(localid);
+		//	_orders.erase(it);
+		//}
 	});
 
 	OrderIDs ids;
@@ -614,13 +590,14 @@ void HftMocker::on_order(uint32_t localid, const char* stdCode, bool isBuy, doub
 		_strategy->on_order(this, localid, stdCode, isBuy, totalQty, leftQty, price, isCanceled, userTag);
 }
 
-void HftMocker::on_trade(uint32_t localid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag/* = ""*/)
+void HftMocker::on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag/* = ""*/,time_t insert_date_time)
 {
-	const PosInfo& posInfo = _pos_map[stdCode];
-	double curPos = posInfo._volume + vol * (isBuy ? 1 : -1);
-	do_set_position(stdCode, curPos, price, userTag);
 	if (_strategy)
 		_strategy->on_trade(this, localid, stdCode, isBuy, vol, price, userTag);
+
+	const PosInfo& posInfo = _pos_map[stdCode];
+	double curPos = posInfo._volume + vol * (isBuy ? 1 : -1);
+	do_set_position(stdCode, instid, curPos, insert_date_time, price, userTag);
 }
 
 void HftMocker::on_entrust(uint32_t localid, const char* stdCode, bool bSuccess, const char* message, const char* userTag/* = ""*/)
@@ -670,7 +647,324 @@ void HftMocker::update_dyn_profit(const char* stdCode, WTSTickData* newTick)
 	}
 }
 
-bool HftMocker::procOrder(uint32_t localid)
+
+void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
+{
+	mongocxx::database mongodb = _replayer->_client["lsqt_db"];
+	mongocxx::collection acccoll = mongodb["his_account"];
+	mongocxx::collection daycoll = mongodb["day_account"];
+	mongocxx::collection allcoll = mongodb["account"];
+
+	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
+
+	int64_t curTime = _replayer->get_date() * 1000000 + _replayer->get_min_time() * 100 + _replayer->get_secs();
+
+	double total_dynprofit = 0;
+	for (auto v : _pos_map)
+	{
+		const PosInfo& pInfo = v.second;
+		total_dynprofit += pInfo._dynprofit;
+	}
+
+	_fund_info._total_dynprofit = total_dynprofit;
+
+	//º∆À„∆⁄≥ı»®“Ê
+	if (_new_trade_day)
+	{
+		_static_balance = _total_money + _used_margin + _fund_info._total_fees - _fund_info._total_dynprofit - _fund_info._total_profit;
+		_new_trade_day = false;
+	}
+	//ΩÒ»’◊ ≤˙ = ∆⁄≥ı»®“Ê + ≥÷≤÷”Øø˜ + ∆Ω≤÷”Øø˜ -  ÷–¯∑—
+	_balance = _static_balance + _fund_info._total_dynprofit + _total_closeprofit - _fund_info._total_fees;
+	//µ±»’”Øø˜
+	_day_profit = _balance - _static_balance;
+	//≤ﬂ¬‘ ’“Ê
+	_total_profit = _balance - init_money;
+
+	// ’“Ê¬ π´ Ω = (µ±«∞æª÷µ/◊Ó≥ıæª÷µ)
+	_daily_rate_of_return = (_day_profit / _static_balance);
+	if (isnan(_daily_rate_of_return) || !isfinite(_daily_rate_of_return))
+	{
+		_daily_rate_of_return = 0;
+	}
+
+	//ª˘◊º ’“Ê¬ 
+	double benchmarkPrePrice = _close_price;		//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //◊Ú ’º€
+	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //ΩÒ ’º€
+
+	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
+	if (isnan(_benchmark_rate_of_return) || !isfinite(_benchmark_rate_of_return) || _firstday == _replayer->get_trading_date())
+	{
+		_benchmark_rate_of_return = 0;
+	}
+
+	//ª˘◊º¿€º∆ ’“Ê¬ 
+	_benchmark_cumulative_rate = benchmarkEndPrice / _firstprice;
+	if (!isfinite(_benchmark_cumulative_rate))
+	{
+		_benchmark_cumulative_rate = 0;
+	}
+
+	//»’≥¨∂Ó ’“Ê¬ 
+	_abnormal_rate_of_return = (_daily_rate_of_return + 1) / (_benchmark_rate_of_return + 1) - 1;
+	if (isnan(_abnormal_rate_of_return) || !isfinite(_abnormal_rate_of_return))
+	{
+		_abnormal_rate_of_return = 0;
+	}
+
+	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
+
+	//≤ﬂ¬‘¿€º∆ ’“Ê¬ 
+	bsoncxx::stdx::optional<bsoncxx::document::value> day_result = daycoll.find_one(make_document(
+		kvp("trade_day", to_string(_pretraderday)),
+		kvp("strategy_id", _name),
+		kvp("accounts.314159.account_id", "314159")
+		));
+
+	double preRate = 0;
+	if (day_result)
+	{
+		bsoncxx::document::view view = day_result->view();
+		bsoncxx::document::element msgs_ele = view["strategy_cumulative_rate"];
+		if (msgs_ele && msgs_ele.type() == bsoncxx::type::k_double)
+		{
+			preRate = view["strategy_cumulative_rate"].get_double().value;
+		}
+	}
+	else
+	{
+		preRate = 0;
+	}
+	if (_firstday == _replayer->get_trading_date())
+	{
+		_strategy_cumulative_rate = 0;
+	}
+	else
+	{
+		_strategy_cumulative_rate = (preRate + 1) * (_daily_rate_of_return + 1) - 1;	//(preRate + 1) * (currRate + 1) - 1;
+	}
+
+	//¥¢¥ÊµΩmongo
+	position_doc = document{} <<
+		"position_profit" << 0.0 <<
+		"available" << _total_money <<
+		"frozen_premium" << 0.0 <<
+		"close_profit" << _total_closeprofit <<
+		"day_profit" << _day_profit <<
+		"premium" << 0.0 <<
+		"balance" << _balance <<
+		"static_balance" << _static_balance <<
+		"currency" << "CNY" <<
+		"commission" << 0.0 <<
+		"frozen_margin" << 0.0 <<
+		"pre_balance" << _static_balance <<
+		"benchmark_rate_of_return" << _benchmark_rate_of_return <<
+		"benchmark_cumulative_rate" << _benchmark_cumulative_rate <<
+		"strategy_cumulative_rate" << _strategy_cumulative_rate <<
+		"float_profit" << 0.0 <<
+		"timestamp" << curTime <<
+		"margin" << _used_margin <<
+		"risk_ratio" << 0.0 <<
+		"trade_day" << to_string(_traderday) <<
+		"frozen_commission" << 0.0 <<
+		"abnormal_rate_of_return" << _abnormal_rate_of_return <<
+		"daily_rate_of_return" << _daily_rate_of_return <<
+		"win_or_lose_flag" << _win_or_lose_flag <<
+		"strategy_id" << _name <<
+		"deposit" << 0.0 <<
+		"accounts" << open_document <<
+		"314159" << open_document <<
+		"position_profit" << 0.0 <<
+		"margin" << _used_margin <<
+		"risk_ratio" << 0.0 <<
+		"frozen_commission" << 0.0 <<
+		"frozen_premium" << 0.0 <<
+		"available" << 0.0 <<
+		"close_profit" << _total_closeprofit <<
+		"account_id" << "314159" <<
+		"premium" << 0.0 <<
+		"static_balance" << _static_balance <<
+		"balance" << _balance <<
+		"deposit" << 0.0 <<
+		"currency" << "rmb" <<
+		"pre_balance" << 0.0 <<
+		"commission" << 0.0 <<
+		"frozen_margin" << 0.0 <<
+		"float_profit" << 0.0 <<
+		"withdraw" << 0.0 <<
+		close_document <<
+		close_document <<
+		"withdraw" << 0.0 <<
+		finalize;
+
+
+	acccoll.insert_one(std::move(position_doc));
+
+	//≤Â»Îday acc
+	if (_dayacc_insert_flag || _per_strategy_id != _name)
+	{
+		_per_strategy_id = _name;
+
+		position_doc = document{} <<
+			"position_profit" << 0.0 <<
+			"available" << _total_money <<
+			"frozen_premium" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
+			"day_profit" << _day_profit <<
+			"premium" << 0.0 <<
+			"balance" << _balance <<
+			"static_balance" << _static_balance <<
+			"currency" << "CNY" <<
+			"commission" << 0.0 <<
+			"frozen_margin" << 0.0 <<
+			"pre_balance" << _static_balance <<
+			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
+			"benchmark_cumulative_rate" << _benchmark_cumulative_rate <<
+			"strategy_cumulative_rate" << _strategy_cumulative_rate <<
+			"float_profit" << 0.0 <<
+			"timestamp" << curTime <<
+			"margin" << _used_margin <<
+			"risk_ratio" << 0.0 <<
+			"trade_day" << to_string(_traderday) <<
+			"frozen_commission" << 0.0 <<
+			"abnormal_rate_of_return" << _abnormal_rate_of_return <<
+			"daily_rate_of_return" << _daily_rate_of_return <<
+			"win_or_lose_flag" << _win_or_lose_flag <<
+			"strategy_id" << _name <<
+			"total_deposit" << init_money <<
+			"total_profit" << _total_profit <<
+			"accounts" << open_document <<
+			"314159" << open_document <<
+			"position_profit" << 0.0 <<
+			"margin" << _used_margin <<
+			"risk_ratio" << 0.0 <<
+			"frozen_commission" << 0.0 <<
+			"frozen_premium" << 0.0 <<
+			"available" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
+			"account_id" << "314159" <<
+			"premium" << 0.0 <<
+			"static_balance" << _static_balance <<
+			"balance" << _balance <<
+			"deposit" << 0.0 <<
+			"currency" << "rmb" <<
+			"pre_balance" << 0.0 <<
+			"commission" << 0.0 <<
+			"frozen_margin" << 0.0 <<
+			"float_profit" << 0.0 <<
+			"withdraw" << 0.0 <<
+			close_document <<
+			close_document <<
+			"total_withdraw" << 0.0 <<
+			finalize;
+
+		daycoll.insert_one(std::move(position_doc));
+		_dayacc_insert_flag = false;
+	}
+	else //∏¸–¬day acc
+	{
+		daycoll.update_one(
+			make_document(kvp("trade_day", to_string(_traderday)),  kvp("strategy_id", _name), kvp("accounts.314159.account_id", "314159")),
+			make_document(kvp("$set", make_document(kvp("available", _total_money),
+				kvp("close_profit", _total_closeprofit),
+				kvp("day_profit", _day_profit),
+				kvp("balance", _balance),
+				kvp("static_balance", _static_balance),
+				kvp("benchmark_rate_of_return", _benchmark_rate_of_return),
+				kvp("benchmark_cumulative_rate", _benchmark_cumulative_rate),
+				kvp("strategy_cumulative_rate", _strategy_cumulative_rate),
+				kvp("timestamp", curTime),
+				kvp("margin", _used_margin),
+				kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
+				kvp("daily_rate_of_return", _daily_rate_of_return),
+				kvp("win_or_lose_flag", _win_or_lose_flag),
+				kvp("total_profit", _total_profit),
+				kvp("total_deposit", init_money),
+				kvp("accounts.314159.margin", _used_margin),
+				kvp("accounts.314159.static_balance", _static_balance),
+				kvp("accounts.314159.balance", _balance),
+				kvp("accounts.314159.close_profit", _total_closeprofit)
+			))));
+	}
+
+	//accounts ˝æ›ø‚
+	bsoncxx::stdx::optional<bsoncxx::document::value> maybe_result = allcoll.find_one(make_document(kvp("strategy_id", _name),kvp("accounts.314159.account_id", "314159")));
+
+	if (maybe_result)
+	{
+		allcoll.update_one(
+			make_document(kvp("accounts", "314159"), kvp("strategy_id", _name)),
+			make_document(kvp("$set", make_document(kvp("available", _total_money),
+				kvp("day_profit", _day_profit),
+				kvp("close_profit", _total_closeprofit),
+				kvp("balance", _balance),
+				kvp("static_balance", _static_balance),
+				kvp("benchmark_rate_of_return", _benchmark_rate_of_return),
+				kvp("timestamp", curTime),
+				kvp("margin", _used_margin),
+				kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
+				kvp("daily_rate_of_return", _daily_rate_of_return),
+				kvp("win_or_lose_flag", _win_or_lose_flag),
+				kvp("accounts.314159.margin", _used_margin),
+				kvp("accounts.314159.static_balance", _static_balance),
+				kvp("accounts.314159.balance", _balance),
+				kvp("accounts.314159.close_profit", _total_closeprofit)
+			))));
+	}
+	else
+	{
+		allcoll.insert_one(
+			document{} <<
+			"position_profit" << 0.0 <<
+			"available" << _total_money <<
+			"frozen_premium" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
+			"day_profit" << _day_profit <<
+			"premium" << 0.0 <<
+			"balance" << _balance <<
+			"static_balance" << _static_balance <<
+			"currency" << "CNY" <<
+			"commission" << 0.0 <<
+			"frozen_margin" << 0.0 <<
+			"pre_balance" << _static_balance <<
+			"float_profit" << 0.0 <<
+			"timestamp" << curTime <<
+			"margin" << _used_margin <<
+			"risk_ratio" << 0.0 <<
+			"trade_day" << to_string(_traderday) <<
+			"frozen_commission" << 0.0 <<
+			"strategy_id" << _name <<
+			"deposit" << 0.0 <<
+			"accounts" << open_document <<
+			"314159" << open_document <<
+			"position_profit" << 0.0 <<
+			"margin" << _used_margin <<
+			"risk_ratio" << 0.0 <<
+			"frozen_commission" << 0.0 <<
+			"frozen_premium" << 0.0 <<
+			"available" << 0.0 <<
+			"close_profit" << _total_closeprofit <<
+			"account_id" << "314159" <<
+			"premium" << 0.0 <<
+			"static_balance" << _static_balance <<
+			"balance" << _balance <<
+			"deposit" << 0.0 <<
+			"currency" << "rmb" <<
+			"pre_balance" << 0.0 <<
+			"commission" << 0.0 <<
+			"frozen_margin" << 0.0 <<
+			"float_profit" << 0.0 <<
+			"withdraw" << 0.0 <<
+			close_document <<
+			close_document <<
+			"withdraw" << 0.0 <<
+			finalize
+		);
+	}
+}
+
+
+bool HftMocker::procOrder(uint32_t localid,std::string instid)
 {
 	auto it = _orders.find(localid);
 	if (it == _orders.end())
@@ -679,11 +973,11 @@ bool HftMocker::procOrder(uint32_t localid)
 	StdLocker<StdRecurMutex> lock(_mtx_ords);
 	OrderInfo& ordInfo = (OrderInfo&)it->second;
 
-	//Á¨¨‰∏ÄÊ≠•,Â¶ÇÊûúÂú®Êí§ÂçïÊ¶ÇÁéá‰∏≠,ÂàôÊâßË°åÊí§Âçï
+	//µ⁄“ª≤Ω,»Áπ˚‘⁄≥∑µ•∏≈¬ ÷–,‘Ú÷¥––≥∑µ•
 	if(_error_rate>0 && genRand(10000)<=_error_rate)
 	{
 		on_order(localid, ordInfo._code, ordInfo._isBuy, ordInfo._total, ordInfo._left, ordInfo._price, true, ordInfo._usertag);
-		log_info("Random error order: {}", localid);
+		stra_log_info("Random error order: %u", localid);
 		return true;
 	}
 	else
@@ -696,46 +990,40 @@ bool HftMocker::procOrder(uint32_t localid)
 		return false;
 
 	double curPx = curTick->price();
-	double orderQty = ordInfo._isBuy ? curTick->askqty(0) : curTick->bidqty(0);	//ÁúãÂØπÊâãÁõòÁöÑÊï∞Èáè
-	if (decimal::eq(orderQty, 0.0))
-		return false;
-
+	double orderQty = ordInfo._isBuy ? curTick->askqty(0) : curTick->bidqty(0);	//ø¥∂‘ ÷≈Ãµƒ ˝¡ø
+	curTick->release();
 	if (!_use_newpx)
 	{
 		curPx = ordInfo._isBuy ? curTick->askprice(0) : curTick->bidprice(0);
 		//if (curPx == 0.0)
 		if(decimal::eq(curPx, 0.0))
-		{
-			curTick->release();
 			return false;
-		}
 	}
-	curTick->release();
 
-	//Â¶ÇÊûúÊ≤°ÊúâÊàê‰∫§Êù°‰ª∂,ÂàôÈÄÄÂá∫ÈÄªËæë
+	//»Áπ˚√ª”–≥…ΩªÃıº˛,‘ÚÕÀ≥ˆ¬ﬂº≠
 	if(!decimal::eq(ordInfo._price, 0.0))
 	{
 		if(ordInfo._isBuy && decimal::gt(curPx, ordInfo._price))
 		{
-			//‰π∞Âçï,‰ΩÜÊòØÂΩìÂâç‰ª∑Â§ß‰∫éÈôê‰ª∑,‰∏çÊàê‰∫§
+			//¬Úµ•,µ´ «µ±«∞º€¥Û”⁄œﬁº€,≤ª≥…Ωª
 			return false;
 		}
 
 		if (!ordInfo._isBuy && decimal::lt(curPx, ordInfo._price))
 		{
-			//ÂçñÂçï,‰ΩÜÊòØÂΩìÂâç‰ª∑Â∞è‰∫éÈôê‰ª∑,‰∏çÊàê‰∫§
+			//¬Ùµ•,µ´ «µ±«∞º€–°”⁄œﬁº€,≤ª≥…Ωª
 			return false;
 		}
 	}
 
 	/*
-	 *	‰∏ãÈù¢Â∞±Ë¶ÅÊ®°ÊãüÊàê‰∫§‰∫Ü
+	 *	œ¬√ÊæÕ“™ƒ£ƒ‚≥…Ωª¡À
 	 */
 	double maxQty = min(orderQty, ordInfo._left);
 	auto vols = splitVolume((uint32_t)maxQty);
 	for(uint32_t curQty : vols)
 	{
-		on_trade(ordInfo._localid, ordInfo._code, ordInfo._isBuy, curQty, curPx, ordInfo._usertag);
+		on_trade(ordInfo._localid, instid, ordInfo._code, ordInfo._isBuy, curQty, curPx, ordInfo._usertag,ordInfo.insert_date_time);
 
 		ordInfo._left -= curQty;
 		on_order(localid, ordInfo._code, ordInfo._isBuy, ordInfo._total, ordInfo._left, ordInfo._price, false, ordInfo._usertag);
@@ -755,32 +1043,8 @@ bool HftMocker::procOrder(uint32_t localid)
 	return false;
 }
 
-OrderIDs HftMocker::stra_sell(const char* stdCode, double price, double qty, const char* userTag, int flag /* = 0 */)
+otp::OrderIDs HftMocker::stra_sell(const char* stdCode, double price, double qty, const char* userTag)
 {
-	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
-	if (commInfo == NULL)
-	{
-		log_error("Cannot find corresponding commodity info of %s", stdCode);
-		return OrderIDs();
-	}
-
-	if (decimal::le(qty, 0))
-	{
-		log_error("Entrust error: qty {} <= 0", qty);
-		return OrderIDs();
-	}
-
-	//Â¶ÇÊûú‰∏çËÉΩÂÅöÁ©∫ÔºåÂàôË¶ÅÁúãÂèØÁî®ÊåÅ‰ªì
-	if(!commInfo->canShort())
-	{
-		double curPos = stra_get_position(stdCode, true);//Âè™ËØªÂèØÁî®ÊåÅ‰ªì
-		if(decimal::gt(qty, curPos))
-		{
-			log_error("No enough position of {} to sell", stdCode);
-			return OrderIDs();
-		}
-	}
-
 	uint32_t localid = makeLocalOrderID();
 
 	OrderInfo order;
@@ -791,15 +1055,22 @@ OrderIDs HftMocker::stra_sell(const char* stdCode, double price, double qty, con
 	order._price = price;
 	order._total = qty;
 	order._left = qty;
+	order.insert_date_time = getTimeStamp();
 
 	{
 		StdLocker<StdRecurMutex> lock(_mtx_ords);
 		_orders[localid] = order;
 	}
-
+	//WTSLogger::info("localid%u,isBuy%d,price%f,total%f,left%f\n", order._localid, order._isBuy, order._price, order._total, order._left);
 	postTask([this, localid]() {
 		const OrderInfo& ordInfo = _orders[localid];
-		on_entrust(localid, ordInfo._code, true, "‰∏ãÂçïÊàêÂäü", ordInfo._usertag);
+		on_entrust(localid, ordInfo._code, true, "œ¬µ•≥…π¶", ordInfo._usertag);
+		//bool bNeedErase = procOrder(localid);
+		//if (bNeedErase)
+		//{
+		//	auto it = _orders.find(localid);
+		//	_orders.erase(it);
+		//}
 	});
 
 	OrderIDs ids;
@@ -814,13 +1085,19 @@ WTSCommodityInfo* HftMocker::stra_get_comminfo(const char* stdCode)
 
 WTSKlineSlice* HftMocker::stra_get_bars(const char* stdCode, const char* period, uint32_t count)
 {
-	thread_local static char basePeriod[2] = { 0 };
-	basePeriod[0] = period[0];
+	std::string basePeriod = "";
 	uint32_t times = 1;
 	if (strlen(period) > 1)
+	{
+		basePeriod.append(period, 1);
 		times = strtoul(period + 1, NULL, 10);
+	}
+	else
+	{
+		basePeriod = period;
+	}
 
-	return _replayer->get_kline_slice(stdCode, basePeriod, count, times);
+	return _replayer->get_kline_slice(stdCode, basePeriod.c_str(), count, times);
 }
 
 WTSTickSlice* HftMocker::stra_get_ticks(const char* stdCode, uint32_t count)
@@ -848,17 +1125,10 @@ WTSTickData* HftMocker::stra_get_last_tick(const char* stdCode)
 	return _replayer->get_last_tick(stdCode);
 }
 
-double HftMocker::stra_get_position(const char* stdCode, bool bOnlyValid/* = false*/)
+double HftMocker::stra_get_position(const char* stdCode)
 {
 	const PosInfo& pInfo = _pos_map[stdCode];
-	if (bOnlyValid)
-	{
-		//ËøôÈáåÁêÜËÆ∫‰∏äÔºåÂè™ÊúâÂ§öÂ§¥Êâç‰ºöËøõÂà∞ËøôÈáå
-		//ÂÖ∂‰ªñÂú∞ÊñπË¶Å‰øùËØÅÔºåÁ©∫Â§¥ÊåÅ‰ªìÁöÑËØùÔºå_frozenË¶Å‰∏∫0
-		return pInfo._volume - pInfo._frozen;
-	}
-	else
-		return pInfo._volume;
+	return pInfo._volume;
 }
 
 double HftMocker::stra_get_position_profit(const char* stdCode)
@@ -889,13 +1159,6 @@ uint32_t HftMocker::stra_get_secs()
 
 void HftMocker::stra_sub_ticks(const char* stdCode)
 {
-	/*
-	 *	By Wesley @ 2022.03.01
-	 *	‰∏ªÂä®ËÆ¢ÈòÖtick‰ºöÂú®Êú¨Âú∞ËÆ∞‰∏Ä‰∏ã
-	 *	tickÊï∞ÊçÆÂõûË∞ÉÁöÑÊó∂ÂÄôÂÖàÊ£ÄÊü•‰∏Ä‰∏ã
-	 */
-	_tick_subs.insert(stdCode);
-
 	_replayer->sub_tick(_context_id, stdCode);
 }
 
@@ -914,19 +1177,28 @@ void HftMocker::stra_sub_transactions(const char* stdCode)
 	_replayer->sub_transaction(_context_id, stdCode);
 }
 
-void HftMocker::stra_log_info(const char* message)
+void HftMocker::stra_log_info(const char* fmt, ...)
 {
-	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_INFO, message);
+	va_list args;
+	va_start(args, fmt);
+	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_INFO, fmt, args);
+	va_end(args);
 }
 
-void HftMocker::stra_log_debug(const char* message)
+void HftMocker::stra_log_debug(const char* fmt, ...)
 {
-	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_DEBUG, message);
+	va_list args;
+	va_start(args, fmt);
+	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_DEBUG, fmt, args);
+	va_end(args);
 }
 
-void HftMocker::stra_log_error(const char* message)
+void HftMocker::stra_log_error(const char* fmt, ...)
 {
-	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_ERROR, message);
+	va_list args;
+	va_start(args, fmt);
+	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_ERROR, fmt, args);
+	va_end(args);
 }
 
 const char* HftMocker::stra_load_user_data(const char* key, const char* defVal /*= ""*/)
@@ -988,7 +1260,248 @@ void HftMocker::log_close(const char* stdCode, bool isLong, uint64_t openTime, d
 		<< totalprofit << "," << enterTag << "," << exitTag << "\n";
 }
 
-void HftMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, const char* userTag /*= ""*/)
+void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
+{
+	auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["his_positions"];
+	bsoncxx::document::value position_doc = document{} << finalize;
+	std::string exch_inst = exch_id;
+	exch_inst += "::";
+	exch_inst += inst_id;
+	if (dInfo._volume <= 0)
+	{
+		return;
+	}
+	if (dInfo._long)
+	{
+		position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+			"strategy_id" << _name <<//
+			"position" << open_document <<
+			exch_inst << open_document <<
+			"position_profit" << dInfo._profit <<
+			"float_profit_short" << 0.0 <<
+			"open_price_short" << 0.0 <<
+			"volume_long_frozen_today" << 0 <<//
+			"open_cost_long" << fee <<
+			"position_price_short" << 0.0 <<
+			"float_profit_long" << pInfo._dynprofit <<
+			"open_price_long" << dInfo._price <<
+			"exchange_id" << exch_id <<
+			"volume_short_frozen_today" << 0 <<//
+			"position_price_long" << dInfo._price <<
+			"position_profit_long" << dInfo._profit <<
+			"volume_short_today" << 0 <<
+			"position_profit_short" << 0.0 <<
+			"volume_long" << dInfo._volume <<
+			"margin_short" << 0.0 <<//
+			"volume_long_frozen_his" << 0 <<//
+			"float_profit" << 0.0 <<//
+			"open_cost_short" << 0.0 <<
+			"margin" << 0.0 <<//
+			"position_cost_short" << 0.0 <<//
+			"volume_short_frozen_his" << 0 <<//
+			"instrument_id" << inst_id <<
+			"volume_short" << 0 <<
+			"account_id" << "" <<
+			"volume_long_today" << dInfo._volume <<
+			"position_cost_long" << 0.0 <<//
+			"volume_long_his" << 0 <<//
+			"hedge_flag" << " " <<//
+			"margin_long" << 0.0 <<//
+			"volume_short_his" << 0 <<//
+			"last_price" << _settlepx << //
+			close_document <<
+			close_document <<
+			"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			finalize;
+	}
+	else
+	{
+		position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
+			"strategy_id" << _name <<//
+			"position" << open_document <<
+			exch_inst << open_document <<
+			"position_profit" << dInfo._profit <<
+			"float_profit_short" << pInfo._dynprofit <<
+			"open_price_short" << dInfo._price <<
+			"volume_long_frozen_today" << 0 <<//
+			"open_cost_long" << 0.0 <<
+			"position_price_short" << dInfo._price <<
+			"float_profit_long" << 0.0 <<
+			"open_price_long" << 0.0 <<
+			"exchange_id" << exch_id <<
+			"volume_short_frozen_today" << 0 <<//
+			"position_price_long" << 0.0 <<
+			"position_profit_long" << 0.0 <<
+			"volume_short_today" << dInfo._volume <<
+			"position_profit_short" << dInfo._profit <<
+			"volume_long" << 0 <<
+			"margin_short" << 0.0 <<//
+			"volume_long_frozen_his" << 0 <<//
+			"float_profit" << 0.0 <<//
+			"open_cost_short" << fee <<
+			"margin" << 0.0 <<//
+			"position_cost_short" << 0.0 <<//
+			"volume_short_frozen_his" << 0 <<//
+			"instrument_id" << inst_id <<
+			"volume_short" << dInfo._volume <<
+			"account_id" << "" <<
+			"volume_long_today" << 0.0 <<
+			"position_cost_long" << fee <<//
+			"volume_long_his" << 0 <<//
+			"hedge_flag" << " " <<//
+			"margin_long" << 0.0 <<//
+			"volume_short_his" << 0 <<//
+			"last_price" << _settlepx << //
+			close_document <<
+			close_document <<
+			"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			finalize;
+	}
+	c1_mtx_1.lock();
+	auto result = _poscoll_1.insert_one(move(position_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx_1.unlock();
+
+}
+
+void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
+{
+	auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["his_trades"];
+	bsoncxx::document::value position_doc = document{} << finalize;
+	std::string exch_inst = exch_id;
+	exch_inst += "::";
+	exch_inst += inst_id;
+	if (dInfo._volume < 0)
+	{
+		return;
+	}
+
+	std::string off_set = "";
+	if (offset == 1)
+	{
+		off_set = "P033_1";
+	}
+	else if (offset == 2)
+	{
+		off_set = "P033_2";
+	}
+	else if (offset == 3)
+	{
+		off_set = "P033_3";
+	}
+	if (dInfo._long)
+	{
+		position_doc = document{} << "exchange_trade_id" << "111111" <<
+			"account_id" << "111111" <<
+			"commission" << fee <<
+			"direction" << "P032_1" <<
+			"exchange_id" << exch_id <<
+			"exchange_order_id" << "123456" <<
+			"instrument_id" << inst_id <<
+			"offset" << off_set <<
+			"order_id" << "123456" <<
+			"order_type" << "48" <<
+			"price" << dInfo._price <<
+			"seqno" << 0 <<
+			"strategy_id" << _name <<
+			"trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			"volume" << dInfo._volume <<
+			finalize;
+	}
+	else
+	{
+		position_doc = document{} << "exchange_trade_id" << "111111" <<
+			"account_id" << "111111" <<
+			"commission" << fee <<
+			"direction" << "P032_2" <<
+			"exchange_id" << exch_id <<
+			"exchange_order_id" << "123456" <<
+			"instrument_id" << inst_id <<
+			"offset" << off_set <<
+			"order_id" << "123456" <<
+			"order_type" << "48" <<
+			"price" << dInfo._price <<
+			"seqno" << 0 <<
+			"strategy_id" << _name <<
+			"trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+			"volume" << dInfo._volume <<
+			finalize;
+	}
+	c1_mtx_1.lock();
+	auto result = _poscoll_1.insert_one(move(position_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx_1.unlock();
+}
+
+void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset,time_t insert_date_time)
+{
+	auto db = _replayer->_client["lsqt_db"];
+	auto _poscoll_1 = db["his_trade"];
+	bsoncxx::document::value position_doc = document{} << finalize;
+	std::string exch_inst = exch_id;
+	exch_inst += "::";
+	exch_inst += inst_id;
+	if (dInfo._volume < 0)
+	{
+		return;
+	}
+
+	std::string off_set = "";
+	if (offset == 1)
+	{
+		off_set = "P033_1";
+	}
+	else if (offset == 2)
+	{
+		off_set = "P033_2";
+	}
+	else if (offset == 3)
+	{
+		off_set = "P033_3";
+	}
+
+	std::string direction = "";
+	if (dInfo._long)
+	{
+		direction = "P032_1";
+	}
+	else
+	{
+		direction = "P032_2";
+	}
+	position_doc = document{} << "trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+		"offset" << off_set <<
+		"seqno" << "" <<
+		"exchange_trade_id" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+		"trading_day" << to_string(_replayer->get_trading_date()) <<
+		"type" << "" <<
+		"instrument_id" << inst_id <<
+		"exchange_order_id" << "" <<
+		"order_type" << direction <<
+		"exchange_type" << "M008_1" <<
+		"close_profit" << pInfo._closeprofit <<
+		"volume" << dInfo._volume <<
+		"exchange_id" << exch_id <<
+		"account_id" << "" <<
+		"price" << dInfo._price <<
+		"strategy_id" << _name <<
+		"commission" << fee <<
+		"order_id" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
+		"insert_date_time" << insert_date_time <<
+		"direction" << direction << finalize;
+
+	c1_mtx_1.lock();
+	auto result = _poscoll_1.insert_one(move(position_doc));
+	bsoncxx::oid oid = result->inserted_id().get_oid().value;
+	//std::cout << "insert one:" << oid.to_string() << std::endl;
+	c1_mtx_1.unlock();
+}
+
+void HftMocker::do_set_position(const char* stdCode, std::string instid, double qty, time_t insert_date_time, double price /* = 0.0 */, const char* userTag /*= ""*/)
 {
 	PosInfo& pInfo = _pos_map[stdCode];
 	double curPx = price;
@@ -997,37 +1510,42 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 	uint64_t curTm = (uint64_t)_replayer->get_date() * 1000000000 + (uint64_t)_replayer->get_min_time()*100000 + _replayer->get_secs();
 	uint32_t curTDate = _replayer->get_trading_date();
 
-	//ÊâãÊï∞Áõ∏Á≠âÂàô‰∏çÁî®Êìç‰Ωú‰∫Ü
+	// ÷ ˝œ‡µ»‘Ú≤ª”√≤Ÿ◊˜¡À
 	if (decimal::eq(pInfo._volume, qty))
 		return;
 
-	log_info("[{:04d}.{:05d}] {} position updated: {} -> {}", _replayer->get_min_time(), _replayer->get_secs(), stdCode, pInfo._volume, qty);
+	stra_log_info("[%04u.%05u] %s position updated: %.0f -> %0.f", _replayer->get_min_time(), _replayer->get_secs(), stdCode, pInfo._volume, qty);
 
 	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
-	if (commInfo == NULL)
-		return;
 
-	//Êàê‰∫§‰ª∑
+	std::string exchid = commInfo->getExchg();
+	std::string exch_inst = exchid + "::";
+	exch_inst += instid;
+
+	//≥…Ωªº€
 	double trdPx = curPx;
 
 	double diff = qty - pInfo._volume;
-	bool isBuy = decimal::gt(diff, 0.0);
-	if (decimal::gt(pInfo._volume*diff, 0))//ÂΩìÂâçÊåÅ‰ªìÂíå‰ªì‰ΩçÂèòÂåñÊñπÂêë‰∏ÄËá¥, Â¢ûÂä†‰∏ÄÊù°ÊòéÁªÜ, Â¢ûÂä†Êï∞ÈáèÂç≥ÂèØ
+
+	//±£÷§ΩºÏ≤‚ «∑Ò≥…Ωª
+	double tempfee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
+	double tempmargin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
+	if (!decimal::gt(_total_money - (tempmargin + tempfee), 0))
+	{
+		WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:◊ Ω’Àªß≤ª◊„");
+		return;
+	}
+
+	if (decimal::gt(pInfo._volume*diff, 0))//µ±«∞≥÷≤÷∫Õ≤÷Œª±‰ªØ∑ΩœÚ“ª÷¬, ‘ˆº”“ªÃı√˜œ∏, ‘ˆº” ˝¡øº¥ø…
 	{
 		pInfo._volume = qty;
-		//Â¶ÇÊûúT+1ÔºåÂàôÂÜªÁªì‰ªì‰ΩçË¶ÅÂ¢ûÂä†
-		if (commInfo->isT1())
-		{
-			//ASSERT(diff>0);
-			pInfo._frozen += diff;
-			log_debug("{} frozen position up to {}", stdCode, pInfo._frozen);
-		}
 
 		DetailInfo dInfo;
 		dInfo._long = decimal::gt(qty, 0);
 		dInfo._price = trdPx;
 		dInfo._volume = abs(diff);
 		dInfo._opentime = curTm;
+		dInfo._margin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
 		dInfo._opentdate = curTDate;
 		strcpy(dInfo._usertag, userTag);
 		pInfo._details.emplace_back(dInfo);
@@ -1035,10 +1553,25 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
 		_fund_info._total_fees += fee;
 
+
+		//±£÷§Ωº∆À„
+		_total_money -= dInfo._margin;
+		_total_money -= fee;
+		_used_margin += dInfo._margin;
+
+		int offset = 1;
+		if (_name != "")
+		{
+			insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
+			insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+			insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
+		}
+
+
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), fee, userTag);
 	}
 	else
-	{//ÊåÅ‰ªìÊñπÂêëÂíå‰ªì‰ΩçÂèòÂåñÊñπÂêë‰∏ç‰∏ÄËá¥,ÈúÄË¶ÅÂπ≥‰ªì
+	{//≥÷≤÷∑ΩœÚ∫Õ≤÷Œª±‰ªØ∑ΩœÚ≤ª“ª÷¬,–Ë“™∆Ω≤÷
 		double left = abs(diff);
 
 		pInfo._volume = qty;
@@ -1065,21 +1598,41 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 			if (!dInfo._long)
 				profit *= -1;
 			pInfo._closeprofit += profit;
-			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//ÊµÆÁõà‰πüË¶ÅÂÅöÁ≠âÊØîÁº©Êîæ
+			_total_closeprofit += profit;
+			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//∏°”Ø“≤“™◊ˆµ»±»Àı∑≈
 			_fund_info._total_profit += profit;
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
 			_fund_info._total_fees += fee;
-			//ËøôÈáåÂÜôÊàê‰∫§ËÆ∞ÂΩï
+
+
+			// Õ∑≈±£÷§Ω
+			double cur_margin = _margin_rate * _cur_multiplier * _close_price * maxQty;
+
+			_total_money += profit;
+			_total_money -= fee;
+			_total_money += cur_margin;
+			_used_margin -= cur_margin;
+			dInfo._margin -= cur_margin;
+
+			int offset = 2;
+			if (_name != "")
+			{
+				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
+				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
+			}
+
+			//’‚¿Ô–¥≥…Ωªº«¬º
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, fee, userTag);
-			//ËøôÈáåÂÜôÂπ≥‰ªìËÆ∞ÂΩï
+			//’‚¿Ô–¥∆Ω≤÷º«¬º
 			log_close(stdCode, dInfo._long, dInfo._opentime, dInfo._price, curTm, trdPx, maxQty, profit, maxProf, maxLoss, pInfo._closeprofit, dInfo._usertag, userTag);
 
 			if (left == 0)
 				break;
 		}
 
-		//ÈúÄË¶ÅÊ∏ÖÁêÜÊéâÂ∑≤ÁªèÂπ≥‰ªìÂÆåÁöÑÊòéÁªÜ
+		//–Ë“™«Â¿ÌµÙ“—æ≠∆Ω≤÷ÕÍµƒ√˜œ∏
 		while (count > 0)
 		{
 			auto it = pInfo._details.begin();
@@ -1087,17 +1640,10 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 			count--;
 		}
 
-		//ÊúÄÂêé,Â¶ÇÊûúËøòÊúâÂâ©‰ΩôÁöÑ,ÂàôÈúÄË¶ÅÂèçÊâã‰∫Ü
+		//◊Ó∫Û,»Áπ˚ªπ”– £”‡µƒ,‘Ú–Ë“™∑¥ ÷¡À
 		if (left > 0)
 		{
 			left = left * qty / abs(qty);
-
-			//Â¶ÇÊûúT+1ÔºåÂàôÂÜªÁªì‰ªì‰ΩçË¶ÅÂ¢ûÂä†
-			if (commInfo->isT1())
-			{
-				pInfo._frozen += left;
-				log_debug("{} frozen position up to {}", stdCode, pInfo._frozen);
-			}
 
 			DetailInfo dInfo;
 			dInfo._long = decimal::gt(qty, 0);
@@ -1108,10 +1654,40 @@ void HftMocker::do_set_position(const char* stdCode, double qty, double price /*
 			strcpy(dInfo._usertag, userTag);
 			pInfo._details.emplace_back(dInfo);
 
-			//ËøôÈáåËøòÈúÄË¶ÅÂÜô‰∏ÄÁ¨îÊàê‰∫§ËÆ∞ÂΩï
+			//’‚¿Ôªπ–Ë“™–¥“ª± ≥…Ωªº«¬º
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
+			//ÃÌº”ºı»•∑—¬ 
+			_total_money -= fee;
+
+			//_engine->mutate_fund(fee, FFT_Fee);
+
+			int offset = 1;
+			if (_name != "")
+			{
+				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
+				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
+				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
+			}
+
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), fee, userTag);
 		}
 	}
+}
+
+void  HftMocker::set_initacc(double money)
+{
+	init_money = money;
+	_total_money = init_money;
+	_static_balance = init_money;
+}
+
+
+std::time_t HftMocker::getTimeStamp()
+{
+	std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
+	auto tmp = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
+	std::time_t timestamp = tmp.count();
+	//std::time_t timestamp = std::chrono::system_clock::to_time_t(tp);
+	return timestamp;
 }

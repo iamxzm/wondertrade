@@ -6,18 +6,28 @@ cmake_minimum_required(VERSION 3.0.0)
 project(WTSTools LANGUAGES CXX)
 SET(CMAKE_CXX_STANDARD 11)
 
-IF(MSVC)
-ELSE(GNUCC)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-ENDIF()
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 
-SET(LIBRARY_OUTPUT_PATH  ${CMAKE_BINARY_DIR}/build_${PLATFORM}/${CMAKE_BUILD_TYPE}/libs)
+#4. 添加包含文件目录
+IF (WIN32)
+	IF("${CMAKE_GENERATOR}" MATCHES "(Win64|IA64)")
+		SET(INCS $ENV{MyDepends141}/include)
+		SET(LNKS $ENV{MyDepends141}/lib/x64)
+	ELSE()
+		SET(INCS $ENV{MyDepends141}/include)
+		SET(LNKS $ENV{MyDepends141}/lib/x86)
+	ENDIF()
+ELSE (UNIX)
+	SET (MyDeps "/home/mydeps")
+	SET(INCS ${MyDeps}/include)
+	SET(LNKS ${MyDeps}/lib)
+ENDIF ()
+
+SET(LIBRARY_OUTPUT_PATH  ${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/libs)
 
 #7. 添加源码
 file(GLOB SRCS *.cpp)
 file(GLOB HDRS *.h)
-
-LIST(APPEND INCS "../WTSUtils/yamlcpp")
 
 INCLUDE_DIRECTORIES(${INCS})
 LINK_DIRECTORIES(${LNKS})

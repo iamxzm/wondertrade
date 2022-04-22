@@ -12,7 +12,7 @@
 
 #include "../Includes/RiskMonDefs.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WtSimpleRiskMon : public WtRiskMonitor
 {

@@ -26,13 +26,13 @@
     <ClInclude Include="ParserFemas.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="..\API\Femas3.02\USTPFtdcMduserApi.h">
+    <ClInclude Include="ustptraderapi\USTPFtdcMduserApi.h">
       <Filter>Femas</Filter>
     </ClInclude>
-    <ClInclude Include="..\API\Femas3.02\USTPFtdcUserApiDataType.h">
+    <ClInclude Include="ustptraderapi\USTPFtdcUserApiDataType.h">
       <Filter>Femas</Filter>
     </ClInclude>
-    <ClInclude Include="..\API\Femas3.02\USTPFtdcUserApiStruct.h">
+    <ClInclude Include="ustptraderapi\USTPFtdcUserApiStruct.h">
       <Filter>Femas</Filter>
     </ClInclude>
   </ItemGroup>

@@ -10,6 +10,5 @@
 *.opensdf
 *.sdf
 .vs
-cmake-build*
-build*
-.idea
+CMakeSettings.json
+/out

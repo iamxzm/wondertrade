@@ -12,24 +12,69 @@
 #include "../Includes/WTSError.hpp"
 #include "../Includes/IBaseDataMgr.h"
 #include "../Includes/WTSTradeDef.hpp"
+#include "../Includes/WTSDataDef.hpp"
+#include "../Includes/WTSParams.hpp"
 #include "../Includes/WTSContractInfo.hpp"
-
-#include "../Share/ModuleHelper.hpp"
+#include "../Share/StdUtils.hpp"
 #include "../Share/TimeUtils.hpp"
+#include "../Share/BoostFile.hpp"
+#include "../Share/StrUtil.hpp"
 #include "../Share/decimal.h"
 
-#include <boost/filesystem.hpp>
+#ifdef _WIN32
+#include <wtypes.h>
+HMODULE	g_dllModule = NULL;
 
- //By Wesley @ 2022.01.05
-#include "../Share/fmtlib.h"
-template<typename... Args>
-inline void write_log(ITraderSpi* sink, WTSLogLevel ll, const char* format, const Args&... args)
+BOOL APIENTRY DllMain(
+	HANDLE hModule,
+	DWORD  ul_reason_for_call,
+	LPVOID lpReserved
+	)
 {
-	if (sink == NULL)
-		return;
+	switch (ul_reason_for_call)
+	{
+	case DLL_PROCESS_ATTACH:
+		g_dllModule = (HMODULE)hModule;
+		break;
+	}
+	return TRUE;
+}
+#else
+#include <dlfcn.h>
 
-	const char* buffer = fmtutil::format(format, args...);
-	sink->handleTraderLog(ll, buffer);
+char PLATFORM_NAME[] = "UNIX";
+
+std::string	g_moduleName;
+
+__attribute__((constructor))
+void on_load(void) {
+	Dl_info dl_info;
+	dladdr((void *)on_load, &dl_info);
+	g_moduleName = dl_info.dli_fname;
+}
+#endif
+
+std::string getBinDir()
+{
+	static std::string _bin_dir;
+	if (_bin_dir.empty())
+	{
+
+
+#ifdef _WIN32
+		char strPath[MAX_PATH];
+		GetModuleFileName(g_dllModule, strPath, MAX_PATH);
+
+		_bin_dir = StrUtil::standardisePath(strPath, false);
+#else
+		_bin_dir = g_moduleName;
+#endif
+
+		uint32_t nPos = _bin_dir.find_last_of('/');
+		_bin_dir = _bin_dir.substr(0, nPos + 1);
+	}
+
+	return _bin_dir;
 }
 
 extern "C"
@@ -90,7 +135,7 @@ TraderFemas::~TraderFemas()
 {
 }
 
-bool TraderFemas::init(WTSVariant* params)
+bool TraderFemas::init(WTSParams* params)
 {
 	m_strFront = params->getCString("front");
 	m_strBroker = params->getCString("broker");
@@ -114,7 +159,7 @@ bool TraderFemas::init(WTSVariant* params)
 
 	m_strFlowDir = StrUtil::standardisePath(m_strFlowDir);
 
-	WTSVariant* param = params->get("ctpmodule");
+	WTSParams* param = params->get("ctpmodule");
 	if (param != NULL)
 		m_strModule = getBinDir() + DLLHelper::wrap_module(param->asCString(), "");
 	else
@@ -169,7 +214,7 @@ void TraderFemas::connect()
 	std::stringstream ss;
 	ss << m_strFlowDir << "flows/" << m_strBroker << "/" << m_strUser << "/";
 	std::string path = ss.str();
-	boost::filesystem::create_directories(path.c_str());
+	BoostFile::create_directories(path.c_str());
 	m_pUserAPI = m_funcCreator(path.c_str());
 	m_pUserAPI->RegisterSpi(this);
 	if(m_bQuickStart)
@@ -223,9 +268,9 @@ bool TraderFemas::makeEntrustID(char* buffer, int length)
 
 	try
 	{
+		memset(buffer, 0, length);
 		uint32_t orderref = genLocalOrdID();
-		//sprintf(buffer, "%s%012d", m_strSessionID.c_str(), orderref);
-		fmtutil::format_to(buffer, "{}{:012d}", m_strSessionID.c_str(), orderref);
+		sprintf(buffer, "%s%012d", m_strSessionID.c_str(), orderref);
 		return true;
 	}
 	catch(...)
@@ -277,7 +322,7 @@ int TraderFemas::doLogin()
 	int iResult = m_pUserAPI->ReqUserLogin(&req, genRequestID());
 	if (iResult != 0)
 	{
-		write_log(m_sink,LL_ERROR, "[TraderFemas] Sending login request failed: {}", iResult);
+		m_sink->handleTraderLog(LL_ERROR, "[TraderFemas] Sending login request failed: %d", iResult);
 	}
 
 	return 0;
@@ -313,7 +358,7 @@ int TraderFemas::logout()
 	int iResult = m_pUserAPI->ReqUserLogout(&req, genRequestID());
 	if (iResult != 0)
 	{
-		write_log(m_sink,LL_ERROR, "[TraderFemas] Sending logout request failed: {}", iResult);
+		m_sink->handleTraderLog(LL_ERROR, "[TraderFemas] Sending logout request failed: %d", iResult);
 	}
 
 	return 0;
@@ -336,16 +381,14 @@ int TraderFemas::orderInsert(WTSEntrust* entrust)
 	///合约代码
 	strcpy(req.InstrumentID, entrust->getCode());
 
-	WTSContractInfo* ct = entrust->getContractInfo();
-	if (ct == NULL)
-		return -1;
-
-	strcpy(req.ExchangeID, wrapExchg(ct->getExchg()));
+	WTSContractInfo* ct = m_bdMgr->getContract(entrust->getCode(), entrust->getExchg());
+	WTSCommodityInfo* commInfo = m_bdMgr->getCommodity(ct);
+	strcpy(req.ExchangeID, wrapExchg(commInfo->getExchg()));
 
 	if(strlen(entrust->getUserTag()) == 0)
 	{
 		///报单引用
-		fmtutil::format_to(req.UserOrderLocalID, "{}{:012d}", m_strSessionID.c_str(), genLocalOrdID());
+		sprintf(req.UserOrderLocalID, "%s%012u", m_strSessionID.c_str(), genLocalOrdID());
 	}
 	else
 	{
@@ -354,35 +397,20 @@ int TraderFemas::orderInsert(WTSEntrust* entrust)
 	//生成本地委托单号
 	//entrust->setEntrustID(req.UserOrderLocalID);
 
-	req.OrderPriceType = wrapPriceType(entrust->getPriceType(), strcmp(ct->getExchg(), "CFFEX") == 0);
+	req.OrderPriceType = wrapPriceType(entrust->getPriceType(), strcmp(commInfo->getExchg(), "CFFEX") == 0);
 	req.Direction = wrapDirectionType(entrust->getDirection(), entrust->getOffsetType());
 	req.OffsetFlag = wrapOffsetType(entrust->getOffsetType());
 	req.HedgeFlag = USTP_FTDC_CHF_Speculation;
 	req.LimitPrice = entrust->getPrice();
 	req.Volume = (int)entrust->getVolume();
-
-	if (entrust->getOrderFlag() == WOF_NOR)
-	{
-		req.TimeCondition = USTP_FTDC_TC_GFD;
-		req.VolumeCondition = USTP_FTDC_VC_AV;
-	}
-	else if (entrust->getOrderFlag() == WOF_FAK)
-	{
-		req.TimeCondition = USTP_FTDC_TC_IOC;
-		req.VolumeCondition = USTP_FTDC_VC_AV;
-	}
-	else if (entrust->getOrderFlag() == WOF_FOK)
-	{
-		req.TimeCondition = USTP_FTDC_TC_IOC;
-		req.VolumeCondition = USTP_FTDC_VC_CV;
-	}
-
+	req.TimeCondition = wrapTimeCondition(entrust->getTimeCondition());
+	req.VolumeCondition = USTP_FTDC_VC_AV;
 	req.ForceCloseReason = USTP_FTDC_FCR_NotForceClose;
 
 	int iResult = m_pUserAPI->ReqOrderInsert(&req, genRequestID());
 	if(iResult != 0)
 	{
-		write_log(m_sink,LL_ERROR, "[TraderFemas] Order inserting failed: {}", iResult);
+		m_sink->handleTraderLog(LL_ERROR, "[TraderFemas] Order inserting failed: %d", iResult);
 	}
 
 	return 0;
@@ -403,7 +431,7 @@ int TraderFemas::orderAction( WTSEntrustAction* action )
 	strcpy(req.InvestorID, m_strUser.c_str());
 	strcpy(req.UserID, m_strUser.c_str());
 	strcpy(req.UserOrderLocalID, action->getEntrustID());
-	fmtutil::format_to(req.UserOrderActionLocalID, "{}{:012d}", m_strSessionID.c_str(), genLocalOrdID());
+	sprintf(req.UserOrderActionLocalID, "%s%012u", m_strSessionID.c_str(), genLocalOrdID());
 	req.ActionFlag = wrapActionFlag(action->getActionFlag());
 	req.LimitPrice = action->getPrice();
 
@@ -415,7 +443,7 @@ int TraderFemas::orderAction( WTSEntrustAction* action )
 	int iResult = m_pUserAPI->ReqOrderAction(&req, genRequestID());
 	if(iResult != 0)
 	{
-		write_log(m_sink,LL_ERROR, "[TraderFemas] Sending cancel request failed: {}", iResult);
+		m_sink->handleTraderLog(LL_ERROR, "[TraderFemas] Sending cancel request failed: %d", iResult);
 	}
 
 	return 0;	
@@ -537,7 +565,7 @@ void TraderFemas::OnQryFrontDisconnected(int nReason)
 
 void TraderFemas::OnHeartBeatWarning( int nTimeLapse )
 {
-	write_log(m_sink,LL_DEBUG, "[TraderFemas][{}-{}] Heartbeating...", m_strBroker.c_str(), m_strUser.c_str());
+
 }
 
 void TraderFemas::OnRspQueryUserLogin(CUstpFtdcRspUserLoginField *pRspUserLogin, CUstpFtdcRspInfoField *pRspInfo, int nRequestID, bool bIsLast)
@@ -556,7 +584,7 @@ void TraderFemas::OnRspDSUserCertification(CUstpFtdcDSUserCertRspDataField *pDSU
 	}
 	else
 	{
-		write_log(m_sink,LL_ERROR, "[TraderFemas][{}-{}] Authentiation failed: {}", m_strBroker.c_str(), m_strUser.c_str(), pRspInfo->ErrorMsg);
+		m_sink->handleTraderLog(LL_INFO, "[%s-%s] Authentiation failed: %s", m_strBroker.c_str(), m_strUser.c_str(), pRspInfo->ErrorMsg);
 		m_wrapperState = WS_LOGINFAILED;
 
 		if (m_sink)
@@ -577,16 +605,16 @@ void TraderFemas::OnRspUserLogin( CUstpFtdcRspUserLoginField *pRspUserLogin, CUs
 		///获取当前交易日
 		m_lDate = atoi(m_pUserAPI->GetTradingDay());
 
-		write_log(m_sink,LL_INFO,"[TraderFemas][{}-{}] Login succeed...", m_strBroker.c_str(), m_strUser.c_str());
+		m_sink->handleTraderLog(LL_INFO,"[%s-%s] Login succeed...", m_strBroker.c_str(), m_strUser.c_str());
 
 		//据说飞马不支持结算,所以查不到结算单
-		write_log(m_sink,LL_INFO, "[TraderFemas][{}-{}] Querying confirming state of settlement data...", m_strBroker.c_str(), m_strUser.c_str());
+		m_sink->handleTraderLog(LL_INFO, "[%s-%s] Querying confirming state of settlement data...", m_strBroker.c_str(), m_strUser.c_str());
 		if (m_bQryOnline)
 			onInitialized();
 	}
 	else
 	{
-		write_log(m_sink,LL_ERROR,"[TraderFemas][{}-{}] Login failed: {}", m_strBroker.c_str(), m_strUser.c_str(), pRspInfo->ErrorMsg);
+		m_sink->handleTraderLog(LL_INFO,"[%s-%s] Login failed: %s", m_strBroker.c_str(), m_strUser.c_str(), pRspInfo->ErrorMsg);
 		m_wrapperState = WS_LOGINFAILED;
 
 		if(m_sink)
@@ -642,7 +670,7 @@ void TraderFemas::OnRspQryInvestorAccount(CUstpFtdcRspInvestorAccountField *pRsp
 	if (bIsLast && !IsErrorRspInfo(pRspInfo))
 	{
 		WTSAccountInfo* accountInfo = WTSAccountInfo::create();
-		accountInfo->setDescription(fmt::format("{}-{}", m_strBroker.c_str(), m_strUser.c_str()).c_str());
+		accountInfo->setDescription(StrUtil::printf("%s-%s", m_strBroker.c_str(), m_strUser.c_str()).c_str());
 		//accountInfo->setUsername(m_strUserName.c_str());
 		accountInfo->setPreBalance(pRspInvestorAccount->PreBalance);
 		accountInfo->setCloseProfit(pRspInvestorAccount->CloseProfit);
@@ -680,11 +708,10 @@ void TraderFemas::OnRspQryInvestorPosition(CUstpFtdcRspInvestorPositionField *pR
 			m_ayPosition = WTSArray::create();
 
 		WTSContractInfo* contract = m_bdMgr->getContract(pRspInvestorPosition->InstrumentID, pRspInvestorPosition->ExchangeID);
+		WTSCommodityInfo* commInfo = m_bdMgr->getCommodity(contract);
 		if (contract)
 		{
-			WTSCommodityInfo* commInfo = contract->getCommInfo();
 			WTSPositionItem *pos = WTSPositionItem::create(pRspInvestorPosition->InstrumentID, commInfo->getCurrency(), commInfo->getExchg());
-			pos->setContractInfo(contract);
 			pos->setDirection(wrapPosDirection(pRspInvestorPosition->Direction));
 			pos->setNewPosition(pRspInvestorPosition->Position - pRspInvestorPosition->YdPosition);
 			pos->setPrePosition(pRspInvestorPosition->YdPosition);
@@ -805,7 +832,7 @@ void TraderFemas::OnRspQryOrder(CUstpFtdcOrderField *pOrder, CUstpFtdcRspInfoFie
 
 void TraderFemas::onInitialized()
 {
-	write_log(m_sink,LL_INFO, "[TraderFemas][{}-{}] Trading channel initialized...", m_strBroker.c_str(), m_strUser.c_str());
+	m_sink->handleTraderLog(LL_INFO, "[%s-%s] Trading channel initialized...", m_strBroker.c_str(), m_strUser.c_str());
 	m_wrapperState = WS_ALLREADY;
 	if (m_sink)
 		m_sink->onLoginResult(true, "", m_lDate);
@@ -814,7 +841,7 @@ void TraderFemas::onInitialized()
 void TraderFemas::OnRspError( CUstpFtdcRspInfoField *pRspInfo, int nRequestID, bool bIsLast )
 {
 	if (m_sink)
-		write_log(m_sink,LL_ERROR, "[TraderFemas][{}-{}] Error occured: {}, request id: {}", m_strBroker.c_str(), m_strUser.c_str(), pRspInfo->ErrorMsg, nRequestID);
+		m_sink->handleTraderLog(LL_ERROR, "[TraderFemas] Error occured: %s, request id: %d", pRspInfo->ErrorMsg, nRequestID);
 }
 
 void TraderFemas::OnRtnOrder( CUstpFtdcOrderField *pOrder )
@@ -973,20 +1000,8 @@ WTSOrderInfo* TraderFemas::makeOrderInfo(CUstpFtdcOrderField* orderField)
 	pRet->setVolume(orderField->Volume);
 	pRet->setDirection(wrapDirectionType(orderField->Direction, orderField->OffsetFlag));
 	pRet->setPriceType(wrapPriceType(orderField->OrderPriceType));
+	pRet->setTimeCondition(wrapTimeCondition(orderField->TimeCondition));
 	pRet->setOffsetType(wrapOffsetType(orderField->OffsetFlag));
-	pRet->setContractInfo(contract);
-
-	if (orderField->TimeCondition == USTP_FTDC_TC_GFD)
-	{
-		pRet->setOrderFlag(WOF_NOR);
-	}
-	else if (orderField->TimeCondition == USTP_FTDC_TC_IOC)
-	{
-		if (orderField->VolumeCondition == USTP_FTDC_VC_AV || orderField->VolumeCondition == USTP_FTDC_VC_MV)
-			pRet->setOrderFlag(WOF_FAK);
-		else
-			pRet->setOrderFlag(WOF_FOK);
-	}
 
 	pRet->setVolTraded(orderField->VolumeTraded);
 	pRet->setVolLeft(orderField->VolumeRemain);
@@ -1015,32 +1030,15 @@ WTSOrderInfo* TraderFemas::makeOrderInfo(CUstpFtdcOrderField* orderField)
 
 WTSEntrust* TraderFemas::makeEntrust(CUstpFtdcInputOrderField *entrustField)
 {
-	WTSContractInfo* ct = m_bdMgr->getContract(entrustField->InstrumentID, entrustField->ExchangeID);
-	if (ct == NULL)
-		return NULL;
-
 	WTSEntrust* pRet = WTSEntrust::create( 
 		entrustField->InstrumentID, 
 		entrustField->Volume, 
 		entrustField->LimitPrice);
 
-	pRet->setContractInfo(ct);
-
 	pRet->setDirection(wrapDirectionType(entrustField->Direction, entrustField->OffsetFlag));
 	pRet->setPriceType(wrapPriceType(entrustField->OrderPriceType));
 	pRet->setOffsetType(wrapOffsetType(entrustField->OffsetFlag));
-	
-	if (entrustField->TimeCondition == USTP_FTDC_TC_GFD)
-	{
-		pRet->setOrderFlag(WOF_NOR);
-	}
-	else if (entrustField->TimeCondition == USTP_FTDC_TC_IOC)
-	{
-		if (entrustField->VolumeCondition == USTP_FTDC_VC_AV || entrustField->VolumeCondition == USTP_FTDC_VC_MV)
-			pRet->setOrderFlag(WOF_FAK);
-		else
-			pRet->setOrderFlag(WOF_FOK);
-	}
+	pRet->setTimeCondition(wrapTimeCondition(entrustField->TimeCondition));
 
 	pRet->setEntrustID(entrustField->UserOrderLocalID);
 	pRet->setUserTag(entrustField->UserOrderLocalID);
@@ -1063,13 +1061,12 @@ WTSTradeInfo* TraderFemas::makeTradeRecord(CUstpFtdcTradeField *tradeField)
 	if(contract == NULL)
 		return NULL;
 
-	WTSCommodityInfo* mInfo = contract->getCommInfo();
+	WTSCommodityInfo* mInfo = m_bdMgr->getCommodity(contract);
 
 	WTSTradeInfo *pRet = WTSTradeInfo::create(tradeField->InstrumentID);
 	pRet->setVolume(tradeField->TradeVolume);
 	pRet->setPrice(tradeField->TradePrice);
 	pRet->setTradeID(tradeField->TradeID);
-	pRet->setContractInfo(contract);
 
 	std::string strTime = tradeField->TradeTime;
 	StrUtil::replace(strTime, ":", "");

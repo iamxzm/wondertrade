@@ -7,9 +7,9 @@
  * 
  */
 #pragma once
-#include "Includes/ExecuteDefs.h"
+#include "../Includes/ExecuteDefs.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WtExeFact : public IExecuterFact
 {

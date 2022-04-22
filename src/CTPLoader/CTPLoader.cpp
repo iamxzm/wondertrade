@@ -1,19 +1,76 @@
 #include <string>
 #include <map>
 //v6.3.15
-#include "../API/CTP6.3.15/ThostFtdcTraderApi.h"
+#include "./ThostTraderApi/ThostFtdcTraderApi.h"
 #include "TraderSpi.h"
 
 #include "../Share/IniHelper.hpp"
-#include "../Share/ModuleHelper.hpp"
+#include "../Share/StrUtil.hpp"
 #include "../Share/DLLHelper.hpp"
 #include "../Share/StdUtils.hpp"
+#include <boost/filesystem.hpp>
+
+std::string g_bin_dir;
+
+void inst_hlp() {}
 
 #ifdef _WIN32
-#include "../Share/charconv.hpp"
+HMODULE	g_dllModule = NULL;
+
+BOOL APIENTRY DllMain(
+	HANDLE hModule,
+	DWORD  ul_reason_for_call,
+	LPVOID lpReserved
+)
+{
+	switch (ul_reason_for_call)
+	{
+	case DLL_PROCESS_ATTACH:
+		g_dllModule = (HMODULE)hModule;
+		break;
+	}
+	return TRUE;
+}
+
+#else
+#include <dlfcn.h>
+
+char PLATFORM_NAME[] = "UNIX";
+
+const std::string& getInstPath()
+{
+	static std::string moduleName;
+	if (moduleName.empty())
+	{
+		Dl_info dl_info;
+		dladdr((void *)inst_hlp, &dl_info);
+		moduleName = dl_info.dli_fname;
+		//printf("1:%s\n", moduleName.c_str());
+	}
+
+	return moduleName;
+}
 #endif
 
-#include <boost/filesystem.hpp>
+const char* getBaseFolder()
+{
+	if (g_bin_dir.empty())
+	{
+#ifdef _WIN32
+		char strPath[MAX_PATH];
+		GetModuleFileName(g_dllModule, strPath, MAX_PATH);
+
+		g_bin_dir = StrUtil::standardisePath(strPath, false);
+#else
+		g_bin_dir = getInstPath();
+#endif
+		boost::filesystem::path p(g_bin_dir);
+		g_bin_dir = p.branch_path().string() + "/";
+	}
+
+	return g_bin_dir.c_str();
+}
+
 
 // UserApi对象
 CThostFtdcTraderApi* pUserApi;
@@ -43,7 +100,7 @@ CTPCreator		g_ctpCreator = NULL;
 // 请求编号
 int iRequestID = 0;
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 #	define EXPORT_FLAG __declspec(dllexport)
 #else
 #	define EXPORT_FLAG __attribute__((__visibility__("default")))
@@ -53,12 +110,12 @@ int iRequestID = 0;
 extern "C"
 {
 #endif
-	EXPORT_FLAG int run(const char* cfgfile, bool bAsync);
+	EXPORT_FLAG int run(const char* cfgfile);
 #ifdef __cplusplus
 }
 #endif
 
-int run(const char* cfgfile, bool bAsync = false)
+int run(const char* cfgfile)
 {
 	std::string cfg = cfgfile;
 	IniHelper ini;
@@ -84,7 +141,7 @@ int run(const char* cfgfile, bool bAsync = false)
 #endif
 	if(!boost::filesystem::exists(MODULE_NAME.c_str()))
 	{
-		MODULE_NAME = getBinDir();
+		MODULE_NAME = getBaseFolder();
 #ifdef _WIN32
 		MODULE_NAME += "traders/thosttraderapi_se.dll";
 #else
@@ -105,7 +162,7 @@ int run(const char* cfgfile, bool bAsync = false)
 		StringVector ayFiles = StrUtil::split(map_files, ",");
 		for(const std::string& fName:ayFiles)
 		{
-			printf("Reading mapping file %s...\r\n", fName.c_str());
+			printf("开始读取映射文件%s...", fName.c_str());
 			IniHelper iniMap;
 			if(!StdFile::exists(fName.c_str()))
 				continue;
@@ -116,11 +173,7 @@ int run(const char* cfgfile, bool bAsync = false)
 			for (int i = 0; i < cout; i++)
 			{
 				MAP_NAME[ayKeys[i]] = ayVals[i];
-#ifdef _WIN32
-				printf("Commodity name mapping: %s - %s\r\n", ayKeys[i].c_str(), UTF8toChar(ayVals[i]).c_str());
-#else
-				printf("Commodity name mapping: %s - %s\r\n", ayKeys[i].c_str(), ayVals[i].c_str());
-#endif
+				printf("品种名称映射: %s - %s\r\n", ayKeys[i].c_str(), ayVals[i].c_str());
 			}
 
 			ayKeys.clear();
@@ -129,7 +182,7 @@ int run(const char* cfgfile, bool bAsync = false)
 			for (int i = 0; i < cout; i++)
 			{
 				MAP_SESSION[ayKeys[i]] = ayVals[i];
-				printf("Trading session mapping: %s - %s\r\n", ayKeys[i].c_str(), ayVals[i].c_str());
+				printf("交易时间映射: %s - %s\r\n", ayKeys[i].c_str(), ayVals[i].c_str());
 			}
 		}
 		
@@ -137,8 +190,6 @@ int run(const char* cfgfile, bool bAsync = false)
 
 	// 初始化UserApi
 	DllHandle dllInst = DLLHelper::load_library(MODULE_NAME.c_str());
-	if (dllInst == NULL)
-		printf("Loading module %s failed\r\n", MODULE_NAME.c_str());
 #ifdef _WIN32
 #	ifdef _WIN64
 	g_ctpCreator = (CTPCreator)DLLHelper::get_symbol(dllInst, "?CreateFtdcTraderApi@CThostFtdcTraderApi@@SAPEAV1@PEBD@Z");
@@ -148,8 +199,6 @@ int run(const char* cfgfile, bool bAsync = false)
 #else
 	g_ctpCreator = (CTPCreator)DLLHelper::get_symbol(dllInst, "_ZN19CThostFtdcTraderApi19CreateFtdcTraderApiEPKc");
 #endif
-	if (g_ctpCreator == NULL)
-		printf("Loading CreateFtdcTraderApi failed\r\n");
 	pUserApi = g_ctpCreator("");			// 创建UserApi
 	CTraderSpi* pUserSpi = new CTraderSpi();
 	pUserApi->RegisterSpi((CThostFtdcTraderSpi*)pUserSpi);			// 注册事件类
@@ -158,9 +207,6 @@ int run(const char* cfgfile, bool bAsync = false)
 	pUserApi->RegisterFront((char*)FRONT_ADDR.c_str());				// connect
 	pUserApi->Init();
 
-    //如果不是异步，则等待API返回
-    if(!bAsync)
-	    pUserApi->Join();
-
+	pUserApi->Join();
 	return 0;
 }

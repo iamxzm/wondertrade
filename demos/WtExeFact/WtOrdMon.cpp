@@ -14,7 +14,6 @@ void WtOrdMon::push_order(const uint32_t* ids, uint32_t cnt, uint64_t curTime, b
 
 void WtOrdMon::erase_order(uint32_t localid)
 {
-	StdLocker<StdRecurMutex> lock(_mtx_ords);
 	auto it = _orders.find(localid);
 	if (it == _orders.end())
 		return;
@@ -32,7 +31,7 @@ void WtOrdMon::check_orders(uint32_t expiresecs, uint64_t curTime, EnumOrderCall
 	{
 		uint32_t localid = m.first;
 		OrderPair& ordInfo = m.second;
-		if(!ordInfo.second)	//如果不能撤单，则直接跳过（一般涨跌停价的挂单是不能撤单的）
+		if(ordInfo.second)
 			continue;
 
 		auto entertm = ordInfo.first;

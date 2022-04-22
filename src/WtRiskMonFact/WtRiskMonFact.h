@@ -9,7 +9,7 @@
 #pragma once
 #include "../Includes/RiskMonDefs.h"
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WtRiskMonFact : public IRiskMonitorFact
 {

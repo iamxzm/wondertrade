@@ -3,7 +3,7 @@
 
 #include <unordered_set>
 
-USING_NS_WTP;
+USING_NS_OTP;
 
 class WtStraDtSel : public SelStrategy
 {
