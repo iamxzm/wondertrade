@@ -2,7 +2,7 @@
 #include <functional>
 #include "WtLocalExecuter.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WtFilterMgr;
 
 typedef std::function<void(ExecCmdPtr)> EnumExecuterCb;
@@ -21,7 +21,7 @@ public:
 
 	void	enum_executer(EnumExecuterCb cb);
 
-	void	set_positions(faster_hashmap<std::string, double> target_pos);
+	void	set_positions(faster_hashmap<LongKey, double> target_pos);
 	void	handle_pos_change(const char* stdCode, double targetPos);
 	void	handle_tick(const char* stdCode, WTSTickData* curTick);
 
@@ -31,4 +31,4 @@ private:
 
 	WtFilterMgr*	_filter_mgr;
 };
-NS_OTP_END
+NS_WTP_END

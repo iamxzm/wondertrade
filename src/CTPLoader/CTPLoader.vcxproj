@@ -71,28 +71,28 @@
     <IncludePath>$(MyDepends141)\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(MyDepends141)\lib\x86;$(LibraryPath)</LibraryPath>
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\$(ProjectName)\</OutDir>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\Loader\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>$(MyDepends141)\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(MyDepends141)\lib\x64;$(LibraryPath)</LibraryPath>
     <LinkIncremental>true</LinkIncremental>
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\$(ProjectName)\</OutDir>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\Loader\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <IncludePath>$(MyDepends141)\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(MyDepends141)\lib\x86;$(LibraryPath)</LibraryPath>
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\$(ProjectName)\</OutDir>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\Loader\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>$(MyDepends141)\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(MyDepends141)\lib\x64;$(LibraryPath)</LibraryPath>
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\$(ProjectName)\</OutDir>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\Loader\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -172,16 +172,16 @@
     <ClCompile Include="TraderSpi.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ThostTraderApi\ThostFtdcTraderApi.h" />
-    <ClInclude Include="ThostTraderApi\ThostFtdcUserApiDataType.h" />
-    <ClInclude Include="ThostTraderApi\ThostFtdcUserApiStruct.h" />
+    <ClInclude Include="..\API\CTP6.3.15\ThostFtdcTraderApi.h" />
+    <ClInclude Include="..\API\CTP6.3.15\ThostFtdcUserApiDataType.h" />
+    <ClInclude Include="..\API\CTP6.3.15\ThostFtdcUserApiStruct.h" />
     <ClInclude Include="TraderSpi.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="ThostTraderApi\error.dtd" />
+    <None Include="..\API\CTP6.3.15\error.dtd" />
   </ItemGroup>
   <ItemGroup>
-    <Xml Include="ThostTraderApi\error.xml" />
+    <Xml Include="..\API\CTP6.3.15\error.xml" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

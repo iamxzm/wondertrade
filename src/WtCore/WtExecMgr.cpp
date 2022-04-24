@@ -5,7 +5,7 @@
 
 #include "../WTSTools/WTSLogger.h"
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 //////////////////////////////////////////////////////////////////////////
 #pragma region "WtExecuterMgr"
@@ -18,14 +18,14 @@ void WtExecuterMgr::enum_executer(EnumExecuterCb cb)
 	}
 }
 
-void WtExecuterMgr::set_positions(faster_hashmap<std::string, double> target_pos)
+void WtExecuterMgr::set_positions(faster_hashmap<LongKey, double> target_pos)
 {
 	if(_filter_mgr != NULL)
 	{
-		faster_hashmap<std::string, double> des_port;
+		faster_hashmap<LongKey, double> des_port;
 		for(auto& m : target_pos)
 		{
-			const std::string& stdCode = m.first;
+			const auto& stdCode = m.first;
 			double& desVol = (double&)m.second;
 			double oldVol = desVol;
 
@@ -35,7 +35,7 @@ void WtExecuterMgr::set_positions(faster_hashmap<std::string, double> target_pos
 				if (!decimal::eq(desVol, oldVol))
 				{
 					//输出日志
-					WTSLogger::info(fmt::format("[Filters] {} target position reset by code filter: {} -> {}", stdCode.c_str(), oldVol, desVol).c_str());
+					WTSLogger::info_f("[Filters] {} target position reset by code filter: {} -> {}", stdCode.c_str(), oldVol, desVol);
 				}
 
 				des_port[stdCode] = desVol;
@@ -43,7 +43,7 @@ void WtExecuterMgr::set_positions(faster_hashmap<std::string, double> target_pos
 			else
 			{
 				//输出日志
-				WTSLogger::info("[Filters] %s target position ignored by filter", stdCode.c_str());
+				WTSLogger::info_f("[Filters] {} target position ignored by filter", stdCode.c_str());
 			}
 		}
 
@@ -53,9 +53,9 @@ void WtExecuterMgr::set_positions(faster_hashmap<std::string, double> target_pos
 	for (auto it = _executers.begin(); it != _executers.end(); it++)
 	{
 		ExecCmdPtr& executer = (*it);
-		if (_filter_mgr->is_filtered_by_executer(executer->name()))
+		if (_filter_mgr && _filter_mgr->is_filtered_by_executer(executer->name()))
 		{
-			WTSLogger::info("[Filters] Executer %s is filtered, all signals will be ignored", executer->name());
+			WTSLogger::info_f("[Filters] Executer {} is filtered, all signals will be ignored", executer->name());
 			continue;
 		}
 		executer->set_position(target_pos);
@@ -73,13 +73,13 @@ void WtExecuterMgr::handle_pos_change(const char* stdCode, double targetPos)
 			if (!decimal::eq(targetPos, oldVol))
 			{
 				//输出日志
-				WTSLogger::info(fmt::format("[Filters] {} target position reset by filter: {} -> {}", stdCode, oldVol, targetPos).c_str());
+				WTSLogger::info_f("[Filters] {} target position reset by filter: {} -> {}", stdCode, oldVol, targetPos);
 			}
 		}
 		else
 		{
 			//输出日志
-			WTSLogger::info("[Filters] %s target position ignored by filter", stdCode);
+			WTSLogger::info_f("[Filters] {} target position ignored by filter", stdCode);
 			return;
 		}
 	}
@@ -87,9 +87,9 @@ void WtExecuterMgr::handle_pos_change(const char* stdCode, double targetPos)
 	for (auto it = _executers.begin(); it != _executers.end(); it++)
 	{
 		ExecCmdPtr& executer = (*it);
-		if(_filter_mgr->is_filtered_by_executer(executer->name()))
+		if(_filter_mgr && _filter_mgr->is_filtered_by_executer(executer->name()))
 		{
-			WTSLogger::info("[Filters] All signals to executer %s are ignored by executer filter", executer->name());
+			WTSLogger::info_f("[Filters] All signals to executer {} are ignored by executer filter", executer->name());
 			continue;
 		}
 		executer->on_position_changed(stdCode, targetPos);

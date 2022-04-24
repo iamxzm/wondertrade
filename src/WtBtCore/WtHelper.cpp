@@ -10,15 +10,16 @@
 #include "WtHelper.h"
 
 #include "../Share/StrUtil.hpp"
-#include "../Share/BoostFile.hpp"
+#include <boost/filesystem.hpp>
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #include <direct.h>
 #else	//UNIX
-#include <stdio.h>
+#include <unistd.h>
 #endif
 
 std::string WtHelper::_inst_dir;
+std::string WtHelper::_out_dir = "./outputs_bt/";
 
 std::string WtHelper::getCWD()
 {
@@ -26,7 +27,7 @@ std::string WtHelper::getCWD()
 	if(_cwd.empty())
 	{
 		char   buffer[255];
-#ifdef _WIN32
+#ifdef _MSC_VER
 		_getcwd(buffer, 255);
 #else	//UNIX
 		getcwd(buffer, 255);
@@ -37,10 +38,14 @@ std::string WtHelper::getCWD()
 	return _cwd;
 }
 
+void WtHelper::setOutputDir(const char* out_dir)
+{
+	_out_dir = StrUtil::standardisePath(std::string(out_dir));
+}
+
 const char* WtHelper::getOutputDir()
 {
-	const char* folder = "./outputs_bt/";
-	if (!BoostFile::exists(folder))
-		BoostFile::create_directories(folder);
-	return folder;
+	if (!boost::filesystem::exists(_out_dir.c_str()))
+        boost::filesystem::create_directories(_out_dir.c_str());
+	return _out_dir.c_str();
 }

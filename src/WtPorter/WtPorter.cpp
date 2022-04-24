@@ -13,58 +13,16 @@
 #include "../WtCore/WtHelper.h"
 #include "../WTSTools/WTSLogger.h"
 #include "../Includes/WTSTradeDef.hpp"
-
-#include "../Share/decimal.h"
-#include "../Share/StrUtil.hpp"
 #include "../Includes/WTSVersion.h"
 
-std::string g_bin_dir;
-
-void inst_hlp() {}
-
 #ifdef _WIN32
-#include "../Common/mdump.h"
-#ifdef _WIN64
-char PLATFORM_NAME[] = "X64";
-#else
-char PLATFORM_NAME[] = "WIN32";
+#   ifdef _WIN64
+    char PLATFORM_NAME[] = "X64";
+#   else
+    char PLATFORM_NAME[] = "X86";
 #endif
-
-HMODULE	g_dllModule = NULL;
-
-BOOL APIENTRY DllMain(
-	HANDLE hModule,
-	DWORD  ul_reason_for_call,
-	LPVOID lpReserved
-	)
-{
-	switch (ul_reason_for_call)
-	{
-	case DLL_PROCESS_ATTACH:
-		g_dllModule = (HMODULE)hModule;
-		break;
-	}
-	return TRUE;
-}
-
 #else
-#include <dlfcn.h>
-
-char PLATFORM_NAME[] = "UNIX";
-
-const std::string& getInstPath()
-{
-	static std::string moduleName;
-	if (moduleName.empty())
-	{
-		Dl_info dl_info;
-		dladdr((void *)inst_hlp, &dl_info);
-		moduleName = dl_info.dli_fname;
-		//printf("1:%s\n", moduleName.c_str());
-	}
-
-	return moduleName;
-}
+    char PLATFORM_NAME[] = "UNIX";
 #endif
 
 WtRtRunner& getRunner()
@@ -73,42 +31,6 @@ WtRtRunner& getRunner()
 	return runner;
 }
 
-const char* getModuleName()
-{
-	static char MODULE_NAME[250] = { 0 };
-	if (strlen(MODULE_NAME) == 0)
-	{
-#ifdef _WIN32
-		GetModuleFileName(g_dllModule, MODULE_NAME, 250);
-		boost::filesystem::path p(MODULE_NAME);
-		strcpy(MODULE_NAME, p.filename().string().c_str());
-#else
-		boost::filesystem::path p(getInstPath());
-		strcpy(MODULE_NAME, p.filename().string().c_str());
-#endif
-	}
-
-	return MODULE_NAME;
-}
-
-const char* getBinDir()
-{
-	if (g_bin_dir.empty())
-	{
-#ifdef _WIN32
-		char strPath[MAX_PATH];
-		GetModuleFileName(g_dllModule, strPath, MAX_PATH);
-
-		g_bin_dir = StrUtil::standardisePath(strPath, false);
-#else
-		g_bin_dir = getInstPath();
-#endif
-		boost::filesystem::path p(g_bin_dir);
-		g_bin_dir = p.branch_path().string() + "/";
-	}
-
-	return g_bin_dir.c_str();
-}
 
 void register_evt_callback(FuncEventCallback cbEvt)
 {
@@ -127,9 +49,9 @@ void register_sel_callbacks(FuncStraInitCallback cbInit, FuncStraTickCallback cb
 
 void register_hft_callbacks(FuncStraInitCallback cbInit, FuncStraTickCallback cbTick, FuncStraBarCallback cbBar, 
 	FuncHftChannelCallback cbChnl, FuncHftOrdCallback cbOrd, FuncHftTrdCallback cbTrd, FuncHftEntrustCallback cbEntrust,
-	FuncStraOrdDtlCallback cbOrdDtl, FuncStraOrdQueCallback cbOrdQue, FuncStraTransCallback cbTrans, FuncSessionEvtCallback cbSessEvt)
+	FuncStraOrdDtlCallback cbOrdDtl, FuncStraOrdQueCallback cbOrdQue, FuncStraTransCallback cbTrans, FuncSessionEvtCallback cbSessEvt, FuncHftPosCallback cbPosition)
 {
-	getRunner().registerHftCallbacks(cbInit, cbTick, cbBar, cbChnl, cbOrd, cbTrd, cbEntrust, cbOrdDtl, cbOrdQue, cbTrans, cbSessEvt);
+	getRunner().registerHftCallbacks(cbInit, cbTick, cbBar, cbChnl, cbOrd, cbTrd, cbEntrust, cbOrdDtl, cbOrdQue, cbTrans, cbSessEvt, cbPosition);
 }
 
 void register_parser_callbacks(FuncParserEvtCallback cbEvt, FuncParserSubCallback cbSub)
@@ -152,15 +74,32 @@ bool create_ext_executer(const char* id)
 	return getRunner().createExtExecuter(id);
 }
 
+void register_ext_data_loader(FuncLoadFnlBars fnlBarLoader, FuncLoadRawBars rawBarLoader, FuncLoadAdjFactors fctLoader, FuncLoadRawTicks tickLoader)
+{
+	getRunner().registerExtDataLoader(fnlBarLoader, rawBarLoader, fctLoader, tickLoader);
+}
+
+void feed_raw_bars(WTSBarStruct* bars, WtUInt32 count)
+{
+	getRunner().feedRawBars(bars, count);
+}
+
+void feed_adj_factors(WtString stdCode, WtUInt32* dates, double* factors, WtUInt32 count)
+{
+	getRunner().feedAdjFactors(stdCode, (uint32_t*)dates, factors, count);
+}
+
+void feed_raw_ticks(WTSTickStruct* ticks, WtUInt32 count)
+{
+	WTSLogger::error_f("API not implemented");
+}
+
 void init_porter(const char* logProfile, bool isFile, const char* genDir)
 {
 	static bool inited = false;
 
 	if (inited)
 		return;
-#ifdef _WIN32
-	CMiniDumper::Enable(getModuleName(), true, WtHelper::getCWD().c_str());
-#endif
 
 	getRunner().init(logProfile, isFile, genDir);
 
@@ -205,11 +144,11 @@ void write_log(WtUInt32 level, const char* message, const char* catName)
 {
 	if (strlen(catName) > 0)
 	{
-		WTSLogger::log2(catName, (WTSLogLevel)level, message);
+		WTSLogger::log_raw_by_cat(catName, (WTSLogLevel)level, message);
 	}
 	else
 	{
-		WTSLogger::log((WTSLogLevel)level, message);
+		WTSLogger::log_raw((WTSLogLevel)level, message);
 	}
 }
 
@@ -287,23 +226,13 @@ WtUInt32 cta_get_bars(CtxHandler cHandle, const char* stdCode, const char* perio
 		WTSKlineSlice* kData = ctx->stra_get_bars(stdCode, period, barCnt, isMain);
 		if (kData)
 		{
-			uint32_t left = barCnt;
-			uint32_t reaCnt = min(barCnt, (WtUInt32)kData->size());
+			WtUInt32 reaCnt = (WtUInt32)kData->size();
 
-			if (kData->get_his_count() > 0)
+			uint32_t blkCnt = kData->get_block_counts();
+			for (uint32_t i = 0; i < blkCnt; i++)
 			{
-				uint32_t thisCnt = min(left, (uint32_t)kData->get_his_count());
-				left -= thisCnt;
-				reaCnt += thisCnt;
-				cb(cHandle, stdCode, period, kData->get_his_addr(), thisCnt, left == 0);
-			}
-
-			if (left > 0 && kData->get_rt_count() > 0)
-			{
-				uint32_t thisCnt = min(left, (uint32_t)kData->get_rt_count());
-				left -= thisCnt;
-				reaCnt += thisCnt;
-				cb(cHandle, stdCode, period, kData->get_rt_addr(), thisCnt, true);
+				if(kData->get_block_addr(i) != NULL)
+					cb(cHandle, stdCode, period, kData->get_block_addr(i), kData->get_block_size(i), i == blkCnt - 1);
 			}
 
 			kData->release();
@@ -407,13 +336,13 @@ void cta_get_all_position(CtxHandler cHandle, FuncGetPositionCallback cb)
 	cb(cHandle, "", 0, true);
 }
 
-double cta_get_position(CtxHandler cHandle, const char* stdCode, const char* openTag)
+double cta_get_position(CtxHandler cHandle, const char* stdCode, bool bOnlyValid, const char* openTag)
 {
 	CtaContextPtr ctx = getRunner().getCtaContext(cHandle);
 	if (ctx == NULL)
 		return 0;
 
-	return ctx->stra_get_position(stdCode, openTag);
+	return ctx->stra_get_position(stdCode, bOnlyValid, openTag);
 }
 
 double cta_get_fund_data(CtxHandler cHandle, int flag)
@@ -595,13 +524,13 @@ void sel_get_all_position(CtxHandler cHandle, FuncGetPositionCallback cb)
 	cb(cHandle, "", 0, true);
 }
 
-double sel_get_position(CtxHandler cHandle, const char* stdCode, const char* openTag)
+double sel_get_position(CtxHandler cHandle, const char* stdCode, bool bOnlyValid, const char* openTag)
 {
 	SelContextPtr ctx = getRunner().getSelContext(cHandle);
 	if (ctx == NULL)
 		return 0;
 
-	return ctx->stra_get_position(stdCode, openTag);
+	return ctx->stra_get_position(stdCode, bOnlyValid, openTag);
 }
 
 WtUInt32 sel_get_bars(CtxHandler cHandle, const char* stdCode, const char* period, WtUInt32 barCnt, FuncGetBarsCallback cb)
@@ -614,24 +543,10 @@ WtUInt32 sel_get_bars(CtxHandler cHandle, const char* stdCode, const char* perio
 		WTSKlineSlice* kData = ctx->stra_get_bars(stdCode, period, barCnt);
 		if (kData)
 		{
-			uint32_t left = barCnt;
-			uint32_t reaCnt = min(barCnt, (WtUInt32)kData->size());
+			WtUInt32 reaCnt = (WtUInt32)kData->size();
 
-			if (kData->get_his_count() > 0)
-			{
-				uint32_t thisCnt = min(left, (uint32_t)kData->get_his_count());
-				left -= thisCnt;
-				reaCnt += thisCnt;
-				cb(cHandle, stdCode, period, kData->get_his_addr(), thisCnt, left == 0);
-			}
-
-			if (left > 0 && kData->get_rt_count() > 0)
-			{
-				uint32_t thisCnt = min(left, (uint32_t)kData->get_rt_count());
-				left -= thisCnt;
-				reaCnt += thisCnt;
-				cb(cHandle, stdCode, period, kData->get_rt_addr(), thisCnt, true);
-			}
+			for (uint32_t i = 0; i < kData->get_block_counts(); i++)
+				cb(cHandle, stdCode, period, kData->get_block_addr(i), kData->get_block_size(i), i == kData->get_block_counts() - 1);
 
 			kData->release();
 			return reaCnt;
@@ -699,13 +614,13 @@ CtxHandler create_hft_context(const char* name, const char* trader, bool agent)
 	return getRunner().createHftContext(name, trader, agent);
 }
 
-double hft_get_position(CtxHandler cHandle, const char* stdCode)
+double hft_get_position(CtxHandler cHandle, const char* stdCode, bool bOnlyValid)
 {
 	HftContextPtr ctx = getRunner().getHftContext(cHandle);
 	if (ctx == NULL)
 		return 0;
 
-	return ctx->stra_get_position(stdCode);
+	return ctx->stra_get_position(stdCode, bOnlyValid);
 }
 
 double hft_get_position_profit(CtxHandler cHandle, const char* stdCode)
@@ -758,24 +673,10 @@ WtUInt32 hft_get_bars(CtxHandler cHandle, const char* stdCode, const char* perio
 		WTSKlineSlice* kData = ctx->stra_get_bars(stdCode, period, barCnt);
 		if (kData)
 		{
-			uint32_t left = barCnt;
-			uint32_t reaCnt = min(barCnt, (WtUInt32)kData->size());
+			WtUInt32 reaCnt = (WtUInt32)kData->size();
 
-			if (kData->get_his_count() > 0)
-			{
-				uint32_t thisCnt = min(left, (uint32_t)kData->get_his_count());
-				left -= thisCnt;
-				reaCnt += thisCnt;
-				cb(cHandle, stdCode, period, kData->get_his_addr(), thisCnt, left == 0);
-			}
-
-			if (left > 0 && kData->get_rt_count() > 0)
-			{
-				uint32_t thisCnt = min(left, (uint32_t)kData->get_rt_count());
-				left -= thisCnt;
-				reaCnt += thisCnt;
-				cb(cHandle, stdCode, period, kData->get_rt_addr(), thisCnt, true);
-			}
+			for (uint32_t i = 0; i < kData->get_block_counts(); i++)
+				cb(cHandle, stdCode, period, kData->get_block_addr(i), kData->get_block_size(i), i == kData->get_block_counts() - 1);
 
 			kData->release();
 			return reaCnt;
@@ -970,7 +871,7 @@ WtString hft_cancel_all(CtxHandler cHandle, const char* stdCode, bool isBuy)
 	return ret.c_str();
 }
 
-WtString hft_buy(CtxHandler cHandle, const char* stdCode, double price, double qty, const char* userTag)
+WtString hft_buy(CtxHandler cHandle, const char* stdCode, double price, double qty, const char* userTag, int flag)
 {
 	HftContextPtr ctx = getRunner().getHftContext(cHandle);
 	if (ctx == NULL)
@@ -979,7 +880,7 @@ WtString hft_buy(CtxHandler cHandle, const char* stdCode, double price, double q
 	static std::string ret;
 
 	std::stringstream ss;
-	OrderIDs ids = ctx->stra_buy(stdCode, price, qty, userTag);
+	OrderIDs ids = ctx->stra_buy(stdCode, price, qty, userTag, flag);
 	for (uint32_t localid : ids)
 	{
 		ss << localid << ",";
@@ -991,7 +892,7 @@ WtString hft_buy(CtxHandler cHandle, const char* stdCode, double price, double q
 	return ret.c_str();
 }
 
-WtString hft_sell(CtxHandler cHandle, const char* stdCode, double price, double qty, const char* userTag)
+WtString hft_sell(CtxHandler cHandle, const char* stdCode, double price, double qty, const char* userTag, int flag)
 {
 	HftContextPtr ctx = getRunner().getHftContext(cHandle);
 	if (ctx == NULL)
@@ -1000,7 +901,7 @@ WtString hft_sell(CtxHandler cHandle, const char* stdCode, double price, double 
 	static std::string ret;
 
 	std::stringstream ss;
-	OrderIDs ids = ctx->stra_sell(stdCode, price, qty, userTag);
+	OrderIDs ids = ctx->stra_sell(stdCode, price, qty, userTag, flag);
 	for (uint32_t localid : ids)
 	{
 		ss << localid << ",";
@@ -1032,8 +933,8 @@ WtString hft_load_userdata(CtxHandler cHandle, const char* key, const char* defV
 #pragma endregion "HFT策略接口"
 
 #pragma region "扩展Parser接口"
-void parser_push_quote(const char* id, WTSTickStruct* curTick, bool bNeedSlice)
+void parser_push_quote(const char* id, WTSTickStruct* curTick, WtUInt32 uProcFlag)
 {
-	getRunner().on_parser_quote(id, curTick, bNeedSlice);
+	getRunner().on_ext_parser_quote(id, curTick, uProcFlag);
 }
 #pragma endregion "扩展Parser接口"

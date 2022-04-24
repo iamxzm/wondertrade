@@ -10,25 +10,20 @@
 #include "EventNotifier.h"
 #include "WtHelper.h"
 
-#include "../Share/StrUtil.hpp"
 #include "../Share/TimeUtils.hpp"
 #include "../Share/DLLHelper.hpp"
 
 #include "../Includes/WTSTradeDef.hpp"
 #include "../Includes/WTSCollection.hpp"
-#include "../Includes/WTSContractInfo.hpp"
 #include "../Includes/WTSVariant.hpp"
 
-
-#include "../WTSTools/WTSBaseDataMgr.h"
 #include "../WTSTools/WTSLogger.h"
 
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
 namespace rj = rapidjson;
 
-
-USING_NS_OTP;
+USING_NS_WTP;
 
 void on_mq_log(unsigned long id, const char* message, bool bServer)
 {
@@ -65,7 +60,7 @@ bool EventNotifier::init(WTSVariant* cfg)
 	DllHandle dllInst = DLLHelper::load_library(dllpath.c_str());
 	if (dllInst == NULL)
 	{
-		WTSLogger::error("MQ module %s loading failed", dllpath.c_str());
+		WTSLogger::error_f("MQ module {} loading failed", dllpath.c_str());
 		return false;
 	}
 
@@ -73,7 +68,7 @@ bool EventNotifier::init(WTSVariant* cfg)
 	if (_creator == NULL)
 	{
 		DLLHelper::free_library(dllInst);
-		WTSLogger::error("MQ module %s is not compatible", dllpath.c_str());
+		WTSLogger::error_f("MQ module {} is not compatible", dllpath.c_str());
 		return false;
 	}
 
@@ -87,7 +82,7 @@ bool EventNotifier::init(WTSVariant* cfg)
 	//创建一个MQServer
 	_mq_sid = _creator(m_strURL.c_str());
 
-	WTSLogger::info("EventNotifier initialized with channel %s", m_strURL.c_str());
+	WTSLogger::info_f("EventNotifier initialized with channel {}", m_strURL.c_str());
 
 	return true;
 }
@@ -111,7 +106,7 @@ void EventNotifier::notifyLog(const char* tag, const char* message)
 	}
 
 	if (_publisher)
-		_publisher(_mq_sid, "LOG", data.c_str(), data.size());
+		_publisher(_mq_sid, "LOG", data.c_str(), (unsigned long)data.size());
 }
 
 void EventNotifier::notifyEvent(const char* message)
@@ -131,7 +126,7 @@ void EventNotifier::notifyEvent(const char* message)
 		data = sb.GetString();
 	}
 	if (_publisher)
-		_publisher(_mq_sid, "GRP_EVENT", data.c_str(), data.size());
+		_publisher(_mq_sid, "GRP_EVENT", data.c_str(), (unsigned long)data.size());
 }
 
 void EventNotifier::notify(const char* trader, const char* message)
@@ -152,7 +147,7 @@ void EventNotifier::notify(const char* trader, const char* message)
 		data = sb.GetString();
 	}
 	if (_publisher)
-		_publisher(_mq_sid, "TRD_NOTIFY", data.c_str(), data.size());
+		_publisher(_mq_sid, "TRD_NOTIFY", data.c_str(), (unsigned long)data.size());
 }
 
 void EventNotifier::notify(const char* trader, uint32_t localid, const char* stdCode, WTSTradeInfo* trdInfo)
@@ -163,7 +158,7 @@ void EventNotifier::notify(const char* trader, uint32_t localid, const char* std
 	std::string data;
 	tradeToJson(trader, localid, stdCode, trdInfo, data);
 	if (_publisher)
-		_publisher(_mq_sid, "TRD_TRADE", data.c_str(), data.size());
+		_publisher(_mq_sid, "TRD_TRADE", data.c_str(), (unsigned long)data.size());
 }
 
 void EventNotifier::notify(const char* trader, uint32_t localid, const char* stdCode, WTSOrderInfo* ordInfo)
@@ -174,7 +169,7 @@ void EventNotifier::notify(const char* trader, uint32_t localid, const char* std
 	std::string data;
 	orderToJson(trader, localid, stdCode, ordInfo, data);
 	if (_publisher)
-		_publisher(_mq_sid, "TRD_ORDER", data.c_str(), data.size());
+		_publisher(_mq_sid, "TRD_ORDER", data.c_str(), (unsigned long)data.size());
 }
 
 void EventNotifier::tradeToJson(const char* trader, uint32_t localid, const char* stdCode, WTSTradeInfo* trdInfo, std::string& output)

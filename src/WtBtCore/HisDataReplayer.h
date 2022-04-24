@@ -9,8 +9,8 @@
  */
 #pragma once
 #include <string>
-#include "DataDefine.h"
-#include "../WtDataWriter/MysqlDB.hpp"
+#include "HisDataMgr.h"
+#include "../WtDataStorage/DataDefine.h"
 
 #include "../Includes/FasterDefs.h"
 #include "../Includes/WTSMarcos.h"
@@ -19,7 +19,7 @@
 #include "../WTSTools/WTSHotMgr.h"
 #include "../WTSTools/WTSBaseDataMgr.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSTickData;
 class WTSVariant;
 class WTSKlineSlice;
@@ -35,16 +35,14 @@ class WTSOrdQueData;
 class WTSTransData;
 
 class EventNotifier;
-NS_OTP_END
+NS_WTP_END
 
-typedef std::shared_ptr<MysqlDb>	MysqlDbPtr;
-
-USING_NS_OTP;
+USING_NS_WTP;
 
 class IDataSink
 {
 public:
-	virtual void	handle_tick(const char* stdCode, WTSTickData* curTick) = 0;
+	virtual void	handle_tick(const char* stdCode, WTSTickData* curTick, bool isBarEnd = true) = 0;
 	virtual void	handle_order_queue(const char* stdCode, WTSOrdQueData* curOrdQue) {};
 	virtual void	handle_order_detail(const char* stdCode, WTSOrdDtlData* curOrdDtl) {};
 	virtual void	handle_transaction(const char* stdCode, WTSTransData* curTrans) {};
@@ -57,6 +55,71 @@ public:
 	virtual void	handle_replay_done() {}
 };
 
+/*
+ *	历史数据加载器的回调函数
+ *	@obj	回传用的，原样返回即可
+ *	@key	数据缓存的key
+ *	@bars	K线数据
+ *	@count	K线条数
+ *	@factor	复权因子，最新的复权因子，如果是后复权，则factor不为1.0，如果是前复权，则factor必须为1.0
+ */
+typedef void(*FuncReadBars)(void* obj, WTSBarStruct* firstBar, uint32_t count);
+
+/*
+ *	加载复权因子回调
+ *	@obj	回传用的，原样返回即可
+ *	@stdCode	合约代码
+ *	@dates
+ */
+typedef void(*FuncReadFactors)(void* obj, const char* stdCode, uint32_t* dates, double* factors, uint32_t count);
+
+typedef void(*FuncReadTicks)(void* obj, WTSTickStruct* firstTick, uint32_t count);
+
+class IBtDataLoader
+{
+public:
+	/*
+	 *	加载最终历史K线数据
+	 *	和loadRawHisBars的区别在于，loadFinalHisBars，系统认为是最终所需数据，不在进行加工，例如复权数据、主力合约数据
+	 *	loadRawHisBars是加载未加工的原始数据的接口
+	 *
+	 *	@obj	回传用的，原样返回即可
+	 *	@stdCode	合约代码
+	 *	@period	K线周期
+	 *	@cb		回调函数
+	 */
+	virtual bool loadFinalHisBars(void* obj, const char* stdCode, WTSKlinePeriod period, FuncReadBars cb) = 0;
+
+	/*
+	 *	加载原始历史K线数据
+	 *
+	 *	@obj	回传用的，原样返回即可
+	 *	@stdCode	合约代码
+	 *	@period	K线周期
+	 *	@cb		回调函数
+	 */
+	virtual bool loadRawHisBars(void* obj, const char* stdCode, WTSKlinePeriod period, FuncReadBars cb) = 0;
+
+	/*
+	 *	加载全部除权因子
+	 */
+	virtual bool loadAllAdjFactors(void* obj, FuncReadFactors cb) = 0;
+
+	/*
+	 *	根据合约加载除权因子
+	 *
+	 *	@stdCode	合约代码
+	 */
+	virtual bool loadAdjFactors(void* obj, const char* stdCode, FuncReadFactors cb) = 0;
+
+	/*
+	 *	加载历史Tick数据
+	 */
+	virtual bool loadRawHisTicks(void* obj, const char* stdCode, uint32_t uDate, FuncReadTicks cb) = 0;
+
+	virtual bool isAutoTrans() { return true; }
+};
+
 class HisDataReplayer
 {
 
@@ -67,8 +130,13 @@ private:
 	public:
 		std::string		_code;
 		uint32_t		_date;
-		uint32_t		_cursor;
-		uint32_t		_count;
+		/*
+		 * By Wesley @ 2022.03.21
+		 * 游标，用于标记下一条数据的位置，或者说已经回放过的条数
+		 * 未初始化时，游标为UINT_MAX，一旦初始化，游标必然是大于0的
+		 */
+		std::size_t		_cursor;
+		std::size_t		_count;
 
 		std::vector<T> _items;
 
@@ -85,6 +153,11 @@ private:
 	{
 		std::string		_code;
 		WTSKlinePeriod	_period;
+		/*
+		 * By Wesley @ 2022.03.21
+		 * 游标，用于标记下一条数据的位置，或者说已经回放过的条数
+		 * 未初始化时，游标为UINT_MAX，一旦初始化，游标必然是大于0的
+		 */
 		uint32_t		_cursor;
 		uint32_t		_count;
 		uint32_t		_times;
@@ -95,7 +168,18 @@ private:
 		_BarsList() :_cursor(UINT_MAX), _count(0), _times(1), _factor(1){}
 	} BarsList;
 
-	typedef faster_hashmap<std::string, BarsList>	BarsCache;
+	/*
+	 *	By Wesley @ 2022.03.13
+	 *	这里把缓存改成智能指针
+	 *	因为有用户发现如果在oncalc的时候获取未在oninit中订阅的K线的时候
+	 *	因为使用BarList的引用，当K线缓存的map重新插入新的K线以后
+	 *	引用的地方失效了，会引用到错误地址
+	 *	我怀疑这里有可能是重新拷贝了一下数据
+	 *	这里改成智能指针就能避免这个问题，因为不管map自己的内存如何组织
+	 *	智能指针指向的地址都是不会变的
+	 */
+	typedef std::shared_ptr<BarsList> BarsListPtr;
+	typedef faster_hashmap<std::string, BarsListPtr>	BarsCache;
 
 	typedef enum tagTaskPeriodType
 	{
@@ -139,12 +223,7 @@ private:
 	/*
 	 *	从csv文件缓存历史数据
 	 */
-	bool		cacheRawBarsFromCSV(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bForBars = true);
-
-	/*
-	 *	从数据库缓存历史数据
-	 */
-	bool		cacheRawBarsFromDB(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bForBars = true);
+	bool		cacheRawBarsFromCSV(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bSubbed = true);
 
 	/*
 	 *	从自定义数据文件缓存历史tick数据
@@ -155,6 +234,26 @@ private:
 	 *	从csv文件缓存历史tick数据
 	 */
 	bool		cacheRawTicksFromCSV(const std::string& key, const char* stdCode, uint32_t uDate);
+
+	/*
+	 *	从外部加载器缓存历史数据
+	 */
+	bool		cacheFinalBarsFromLoader(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bSubbed = true);
+
+	/*
+	 *	从外部加载器缓存历史tick数据
+	 */
+	bool		cacheRawTicksFromLoader(const std::string& key, const char* stdCode, uint32_t uDate);
+
+	/*
+	 *	缓存整合的期货合约历史K线（针对.HOT//2ND）
+	 */
+	bool		cacheIntegratedFutBarsFromBin(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bSubbed = true);
+
+	/*
+	 *	缓存复权股票K线数据
+	 */
+	bool		cacheAdjustedStkBarsFromBin(const std::string& key, const char* stdCode, WTSKlinePeriod period, bool bSubbed = true);
 
 	void		onMinuteEnd(uint32_t uDate, uint32_t uTime, uint32_t endTDate = 0, bool tickSimulated = true);
 
@@ -176,11 +275,9 @@ private:
 
 	void		checkUnbars();
 
-	bool		loadStkAdjFactors(const char* adjfile);
+	bool		loadStkAdjFactorsFromFile(const char* adjfile);
 
-	bool		loadStkAdjFactorsFromDB();
-
-	void		initDB();
+	bool		loadStkAdjFactorsFromLoader();
 
 	bool		checkAllTicks(uint32_t uDate);
 
@@ -197,14 +294,37 @@ private:
 
 	uint32_t	locate_barindex(const std::string& key, uint64_t curTime, bool bUpperBound = false);
 
+	/*
+	 *	按照K线进行回测
+	 *
+	 *	@bNeedDump	是否将回测进度落地到文件中
+	 */
 	void	run_by_bars(bool bNeedDump = false);
+
+	/*
+	 *	按照定时任务进行回测
+	 *
+	 *	@bNeedDump	是否将回测进度落地到文件中
+	 */
 	void	run_by_tasks(bool bNeedDump = false);
+
+	/*
+	 *	按照tick进行回测
+	 *
+	 *	@bNeedDump	是否将回测进度落地到文件中
+	 */
 	void	run_by_ticks(bool bNeedDump = false);
 
 public:
-	bool init(WTSVariant* cfg, EventNotifier* notifier = NULL);
+	bool init(WTSVariant* cfg, EventNotifier* notifier = NULL, IBtDataLoader* dataLoader = NULL);
 
 	bool prepare();
+
+	/*
+	 *	运行回测
+	 *
+	 *	@bNeedDump	是否将回测进度落地到文件中
+	 */
 	void run(bool bNeedDump = false);
 	
 	void stop();
@@ -269,6 +389,7 @@ public:
 
 private:
 	IDataSink*		_listener;
+	IBtDataLoader*	_bt_loader;
 	std::string		_stra_name;
 
 	TickCache		_ticks_cache;	//tick缓存
@@ -346,28 +467,10 @@ private:
 	typedef faster_hashmap<std::string, AdjFactorList>	AdjFactorMap;
 	AdjFactorMap	_adj_factors;
 
-	inline const AdjFactorList& getAdjFactors(const char* code, const char* exchg)
-	{
-		char key[20] = { 0 };
-		sprintf(key, "%s.%s", exchg, code);
-		return _adj_factors[key];
-	}
-
-	typedef struct _DBConfig
-	{
-		bool	_active;
-		char	_host[64];
-		int32_t	_port;
-		char	_dbname[32];
-		char	_user[32];
-		char	_pass[32];
-
-		_DBConfig() { memset(this, 0, sizeof(_DBConfig)); }
-	} DBConfig;
-
-	DBConfig	_db_conf;
-	MysqlDbPtr	_db_conn;
+	const AdjFactorList& getAdjFactors(const char* code, const char* exchg, const char* pid);
 
 	EventNotifier*	_notifier;
+
+	HisDataMgr		_his_dt_mgr;
 };
 

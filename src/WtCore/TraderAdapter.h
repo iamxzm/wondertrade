@@ -15,7 +15,7 @@
 #include "../Share/BoostFile.hpp"
 #include "../Share/StdUtils.hpp"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSVariant;
 class ActionPolicyMgr;
 class WTSContractInfo;
@@ -98,6 +98,7 @@ public:
 
 public:
 	bool init(const char* id, WTSVariant* params, IBaseDataMgr* bdMgr, ActionPolicyMgr* policyMgr);
+	bool initExt(const char* id, ITraderApi* api, IBaseDataMgr* bdMgr, ActionPolicyMgr* policyMgr);
 
 	void release();
 
@@ -130,8 +131,10 @@ private:
 
 	void	saveData(WTSArray* ayFunds = NULL);
 
+	inline void updateUndone(const char* stdCode, double qty, bool bOuput = true);
+
 public:
-	double getPosition(const char* stdCode, int32_t flag = 3);
+	double getPosition(const char* stdCode, bool bValidOnly, int32_t flag = 3);
 	OrderMap* getOrders(const char* stdCode);
 	double getUndoneQty(const char* stdCode)
 	{
@@ -142,13 +145,13 @@ public:
 		return 0;
 	}
 
-	uint32_t openLong(const char* stdCode, double price, double qty);
-	uint32_t openShort(const char* stdCode, double price, double qty);
-	uint32_t closeLong(const char* stdCode, double price, double qty, bool isToday = false);
-	uint32_t closeShort(const char* stdCode, double price, double qty, bool isToday = false);
+	uint32_t openLong(const char* stdCode, double price, double qty, int flag, WTSContractInfo* cInfo = NULL);
+	uint32_t openShort(const char* stdCode, double price, double qty, int flag, WTSContractInfo* cInfo = NULL);
+	uint32_t closeLong(const char* stdCode, double price, double qty, bool isToday, int flag, WTSContractInfo* cInfo = NULL);
+	uint32_t closeShort(const char* stdCode, double price, double qty, bool isToday, int flag, WTSContractInfo* cInfo = NULL);
 	
-	OrderIDs buy(const char* stdCode, double price, double qty, bool bForceClose = false);
-	OrderIDs sell(const char* stdCode, double price, double qty, bool bForceClose = false);
+	OrderIDs buy(const char* stdCode, double price, double qty, int flag, bool bForceClose, WTSContractInfo* cInfo = NULL);
+	OrderIDs sell(const char* stdCode, double price, double qty, int flag, bool bForceClose, WTSContractInfo* cInfo = NULL);
 	bool	cancel(uint32_t localid);
 	OrderIDs cancel(const char* stdCode, bool isBuy, double qty = 0);
 
@@ -156,6 +159,14 @@ public:
 
 	bool	checkCancelLimits(const char* stdCode);
 	bool	checkOrderLimits(const char* stdCode);
+
+	bool	checkSelfMatch(const char* stdCode, WTSTradeInfo* tInfo);
+
+	inline	bool isSelfMatched(const char* stdCode)
+	{
+		auto it = _self_matches.find(stdCode);
+		return it != _self_matches.end();
+	}
 
 public:
 	//////////////////////////////////////////////////////////////////////////
@@ -184,7 +195,7 @@ public:
 
 	virtual IBaseDataMgr* getBaseDataMgr() override;
 
-	virtual void handleTraderLog(WTSLogLevel ll, const char* format, ...) override;
+	virtual void handleTraderLog(WTSLogLevel ll, const char* message) override;
 
 private:
 	WTSVariant*			_cfg;
@@ -204,27 +215,30 @@ private:
 	IBaseDataMgr*		_bd_mgr;
 	ActionPolicyMgr*	_policy_mgr;
 
-	faster_hashmap<std::string, PosItem> _positions;
+	faster_hashmap<LongKey, PosItem> _positions;
 
 	StdUniqueMutex _mtx_orders;
 	OrderMap*		_orders;
-	faster_hashset<std::string> _orderids;	//主要用于标记有没有处理过该订单
+	faster_hashset<LongKey> _orderids;	//主要用于标记有没有处理过该订单
 
-	faster_hashmap<std::string, double> _undone_qty;	//未完成数量
+	faster_hashmap<LongKey, std::string>		_trade_refs;	//用于记录成交单和订单的匹配
+	faster_hashset<LongKey>						_self_matches;	//自成交的合约
 
-	typedef WTSHashMap<std::string>	TradeStatMap;
+	faster_hashmap<LongKey, double> _undone_qty;	//未完成数量
+
+	typedef WTSHashMap<LongKey>	TradeStatMap;
 	TradeStatMap*	_stat_map;	//统计数据
 
 	//这两个缓存时间内的容器,主要是为了控制瞬间流量而设置的
 	typedef std::vector<uint64_t> TimeCacheList;
-	typedef faster_hashmap<std::string, TimeCacheList> CodeTimeCacheMap;
+	typedef faster_hashmap<LongKey, TimeCacheList> CodeTimeCacheMap;
 	CodeTimeCacheMap	_order_time_cache;	//下单时间缓存
 	CodeTimeCacheMap	_cancel_time_cache;	//撤单时间缓存
 
 	//如果被风控了,就会进入到排除队列
-	faster_hashset<std::string>	_exclude_codes;
+	faster_hashset<LongKey>	_exclude_codes;
 	
-	typedef faster_hashmap<std::string, RiskParams>	RiskParamsMap;
+	typedef faster_hashmap<LongKey, RiskParams>	RiskParamsMap;
 	RiskParamsMap	_risk_params_map;
 	bool			_risk_mon_enabled;
 
@@ -257,4 +271,4 @@ private:
 	TraderAdapterMap	_adapters;
 };
 
-NS_OTP_END
+NS_WTP_END

@@ -17,14 +17,13 @@
 #include "../Includes/ITraderApi.h"
 #include "../Includes/WTSCollection.hpp"
 
-//CTP 6.3.15
-#include "./ThostTraderApi/ThostFtdcTraderApi.h"
+#include "../API/CTP6.3.15/ThostFtdcTraderApi.h"
 
-#include "../Share/IniHelper.hpp"
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
+#include "../Share/WtKVCache.hpp"
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class TraderCTP : public ITraderApi, public CThostFtdcTraderSpi
 {
@@ -58,7 +57,7 @@ private:
 	//////////////////////////////////////////////////////////////////////////
 	//ITraderApi接口
 public:
-	virtual bool init(WTSParams* params) override;
+	virtual bool init(WTSVariant* params) override;
 
 	virtual void release() override;
 
@@ -133,7 +132,7 @@ public:
 
 	virtual void OnErrRtnOrderInsert(CThostFtdcInputOrderField *pInputOrder, CThostFtdcRspInfoField *pRspInfo) override;
 
-protected:
+private:
 	/*
 	*	检查错误信息
 	*/
@@ -157,15 +156,10 @@ protected:
 	WTSError*		makeError(CThostFtdcRspInfoField* rspInfo, WTSErroCode ec = WEC_NONE);
 	WTSTradeInfo*	makeTradeRecord(CThostFtdcTradeField *tradeField);
 
-	std::string		generateEntrustID(uint32_t frontid, uint32_t sessionid, uint32_t orderRef);
+	void			generateEntrustID(char* buffer, uint32_t frontid, uint32_t sessionid, uint32_t orderRef);
 	bool			extractEntrustID(const char* entrustid, uint32_t &frontid, uint32_t &sessionid, uint32_t &orderRef);
 
-	//uint64_t		calcCommission(uint32_t qty, uint32_t price, WTSOffsetType flag, WTSContractInfo* ct);
-	//uint64_t		calcMargin(uint32_t qty, uint32_t price, WTSDirectionType direct, WTSContractInfo* ct);
-
 	uint32_t		genRequestID();
-
-	//void			triggerQuery();
 
 protected:
 	std::string		m_strBroker;
@@ -188,12 +182,12 @@ protected:
 	std::string		m_strUserName;
 	std::string		m_strFlowDir;
 
-	ITraderSpi*	m_sink;
+	ITraderSpi*		m_sink;
 	uint64_t		m_uLastQryTime;
 
 	uint32_t					m_lDate;
-	TThostFtdcFrontIDType		m_frontID;		//前置编号
-	TThostFtdcSessionIDType		m_sessionID;	//会话编号
+	uint32_t					m_frontID;		//前置编号
+	uint32_t					m_sessionID;	//会话编号
 	std::atomic<uint32_t>		m_orderRef;		//报单引用
 
 	WrapperState				m_wrapperState;
@@ -223,6 +217,9 @@ protected:
 	typedef CThostFtdcTraderApi* (*CTPCreator)(const char *);
 	CTPCreator		m_funcCreator;
 
-	IniHelper		m_iniHelper;
+	//委托单标记缓存器
+	WtKVCache		m_eidCache;
+	//订单标记缓存器
+	WtKVCache		m_oidCache;
 };
 

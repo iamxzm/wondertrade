@@ -13,21 +13,17 @@
 #include <queue>
 #include <stdint.h>
 
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/strand.hpp>
-
 #include "../Includes/WTSTypes.h"
 #include "../Includes/ITraderApi.h"
 #include "../Includes/WTSCollection.hpp"
 
-//CTPOpt v3.5.8P4
-#include "./ThostTraderApi/ThostFtdcTraderApi.h"
+#include "../API/CTPOpt3.5.8/ThostFtdcTraderApi.h"
 
 #include "../Share/IniHelper.hpp"
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class TraderCTPOpt : public ITraderApi, public IOptTraderApi, public CThostFtdcTraderSpi
 {
@@ -61,7 +57,7 @@ private:
 	//////////////////////////////////////////////////////////////////////////
 	//ITraderApi½Ó¿Ú
 public:
-	virtual bool init(WTSParams* params) override;
+	virtual bool init(WTSVariant* params) override;
 
 	virtual void release() override;
 
@@ -174,7 +170,7 @@ protected:
 	WTSTradeInfo*	makeTradeRecord(CThostFtdcTradeField *tradeField);
 	WTSEntrust*		makeEntrust(CThostFtdcInputExecOrderField *entrustField);
 
-	std::string		generateEntrustID(uint32_t frontid, uint32_t sessionid, uint32_t orderRef);
+	void			generateEntrustID(char* buffer, uint32_t frontid, uint32_t sessionid, uint32_t orderRef);
 	bool			extractEntrustID(const char* entrustid, uint32_t &frontid, uint32_t &sessionid, uint32_t &orderRef);
 
 	//uint64_t		calcCommission(uint32_t qty, uint32_t price, WTSOffsetType flag, WTSContractInfo* ct);

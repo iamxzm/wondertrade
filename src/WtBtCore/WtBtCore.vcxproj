@@ -23,9 +23,11 @@
     <ClCompile Include="EventNotifier.cpp" />
     <ClCompile Include="ExecMocker.cpp" />
     <ClCompile Include="HftMocker.cpp" />
+    <ClCompile Include="HisDataMgr.cpp" />
     <ClCompile Include="HisDataReplayer.cpp" />
     <ClCompile Include="MatchEngine.cpp" />
     <ClCompile Include="SelMocker.cpp" />
+    <ClCompile Include="UftMocker.cpp" />
     <ClCompile Include="WtHelper.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -33,9 +35,11 @@
     <ClInclude Include="EventNotifier.h" />
     <ClInclude Include="ExecMocker.h" />
     <ClInclude Include="HftMocker.h" />
+    <ClInclude Include="HisDataMgr.h" />
     <ClInclude Include="HisDataReplayer.h" />
     <ClInclude Include="MatchEngine.h" />
     <ClInclude Include="SelMocker.h" />
+    <ClInclude Include="UftMocker.h" />
     <ClInclude Include="WtHelper.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

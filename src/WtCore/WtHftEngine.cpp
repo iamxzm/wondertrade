@@ -11,13 +11,12 @@
 
 #include "WtHftEngine.h"
 #include "WtHftTicker.h"
-#include "WtDataManager.h"
+#include "WtDtMgr.h"
 #include "TraderAdapter.h"
 #include "WtHelper.h"
 
+#include "../Share/decimal.h"
 #include "../Share/CodeHelper.hpp"
-#include "../Share/StrUtil.hpp"
-#include "../Share/StdUtils.hpp"
 #include "../Includes/WTSVariant.hpp"
 
 #include "../WTSTools/WTSLogger.h"
@@ -31,7 +30,7 @@ namespace rj = rapidjson;
 extern boost::asio::io_service g_asyncIO;
 
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 WtHftEngine::WtHftEngine()
 	: _cfg(NULL)
@@ -44,6 +43,7 @@ WtHftEngine::~WtHftEngine()
 {
 	if (_tm_ticker)
 	{
+		_tm_ticker->stop();
 		delete _tm_ticker;
 		_tm_ticker = NULL;
 	}
@@ -52,7 +52,7 @@ WtHftEngine::~WtHftEngine()
 		_cfg->release();
 }
 
-void WtHftEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDataManager* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier /* = NULL */)
+void WtHftEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDtMgr* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier /* = NULL */)
 {
 	WtEngine::init(cfg, bdMgr, dataMgr, hotMgr, notifier);
 
@@ -127,10 +127,13 @@ void WtHftEngine::handle_push_order_detail(WTSOrdDtlData* curOrdDtl)
 	auto sit = _orddtl_sub_map.find(stdCode);
 	if (sit != _orddtl_sub_map.end())
 	{
-		const SIDSet& sids = sit->second;
+		const SubList& sids = sit->second;
 		for (auto it = sids.begin(); it != sids.end(); it++)
 		{
-			uint32_t sid = *it;
+			//By Wesley @ 2022.02.07
+			//Level2数据一般用于HFT场景，所以不做复权处理
+			//所以不读取订阅标记
+			uint32_t sid = it->first;
 			auto cit = _ctx_map.find(sid);
 			if (cit != _ctx_map.end())
 			{
@@ -147,10 +150,13 @@ void WtHftEngine::handle_push_order_queue(WTSOrdQueData* curOrdQue)
 	auto sit = _ordque_sub_map.find(stdCode);
 	if (sit != _ordque_sub_map.end())
 	{
-		const SIDSet& sids = sit->second;
+		const SubList& sids = sit->second;
 		for (auto it = sids.begin(); it != sids.end(); it++)
 		{
-			uint32_t sid = *it;
+			//By Wesley @ 2022.02.07
+			//Level2数据一般用于HFT场景，所以不做复权处理
+			//所以不读取订阅标记
+			uint32_t sid = it->first;
 			auto cit = _ctx_map.find(sid);
 			if (cit != _ctx_map.end())
 			{
@@ -167,10 +173,13 @@ void WtHftEngine::handle_push_transaction(WTSTransData* curTrans)
 	auto sit = _trans_sub_map.find(stdCode);
 	if (sit != _trans_sub_map.end())
 	{
-		const SIDSet& sids = sit->second;
+		const SubList& sids = sit->second;
 		for (auto it = sids.begin(); it != sids.end(); it++)
 		{
-			uint32_t sid = *it;
+			//By Wesley @ 2022.02.07
+			//Level2数据一般用于HFT场景，所以不做复权处理
+			//所以不读取订阅标记
+			uint32_t sid = it->first;
 			auto cit = _ctx_map.find(sid);
 			if (cit != _ctx_map.end())
 			{
@@ -184,31 +193,31 @@ void WtHftEngine::handle_push_transaction(WTSTransData* curTrans)
 void WtHftEngine::sub_order_detail(uint32_t sid, const char* stdCode)
 {
 	std::size_t length = strlen(stdCode);
-	if (stdCode[length - 1] == 'Q' || stdCode[length - 1] == 'H')
+	if (stdCode[length - 1] == SUFFIX_QFQ || stdCode[length - 1] == SUFFIX_HFQ)
 		length--;
 
-	SIDSet& sids = _orddtl_sub_map[std::string(stdCode, length)];
-	sids.insert(sid);
+	SubList& sids = _orddtl_sub_map[std::string(stdCode, length)];
+	sids[sid] = std::make_pair(sid, 0);
 }
 
 void WtHftEngine::sub_order_queue(uint32_t sid, const char* stdCode)
 {
 	std::size_t length = strlen(stdCode);
-	if (stdCode[length - 1] == 'Q' || stdCode[length - 1] == 'H')
+	if (stdCode[length - 1] == SUFFIX_QFQ || stdCode[length - 1] == SUFFIX_HFQ)
 		length--;
 
-	SIDSet& sids = _ordque_sub_map[std::string(stdCode, length)];
-	sids.insert(sid);
+	SubList& sids = _ordque_sub_map[std::string(stdCode, length)];
+	sids[sid] = std::make_pair(sid, 0);
 }
 
 void WtHftEngine::sub_transaction(uint32_t sid, const char* stdCode)
 {
 	std::size_t length = strlen(stdCode);
-	if (stdCode[length - 1] == 'Q' || stdCode[length - 1] == 'H')
+	if (stdCode[length - 1] == SUFFIX_QFQ || stdCode[length - 1] == SUFFIX_HFQ)
 		length--;
 
-	SIDSet& sids = _trans_sub_map[std::string(stdCode, length)];
-	sids.insert(sid);
+	SubList& sids = _trans_sub_map[std::string(stdCode, length)];
+	sids[sid] = std::make_pair(sid, 0);
 }
 
 void WtHftEngine::on_tick(const char* stdCode, WTSTickData* curTick)
@@ -217,30 +226,95 @@ void WtHftEngine::on_tick(const char* stdCode, WTSTickData* curTick)
 
 	_data_mgr->handle_push_quote(stdCode, curTick);
 
-	auto sit = _tick_sub_map.find(stdCode);
-	if (sit != _tick_sub_map.end())
+	//auto sit = _tick_sub_map.find(stdCode);
+	//if (sit != _tick_sub_map.end())
+	//{
+	//	const SubList& sids = sit->second;
+	//	for (auto it = sids.begin(); it != sids.end(); it++)
+	//	{
+	//		uint32_t sid = it->first;
+	//		auto cit = _ctx_map.find(sid);
+	//		if (cit != _ctx_map.end())
+	//		{
+	//			HftContextPtr& ctx = (HftContextPtr&)cit->second;
+	//			ctx->on_tick(stdCode, curTick);
+	//		}
+	//	}
+	//}
+
+	/*
+	 *	By Wesley @ 2022.02.07
+	 *	这里做了一个彻底的调整
+	 *	第一，检查订阅标记，如果标记为0，即无复权模式，则直接按照原始代码触发ontick
+	 *	第二，如果标记为1，即前复权模式，则将代码转成xxxx-，再触发ontick
+	 *	第三，如果标记为2，即后复权模式，则将代码转成xxxx+，再把tick数据做一个修正，再触发ontick
+	 */
+	if(_ready)
 	{
-		const SIDSet& sids = sit->second;
-		for (auto it = sids.begin(); it != sids.end(); it++)
+		auto sit = _tick_sub_map.find(stdCode);
+		if (sit != _tick_sub_map.end())
 		{
-			uint32_t sid = *it;
-			auto cit = _ctx_map.find(sid);
-			if (cit != _ctx_map.end())
+			const SubList& sids = sit->second;
+			for (auto it = sids.begin(); it != sids.end(); it++)
 			{
-				HftContextPtr& ctx = (HftContextPtr&)cit->second;
-				ctx->on_tick(stdCode, curTick);
+				uint32_t sid = it->first;
+
+
+				auto cit = _ctx_map.find(sid);
+				if (cit != _ctx_map.end())
+				{
+					HftContextPtr& ctx = (HftContextPtr&)cit->second;
+					uint32_t opt = it->second.second;
+
+					if (opt == 0)
+					{
+						ctx->on_tick(stdCode, curTick);
+					}
+					else
+					{
+						std::string wCode = stdCode;
+						wCode = fmt::format("{}{}", stdCode, opt == 1 ? SUFFIX_QFQ : SUFFIX_HFQ);
+						if (opt == 1)
+						{
+							ctx->on_tick(wCode.c_str(), curTick);
+						}
+						else //(opt == 2)
+						{
+							WTSTickData* newTick = WTSTickData::create(curTick->getTickStruct());
+							WTSTickStruct& newTS = newTick->getTickStruct();
+
+							//这里做一个复权因子的处理
+							double factor = _data_mgr->get_adjusting_factor(stdCode, get_trading_date());
+							newTS.open *= factor;
+							newTS.high *= factor;
+							newTS.low *= factor;
+							newTS.price *= factor;
+
+							_price_map[wCode] = newTS.price;
+
+							ctx->on_tick(wCode.c_str(), newTick);
+							newTick->release();
+						}
+					}
+
+				}
+
+
 			}
+
 		}
 	}
 }
 
 void WtHftEngine::on_bar(const char* stdCode, const char* period, uint32_t times, WTSBarStruct* newBar)
 {
-	std::string key = StrUtil::printf("%s-%s-%u", stdCode, period, times);
-	const SIDSet& sids = _bar_sub_map[key];
+	thread_local static char key[64] = { 0 };
+	fmtutil::format_to(key, "{}-{}-{}", stdCode, period, times);
+
+	const SubList& sids = _bar_sub_map[key];
 	for (auto it = sids.begin(); it != sids.end(); it++)
 	{
-		uint32_t sid = *it;
+		uint32_t sid = it->first;
 		auto cit = _ctx_map.find(sid);
 		if (cit != _ctx_map.end())
 		{
@@ -252,7 +326,7 @@ void WtHftEngine::on_bar(const char* stdCode, const char* period, uint32_t times
 
 void WtHftEngine::on_session_begin()
 {
-	WTSLogger::info("Trading day %u begun", _cur_tdate);
+	WTSLogger::info_f("Trading day {} begun", _cur_tdate);
 	WtEngine::on_session_begin();
 
 	for (auto it = _ctx_map.begin(); it != _ctx_map.end(); it++)
@@ -263,6 +337,8 @@ void WtHftEngine::on_session_begin()
 
 	if (_evt_listener)
 		_evt_listener->on_session_event(_cur_tdate, true);
+
+	_ready = true;
 }
 
 void WtHftEngine::on_session_end()
@@ -275,7 +351,7 @@ void WtHftEngine::on_session_end()
 		ctx->on_session_end(_cur_tdate);
 	}
 
-	WTSLogger::info("Trading day %u ended", _cur_tdate);
+	WTSLogger::info_f("Trading day {} ended", _cur_tdate);
 	if (_evt_listener)
 		_evt_listener->on_session_event(_cur_tdate, false);
 }

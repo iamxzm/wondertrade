@@ -148,6 +148,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <DelayLoadDLLs>
       </DelayLoadDLLs>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -176,10 +177,10 @@
     <ClCompile Include="ParserFemas.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\API\Femas3.02\USTPFtdcMduserApi.h" />
+    <ClInclude Include="..\API\Femas3.02\USTPFtdcUserApiDataType.h" />
+    <ClInclude Include="..\API\Femas3.02\USTPFtdcUserApiStruct.h" />
     <ClInclude Include="ParserFemas.h" />
-    <ClInclude Include="ustptraderapi\USTPFtdcMduserApi.h" />
-    <ClInclude Include="ustptraderapi\USTPFtdcUserApiDataType.h" />
-    <ClInclude Include="ustptraderapi\USTPFtdcUserApiStruct.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

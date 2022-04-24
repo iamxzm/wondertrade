@@ -6,30 +6,27 @@ cmake_minimum_required(VERSION 3.0.0)
 project(WTSUtils LANGUAGES C CXX)
 SET(CMAKE_CXX_STANDARD 11)
 
+IF(MSVC)
+ELSE(GNUCC)
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+ENDIF()
 
+SET(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/build_${PLATFORM}/${CMAKE_BUILD_TYPE}/libs)
 
-#4. 添加包含文件目录
-IF (WIN32)
-	IF("${CMAKE_GENERATOR}" MATCHES "(Win64|IA64)")
-		SET(INCS $ENV{MyDepends141}/include)
-		SET(LNKS $ENV{MyDepends141}/lib/x64)
-	ELSE()
-		SET(INCS $ENV{MyDepends141}/include)
-		SET(LNKS $ENV{MyDepends141}/lib/x86)
-	ENDIF()
-ELSE (UNIX)
-	SET (MyDeps "/home/mydeps")
-	SET(INCS ${MyDeps}/include)
-	SET(LNKS ${MyDeps}/lib)
-ENDIF ()
-
-SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/libs)
+LIST(APPEND INCS "./yamlcpp")
 
 #7. 添加源码
-file(GLOB SRCS "*.cpp" "./zstdlib/*.c" "./StackTracer/*.cpp")
-file(GLOB HDRS "*.h" "./zstdlib/*.h" "./StackTracer/*.hpp")
+file(GLOB SRCS "*.cpp" "./zstdlib/*.c" "./yamlcpp/*.cpp" "./lmdb/*.c")
+file(GLOB HDRS "*.h" "./zstdlib/*.h")
+
+IF(MSVC)
+LIST(APPEND SRCS "./StackTracer/StackTracer.cpp" "./StackTracer/StackWalker.cpp")
+ELSE (GNUCC)
+LIST(APPEND SRCS "./StackTracer/StackTracer.cpp")
+ENDIF()
+
+INCLUDE_DIRECTORIES(${INCS})
 
 #8. 编译成动态库，并生成库文件
 add_library(WTSUtils STATIC ${SRCS} ${HDRS})

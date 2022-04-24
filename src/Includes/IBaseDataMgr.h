@@ -14,9 +14,9 @@
 #include "WTSMarcos.h"
 #include "FasterDefs.h"
 
-typedef faster_hashset<std::string> ContractSet;
+NS_WTP_BEGIN
+typedef CodeSet ContractSet;
 
-NS_OTP_BEGIN
 class WTSContractInfo;
 class WTSArray;
 class WTSSessionInfo;
@@ -36,7 +36,6 @@ class IBaseDataMgr
 public:
 	virtual WTSCommodityInfo*	getCommodity(const char* exchgpid)						= 0;
 	virtual WTSCommodityInfo*	getCommodity(const char* exchg, const char* pid)		= 0;
-	virtual WTSCommodityInfo*	getCommodity(WTSContractInfo* ct)						= 0;
 
 	virtual WTSContractInfo*	getContract(const char* code, const char* exchg = "")	= 0;
 	virtual WTSArray*			getContracts(const char* exchg = "")					= 0; 
@@ -50,4 +49,4 @@ public:
 	virtual uint32_t			calcTradingDate(const char* stdPID, uint32_t uDate, uint32_t uTime, bool isSession = false) = 0;
 	virtual uint64_t			getBoundaryTime(const char* stdPID, uint32_t tDate, bool isSession = false, bool isStart = true) = 0;
 };
-NS_OTP_END
+NS_WTP_END
