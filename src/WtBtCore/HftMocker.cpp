@@ -24,26 +24,6 @@
 
 #include "../WTSTools/WTSLogger.h"
 
-
-using bsoncxx::builder::basic::kvp;
-using bsoncxx::builder::basic::make_array;
-using bsoncxx::builder::basic::make_document;
-using bsoncxx::to_json;
-
-using bsoncxx::builder::stream::close_array;
-using bsoncxx::builder::stream::close_document;
-using bsoncxx::builder::stream::document;
-using bsoncxx::builder::stream::finalize;
-using bsoncxx::builder::stream::open_array;
-using bsoncxx::builder::stream::open_document;
-
-using namespace mongocxx;
-
-namespace rj = rapidjson;
-using namespace std;
-
-std::mutex c1_mtx_1{};
-
 uint32_t makeLocalOrderID()
 {
 	static std::atomic<uint32_t> _auto_order_id{ 0 };
@@ -324,42 +304,6 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 		std::unique_lock<std::recursive_mutex> lck(_mtx_control);
 	}
 
-	//交易日
-	if (_traderday < _replayer->get_trading_date())
-	{
-		_new_trade_day = true;
-		_dayacc_insert_flag = true;
-		_traderday = _replayer->get_trading_date();
-	}
-
-	_pretraderday = _replayer->getPrevTDate(stdCode, _traderday);
-
-	//昨结
-	_close_price = newTick->presettle();
-	if (decimal::eq(_close_price, 0.0))
-	{
-		_close_price = newTick->open();
-	}
-	//结算价
-	_settlepx = newTick->price();
-
-	std::string inst = "";
-	auto barinstdate = _replayer->get_barinstdate();
-	for (auto it = barinstdate->begin(); it != barinstdate->end(); it++)
-	{
-		bool quit = false;
-		for (auto iit = it->second.begin(); iit != it->second.end(); iit++)
-		{
-			if (iit->second._s_date <= newTick->actiondate() && iit->second._e_date >= newTick->actiondate())
-			{
-				inst = iit->first;
-				quit = true;
-				break;
-			}
-		}
-		if (quit) break;
-	}
-
 	update_dyn_profit(stdCode, newTick);
 
 	procTask();
@@ -370,17 +314,9 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 		for (auto it = _orders.begin(); it != _orders.end(); it++)
 		{
 			uint32_t localid = it->first;
-			bool bNeedErase = procOrder(localid, inst);
+			bool bNeedErase = procOrder(localid);
 			if (bNeedErase)
-			{
-				_changepos = true;  //持仓变化
-				if (_firstday == 0)
-				{
-					_firstday = _replayer->get_trading_date();
-				}
 				ids.emplace_back(localid);
-			}
-				
 		}
 
 		for(uint32_t localid : ids)
@@ -407,14 +343,6 @@ void HftMocker::on_tick(const char* stdCode, WTSTickData* newTick)
 		while (_resumed)
 			_cond_calc.notify_all();
 	}
-
-	//持仓变化更新数据
-	if (_changepos)
-	{
-		_changepos = false;
-		set_dayaccount(stdCode, newTick);
-	}
-
 }
 
 void HftMocker::on_tick_updated(const char* stdCode, WTSTickData* newTick)
@@ -560,14 +488,13 @@ otp::OrderIDs HftMocker::stra_buy(const char* stdCode, double price, double qty,
 	order._price = price;
 	order._total = qty;
 	order._left = qty;
-	order.insert_date_time = getTimeStamp();
 
 	{
 		_mtx_ords.lock();
 		_orders[localid] = order;
 		_mtx_ords.unlock();
 	}
-	//WTSLogger::info("localid%u,isBuy%d,price%f,total%f,left%f\n", order._localid, order._isBuy, order._price, order._total, order._left);
+
 	postTask([this, localid](){
 		const OrderInfo& ordInfo = _orders[localid];
 		on_entrust(localid, ordInfo._code, true, "下单成功", ordInfo._usertag);
@@ -590,14 +517,14 @@ void HftMocker::on_order(uint32_t localid, const char* stdCode, bool isBuy, doub
 		_strategy->on_order(this, localid, stdCode, isBuy, totalQty, leftQty, price, isCanceled, userTag);
 }
 
-void HftMocker::on_trade(uint32_t localid, std::string instid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag/* = ""*/,time_t insert_date_time)
+void HftMocker::on_trade(uint32_t localid, const char* stdCode, bool isBuy, double vol, double price, const char* userTag/* = ""*/)
 {
 	if (_strategy)
 		_strategy->on_trade(this, localid, stdCode, isBuy, vol, price, userTag);
 
 	const PosInfo& posInfo = _pos_map[stdCode];
 	double curPos = posInfo._volume + vol * (isBuy ? 1 : -1);
-	do_set_position(stdCode, instid, curPos, insert_date_time, price, userTag);
+	do_set_position(stdCode, curPos, price, userTag);
 }
 
 void HftMocker::on_entrust(uint32_t localid, const char* stdCode, bool bSuccess, const char* message, const char* userTag/* = ""*/)
@@ -647,324 +574,7 @@ void HftMocker::update_dyn_profit(const char* stdCode, WTSTickData* newTick)
 	}
 }
 
-
-void HftMocker::set_dayaccount(const char* stdCode, WTSTickData* newTick, bool bEmitStrategy /* = true */)
-{
-	mongocxx::database mongodb = _replayer->_client["lsqt_db"];
-	mongocxx::collection acccoll = mongodb["his_account"];
-	mongocxx::collection daycoll = mongodb["day_account"];
-	mongocxx::collection allcoll = mongodb["account"];
-
-	bsoncxx::document::value position_doc = document{} << "test" << "INIT DOC" << finalize;
-
-	int64_t curTime = _replayer->get_date() * 1000000 + _replayer->get_min_time() * 100 + _replayer->get_secs();
-
-	double total_dynprofit = 0;
-	for (auto v : _pos_map)
-	{
-		const PosInfo& pInfo = v.second;
-		total_dynprofit += pInfo._dynprofit;
-	}
-
-	_fund_info._total_dynprofit = total_dynprofit;
-
-	//计算期初权益
-	if (_new_trade_day)
-	{
-		_static_balance = _total_money + _used_margin + _fund_info._total_fees - _fund_info._total_dynprofit - _fund_info._total_profit;
-		_new_trade_day = false;
-	}
-	//今日资产 = 期初权益 + 持仓盈亏 + 平仓盈亏 - 手续费
-	_balance = _static_balance + _fund_info._total_dynprofit + _total_closeprofit - _fund_info._total_fees;
-	//当日盈亏
-	_day_profit = _balance - _static_balance;
-	//策略收益
-	_total_profit = _balance - init_money;
-
-	//收益率公式 = (当前净值/最初净值)
-	_daily_rate_of_return = (_day_profit / _static_balance);
-	if (isnan(_daily_rate_of_return) || !isfinite(_daily_rate_of_return))
-	{
-		_daily_rate_of_return = 0;
-	}
-
-	//基准收益率
-	double benchmarkPrePrice = _close_price;		//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, preTradeDay).doubleValue();  //昨收价
-	double benchmarkEndPrice = _settlepx;			//cacheHandler.getClosePriceByDate(BENCHMARK_CODE, tradeDay).doubleValue(); //今收价
-
-	_benchmark_rate_of_return = (benchmarkPrePrice / benchmarkEndPrice) - 1;
-	if (isnan(_benchmark_rate_of_return) || !isfinite(_benchmark_rate_of_return) || _firstday == _replayer->get_trading_date())
-	{
-		_benchmark_rate_of_return = 0;
-	}
-
-	//基准累计收益率
-	_benchmark_cumulative_rate = benchmarkEndPrice / _firstprice;
-	if (!isfinite(_benchmark_cumulative_rate))
-	{
-		_benchmark_cumulative_rate = 0;
-	}
-
-	//日超额收益率
-	_abnormal_rate_of_return = (_daily_rate_of_return + 1) / (_benchmark_rate_of_return + 1) - 1;
-	if (isnan(_abnormal_rate_of_return) || !isfinite(_abnormal_rate_of_return))
-	{
-		_abnormal_rate_of_return = 0;
-	}
-
-	_win_or_lose_flag = _daily_rate_of_return > _benchmark_rate_of_return ? 1 : 0;
-
-	//策略累计收益率
-	bsoncxx::stdx::optional<bsoncxx::document::value> day_result = daycoll.find_one(make_document(
-		kvp("trade_day", to_string(_pretraderday)),
-		kvp("strategy_id", _name),
-		kvp("accounts.314159.account_id", "314159")
-		));
-
-	double preRate = 0;
-	if (day_result)
-	{
-		bsoncxx::document::view view = day_result->view();
-		bsoncxx::document::element msgs_ele = view["strategy_cumulative_rate"];
-		if (msgs_ele && msgs_ele.type() == bsoncxx::type::k_double)
-		{
-			preRate = view["strategy_cumulative_rate"].get_double().value;
-		}
-	}
-	else
-	{
-		preRate = 0;
-	}
-	if (_firstday == _replayer->get_trading_date())
-	{
-		_strategy_cumulative_rate = 0;
-	}
-	else
-	{
-		_strategy_cumulative_rate = (preRate + 1) * (_daily_rate_of_return + 1) - 1;	//(preRate + 1) * (currRate + 1) - 1;
-	}
-
-	//储存到mongo
-	position_doc = document{} <<
-		"position_profit" << 0.0 <<
-		"available" << _total_money <<
-		"frozen_premium" << 0.0 <<
-		"close_profit" << _total_closeprofit <<
-		"day_profit" << _day_profit <<
-		"premium" << 0.0 <<
-		"balance" << _balance <<
-		"static_balance" << _static_balance <<
-		"currency" << "CNY" <<
-		"commission" << 0.0 <<
-		"frozen_margin" << 0.0 <<
-		"pre_balance" << _static_balance <<
-		"benchmark_rate_of_return" << _benchmark_rate_of_return <<
-		"benchmark_cumulative_rate" << _benchmark_cumulative_rate <<
-		"strategy_cumulative_rate" << _strategy_cumulative_rate <<
-		"float_profit" << 0.0 <<
-		"timestamp" << curTime <<
-		"margin" << _used_margin <<
-		"risk_ratio" << 0.0 <<
-		"trade_day" << to_string(_traderday) <<
-		"frozen_commission" << 0.0 <<
-		"abnormal_rate_of_return" << _abnormal_rate_of_return <<
-		"daily_rate_of_return" << _daily_rate_of_return <<
-		"win_or_lose_flag" << _win_or_lose_flag <<
-		"strategy_id" << _name <<
-		"deposit" << 0.0 <<
-		"accounts" << open_document <<
-		"314159" << open_document <<
-		"position_profit" << 0.0 <<
-		"margin" << _used_margin <<
-		"risk_ratio" << 0.0 <<
-		"frozen_commission" << 0.0 <<
-		"frozen_premium" << 0.0 <<
-		"available" << 0.0 <<
-		"close_profit" << _total_closeprofit <<
-		"account_id" << "314159" <<
-		"premium" << 0.0 <<
-		"static_balance" << _static_balance <<
-		"balance" << _balance <<
-		"deposit" << 0.0 <<
-		"currency" << "rmb" <<
-		"pre_balance" << 0.0 <<
-		"commission" << 0.0 <<
-		"frozen_margin" << 0.0 <<
-		"float_profit" << 0.0 <<
-		"withdraw" << 0.0 <<
-		close_document <<
-		close_document <<
-		"withdraw" << 0.0 <<
-		finalize;
-
-
-	acccoll.insert_one(std::move(position_doc));
-
-	//插入day acc
-	if (_dayacc_insert_flag || _per_strategy_id != _name)
-	{
-		_per_strategy_id = _name;
-
-		position_doc = document{} <<
-			"position_profit" << 0.0 <<
-			"available" << _total_money <<
-			"frozen_premium" << 0.0 <<
-			"close_profit" << _total_closeprofit <<
-			"day_profit" << _day_profit <<
-			"premium" << 0.0 <<
-			"balance" << _balance <<
-			"static_balance" << _static_balance <<
-			"currency" << "CNY" <<
-			"commission" << 0.0 <<
-			"frozen_margin" << 0.0 <<
-			"pre_balance" << _static_balance <<
-			"benchmark_rate_of_return" << _benchmark_rate_of_return <<
-			"benchmark_cumulative_rate" << _benchmark_cumulative_rate <<
-			"strategy_cumulative_rate" << _strategy_cumulative_rate <<
-			"float_profit" << 0.0 <<
-			"timestamp" << curTime <<
-			"margin" << _used_margin <<
-			"risk_ratio" << 0.0 <<
-			"trade_day" << to_string(_traderday) <<
-			"frozen_commission" << 0.0 <<
-			"abnormal_rate_of_return" << _abnormal_rate_of_return <<
-			"daily_rate_of_return" << _daily_rate_of_return <<
-			"win_or_lose_flag" << _win_or_lose_flag <<
-			"strategy_id" << _name <<
-			"total_deposit" << init_money <<
-			"total_profit" << _total_profit <<
-			"accounts" << open_document <<
-			"314159" << open_document <<
-			"position_profit" << 0.0 <<
-			"margin" << _used_margin <<
-			"risk_ratio" << 0.0 <<
-			"frozen_commission" << 0.0 <<
-			"frozen_premium" << 0.0 <<
-			"available" << 0.0 <<
-			"close_profit" << _total_closeprofit <<
-			"account_id" << "314159" <<
-			"premium" << 0.0 <<
-			"static_balance" << _static_balance <<
-			"balance" << _balance <<
-			"deposit" << 0.0 <<
-			"currency" << "rmb" <<
-			"pre_balance" << 0.0 <<
-			"commission" << 0.0 <<
-			"frozen_margin" << 0.0 <<
-			"float_profit" << 0.0 <<
-			"withdraw" << 0.0 <<
-			close_document <<
-			close_document <<
-			"total_withdraw" << 0.0 <<
-			finalize;
-
-		daycoll.insert_one(std::move(position_doc));
-		_dayacc_insert_flag = false;
-	}
-	else //更新day acc
-	{
-		daycoll.update_one(
-			make_document(kvp("trade_day", to_string(_traderday)),  kvp("strategy_id", _name), kvp("accounts.314159.account_id", "314159")),
-			make_document(kvp("$set", make_document(kvp("available", _total_money),
-				kvp("close_profit", _total_closeprofit),
-				kvp("day_profit", _day_profit),
-				kvp("balance", _balance),
-				kvp("static_balance", _static_balance),
-				kvp("benchmark_rate_of_return", _benchmark_rate_of_return),
-				kvp("benchmark_cumulative_rate", _benchmark_cumulative_rate),
-				kvp("strategy_cumulative_rate", _strategy_cumulative_rate),
-				kvp("timestamp", curTime),
-				kvp("margin", _used_margin),
-				kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
-				kvp("daily_rate_of_return", _daily_rate_of_return),
-				kvp("win_or_lose_flag", _win_or_lose_flag),
-				kvp("total_profit", _total_profit),
-				kvp("total_deposit", init_money),
-				kvp("accounts.314159.margin", _used_margin),
-				kvp("accounts.314159.static_balance", _static_balance),
-				kvp("accounts.314159.balance", _balance),
-				kvp("accounts.314159.close_profit", _total_closeprofit)
-			))));
-	}
-
-	//accounts数据库
-	bsoncxx::stdx::optional<bsoncxx::document::value> maybe_result = allcoll.find_one(make_document(kvp("strategy_id", _name),kvp("accounts.314159.account_id", "314159")));
-
-	if (maybe_result)
-	{
-		allcoll.update_one(
-			make_document(kvp("accounts", "314159"), kvp("strategy_id", _name)),
-			make_document(kvp("$set", make_document(kvp("available", _total_money),
-				kvp("day_profit", _day_profit),
-				kvp("close_profit", _total_closeprofit),
-				kvp("balance", _balance),
-				kvp("static_balance", _static_balance),
-				kvp("benchmark_rate_of_return", _benchmark_rate_of_return),
-				kvp("timestamp", curTime),
-				kvp("margin", _used_margin),
-				kvp("abnormal_rate_of_return", _abnormal_rate_of_return),
-				kvp("daily_rate_of_return", _daily_rate_of_return),
-				kvp("win_or_lose_flag", _win_or_lose_flag),
-				kvp("accounts.314159.margin", _used_margin),
-				kvp("accounts.314159.static_balance", _static_balance),
-				kvp("accounts.314159.balance", _balance),
-				kvp("accounts.314159.close_profit", _total_closeprofit)
-			))));
-	}
-	else
-	{
-		allcoll.insert_one(
-			document{} <<
-			"position_profit" << 0.0 <<
-			"available" << _total_money <<
-			"frozen_premium" << 0.0 <<
-			"close_profit" << _total_closeprofit <<
-			"day_profit" << _day_profit <<
-			"premium" << 0.0 <<
-			"balance" << _balance <<
-			"static_balance" << _static_balance <<
-			"currency" << "CNY" <<
-			"commission" << 0.0 <<
-			"frozen_margin" << 0.0 <<
-			"pre_balance" << _static_balance <<
-			"float_profit" << 0.0 <<
-			"timestamp" << curTime <<
-			"margin" << _used_margin <<
-			"risk_ratio" << 0.0 <<
-			"trade_day" << to_string(_traderday) <<
-			"frozen_commission" << 0.0 <<
-			"strategy_id" << _name <<
-			"deposit" << 0.0 <<
-			"accounts" << open_document <<
-			"314159" << open_document <<
-			"position_profit" << 0.0 <<
-			"margin" << _used_margin <<
-			"risk_ratio" << 0.0 <<
-			"frozen_commission" << 0.0 <<
-			"frozen_premium" << 0.0 <<
-			"available" << 0.0 <<
-			"close_profit" << _total_closeprofit <<
-			"account_id" << "314159" <<
-			"premium" << 0.0 <<
-			"static_balance" << _static_balance <<
-			"balance" << _balance <<
-			"deposit" << 0.0 <<
-			"currency" << "rmb" <<
-			"pre_balance" << 0.0 <<
-			"commission" << 0.0 <<
-			"frozen_margin" << 0.0 <<
-			"float_profit" << 0.0 <<
-			"withdraw" << 0.0 <<
-			close_document <<
-			close_document <<
-			"withdraw" << 0.0 <<
-			finalize
-		);
-	}
-}
-
-
-bool HftMocker::procOrder(uint32_t localid,std::string instid)
+bool HftMocker::procOrder(uint32_t localid)
 {
 	auto it = _orders.find(localid);
 	if (it == _orders.end())
@@ -1023,7 +633,7 @@ bool HftMocker::procOrder(uint32_t localid,std::string instid)
 	auto vols = splitVolume((uint32_t)maxQty);
 	for(uint32_t curQty : vols)
 	{
-		on_trade(ordInfo._localid, instid, ordInfo._code, ordInfo._isBuy, curQty, curPx, ordInfo._usertag,ordInfo.insert_date_time);
+		on_trade(ordInfo._localid, ordInfo._code, ordInfo._isBuy, curQty, curPx, ordInfo._usertag);
 
 		ordInfo._left -= curQty;
 		on_order(localid, ordInfo._code, ordInfo._isBuy, ordInfo._total, ordInfo._left, ordInfo._price, false, ordInfo._usertag);
@@ -1055,13 +665,12 @@ otp::OrderIDs HftMocker::stra_sell(const char* stdCode, double price, double qty
 	order._price = price;
 	order._total = qty;
 	order._left = qty;
-	order.insert_date_time = getTimeStamp();
 
 	{
 		StdLocker<StdRecurMutex> lock(_mtx_ords);
 		_orders[localid] = order;
 	}
-	//WTSLogger::info("localid%u,isBuy%d,price%f,total%f,left%f\n", order._localid, order._isBuy, order._price, order._total, order._left);
+
 	postTask([this, localid]() {
 		const OrderInfo& ordInfo = _orders[localid];
 		on_entrust(localid, ordInfo._code, true, "下单成功", ordInfo._usertag);
@@ -1260,248 +869,7 @@ void HftMocker::log_close(const char* stdCode, bool isLong, uint64_t openTime, d
 		<< totalprofit << "," << enterTag << "," << exitTag << "\n";
 }
 
-void HftMocker::insert_his_position(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime)
-{
-	auto db = _replayer->_client["lsqt_db"];
-	auto _poscoll_1 = db["his_positions"];
-	bsoncxx::document::value position_doc = document{} << finalize;
-	std::string exch_inst = exch_id;
-	exch_inst += "::";
-	exch_inst += inst_id;
-	if (dInfo._volume <= 0)
-	{
-		return;
-	}
-	if (dInfo._long)
-	{
-		position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
-			"strategy_id" << _name <<//
-			"position" << open_document <<
-			exch_inst << open_document <<
-			"position_profit" << dInfo._profit <<
-			"float_profit_short" << 0.0 <<
-			"open_price_short" << 0.0 <<
-			"volume_long_frozen_today" << 0 <<//
-			"open_cost_long" << fee <<
-			"position_price_short" << 0.0 <<
-			"float_profit_long" << pInfo._dynprofit <<
-			"open_price_long" << dInfo._price <<
-			"exchange_id" << exch_id <<
-			"volume_short_frozen_today" << 0 <<//
-			"position_price_long" << dInfo._price <<
-			"position_profit_long" << dInfo._profit <<
-			"volume_short_today" << 0 <<
-			"position_profit_short" << 0.0 <<
-			"volume_long" << dInfo._volume <<
-			"margin_short" << 0.0 <<//
-			"volume_long_frozen_his" << 0 <<//
-			"float_profit" << 0.0 <<//
-			"open_cost_short" << 0.0 <<
-			"margin" << 0.0 <<//
-			"position_cost_short" << 0.0 <<//
-			"volume_short_frozen_his" << 0 <<//
-			"instrument_id" << inst_id <<
-			"volume_short" << 0 <<
-			"account_id" << "" <<
-			"volume_long_today" << dInfo._volume <<
-			"position_cost_long" << 0.0 <<//
-			"volume_long_his" << 0 <<//
-			"hedge_flag" << " " <<//
-			"margin_long" << 0.0 <<//
-			"volume_short_his" << 0 <<//
-			"last_price" << _settlepx << //
-			close_document <<
-			close_document <<
-			"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-			finalize;
-	}
-	else
-	{
-		position_doc = document{} << "trade_day" << to_string(dInfo._opentdate) <<
-			"strategy_id" << _name <<//
-			"position" << open_document <<
-			exch_inst << open_document <<
-			"position_profit" << dInfo._profit <<
-			"float_profit_short" << pInfo._dynprofit <<
-			"open_price_short" << dInfo._price <<
-			"volume_long_frozen_today" << 0 <<//
-			"open_cost_long" << 0.0 <<
-			"position_price_short" << dInfo._price <<
-			"float_profit_long" << 0.0 <<
-			"open_price_long" << 0.0 <<
-			"exchange_id" << exch_id <<
-			"volume_short_frozen_today" << 0 <<//
-			"position_price_long" << 0.0 <<
-			"position_profit_long" << 0.0 <<
-			"volume_short_today" << dInfo._volume <<
-			"position_profit_short" << dInfo._profit <<
-			"volume_long" << 0 <<
-			"margin_short" << 0.0 <<//
-			"volume_long_frozen_his" << 0 <<//
-			"float_profit" << 0.0 <<//
-			"open_cost_short" << fee <<
-			"margin" << 0.0 <<//
-			"position_cost_short" << 0.0 <<//
-			"volume_short_frozen_his" << 0 <<//
-			"instrument_id" << inst_id <<
-			"volume_short" << dInfo._volume <<
-			"account_id" << "" <<
-			"volume_long_today" << 0.0 <<
-			"position_cost_long" << fee <<//
-			"volume_long_his" << 0 <<//
-			"hedge_flag" << " " <<//
-			"margin_long" << 0.0 <<//
-			"volume_short_his" << 0 <<//
-			"last_price" << _settlepx << //
-			close_document <<
-			close_document <<
-			"timestamp" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-			finalize;
-	}
-	c1_mtx_1.lock();
-	auto result = _poscoll_1.insert_one(move(position_doc));
-	bsoncxx::oid oid = result->inserted_id().get_oid().value;
-	//std::cout << "insert one:" << oid.to_string() << std::endl;
-	c1_mtx_1.unlock();
-
-}
-
-void HftMocker::insert_his_trades(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset)
-{
-	auto db = _replayer->_client["lsqt_db"];
-	auto _poscoll_1 = db["his_trades"];
-	bsoncxx::document::value position_doc = document{} << finalize;
-	std::string exch_inst = exch_id;
-	exch_inst += "::";
-	exch_inst += inst_id;
-	if (dInfo._volume < 0)
-	{
-		return;
-	}
-
-	std::string off_set = "";
-	if (offset == 1)
-	{
-		off_set = "P033_1";
-	}
-	else if (offset == 2)
-	{
-		off_set = "P033_2";
-	}
-	else if (offset == 3)
-	{
-		off_set = "P033_3";
-	}
-	if (dInfo._long)
-	{
-		position_doc = document{} << "exchange_trade_id" << "111111" <<
-			"account_id" << "111111" <<
-			"commission" << fee <<
-			"direction" << "P032_1" <<
-			"exchange_id" << exch_id <<
-			"exchange_order_id" << "123456" <<
-			"instrument_id" << inst_id <<
-			"offset" << off_set <<
-			"order_id" << "123456" <<
-			"order_type" << "48" <<
-			"price" << dInfo._price <<
-			"seqno" << 0 <<
-			"strategy_id" << _name <<
-			"trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-			"volume" << dInfo._volume <<
-			finalize;
-	}
-	else
-	{
-		position_doc = document{} << "exchange_trade_id" << "111111" <<
-			"account_id" << "111111" <<
-			"commission" << fee <<
-			"direction" << "P032_2" <<
-			"exchange_id" << exch_id <<
-			"exchange_order_id" << "123456" <<
-			"instrument_id" << inst_id <<
-			"offset" << off_set <<
-			"order_id" << "123456" <<
-			"order_type" << "48" <<
-			"price" << dInfo._price <<
-			"seqno" << 0 <<
-			"strategy_id" << _name <<
-			"trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-			"volume" << dInfo._volume <<
-			finalize;
-	}
-	c1_mtx_1.lock();
-	auto result = _poscoll_1.insert_one(move(position_doc));
-	bsoncxx::oid oid = result->inserted_id().get_oid().value;
-	//std::cout << "insert one:" << oid.to_string() << std::endl;
-	c1_mtx_1.unlock();
-}
-
-void HftMocker::insert_his_trade(DetailInfo dInfo, PosInfo pInfo, double fee, std::string exch_id, std::string inst_id, uint64_t curTime, int offset,time_t insert_date_time)
-{
-	auto db = _replayer->_client["lsqt_db"];
-	auto _poscoll_1 = db["his_trade"];
-	bsoncxx::document::value position_doc = document{} << finalize;
-	std::string exch_inst = exch_id;
-	exch_inst += "::";
-	exch_inst += inst_id;
-	if (dInfo._volume < 0)
-	{
-		return;
-	}
-
-	std::string off_set = "";
-	if (offset == 1)
-	{
-		off_set = "P033_1";
-	}
-	else if (offset == 2)
-	{
-		off_set = "P033_2";
-	}
-	else if (offset == 3)
-	{
-		off_set = "P033_3";
-	}
-
-	std::string direction = "";
-	if (dInfo._long)
-	{
-		direction = "P032_1";
-	}
-	else
-	{
-		direction = "P032_2";
-	}
-	position_doc = document{} << "trade_date_time" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-		"offset" << off_set <<
-		"seqno" << "" <<
-		"exchange_trade_id" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-		"trading_day" << to_string(_replayer->get_trading_date()) <<
-		"type" << "" <<
-		"instrument_id" << inst_id <<
-		"exchange_order_id" << "" <<
-		"order_type" << direction <<
-		"exchange_type" << "M008_1" <<
-		"close_profit" << pInfo._closeprofit <<
-		"volume" << dInfo._volume <<
-		"exchange_id" << exch_id <<
-		"account_id" << "" <<
-		"price" << dInfo._price <<
-		"strategy_id" << _name <<
-		"commission" << fee <<
-		"order_id" << _replayer->StringToDatetime(to_string(curTime)) * 1000 <<
-		"insert_date_time" << insert_date_time <<
-		"direction" << direction << finalize;
-
-	c1_mtx_1.lock();
-	auto result = _poscoll_1.insert_one(move(position_doc));
-	bsoncxx::oid oid = result->inserted_id().get_oid().value;
-	//std::cout << "insert one:" << oid.to_string() << std::endl;
-	c1_mtx_1.unlock();
-}
-
-void HftMocker::do_set_position(const char* stdCode, std::string instid, double qty, time_t insert_date_time, double price /* = 0.0 */, const char* userTag /*= ""*/)
+void HftMocker::do_set_position(const char* stdCode, double qty, double price /* = 0.0 */, const char* userTag /*= ""*/)
 {
 	PosInfo& pInfo = _pos_map[stdCode];
 	double curPx = price;
@@ -1518,23 +886,10 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 
 	WTSCommodityInfo* commInfo = _replayer->get_commodity_info(stdCode);
 
-	std::string exchid = commInfo->getExchg();
-	std::string exch_inst = exchid + "::";
-	exch_inst += instid;
-
 	//成交价
 	double trdPx = curPx;
 
 	double diff = qty - pInfo._volume;
-
-	//保证金检测是否成交
-	double tempfee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
-	double tempmargin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
-	if (!decimal::gt(_total_money - (tempmargin + tempfee), 0))
-	{
-		WTSLogger::log_dyn("strategy", _name.c_str(), LL_WARN, "error:资金账户不足");
-		return;
-	}
 
 	if (decimal::gt(pInfo._volume*diff, 0))//当前持仓和仓位变化方向一致, 增加一条明细, 增加数量即可
 	{
@@ -1545,28 +900,12 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 		dInfo._price = trdPx;
 		dInfo._volume = abs(diff);
 		dInfo._opentime = curTm;
-		dInfo._margin = _margin_rate * _cur_multiplier * _close_price * abs(diff);
 		dInfo._opentdate = curTDate;
 		strcpy(dInfo._usertag, userTag);
 		pInfo._details.emplace_back(dInfo);
 
 		double fee = _replayer->calc_fee(stdCode, trdPx, abs(diff), 0);
 		_fund_info._total_fees += fee;
-
-
-		//保证金计算
-		_total_money -= dInfo._margin;
-		_total_money -= fee;
-		_used_margin += dInfo._margin;
-
-		int offset = 1;
-		if (_name != "")
-		{
-			insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
-			insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
-			insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
-		}
-
 
 		log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(diff), fee, userTag);
 	}
@@ -1598,31 +937,11 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			if (!dInfo._long)
 				profit *= -1;
 			pInfo._closeprofit += profit;
-			_total_closeprofit += profit;
 			pInfo._dynprofit = pInfo._dynprofit*dInfo._volume / (dInfo._volume + maxQty);//浮盈也要做等比缩放
 			_fund_info._total_profit += profit;
 
 			double fee = _replayer->calc_fee(stdCode, trdPx, maxQty, dInfo._opentdate == curTDate ? 2 : 1);
 			_fund_info._total_fees += fee;
-
-
-			//释放保证金
-			double cur_margin = _margin_rate * _cur_multiplier * _close_price * maxQty;
-
-			_total_money += profit;
-			_total_money -= fee;
-			_total_money += cur_margin;
-			_used_margin -= cur_margin;
-			dInfo._margin -= cur_margin;
-
-			int offset = 2;
-			if (_name != "")
-			{
-				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
-				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
-				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
-			}
-
 			//这里写成交记录
 			log_trade(stdCode, dInfo._long, false, curTm, trdPx, maxQty, fee, userTag);
 			//这里写平仓记录
@@ -1657,37 +976,8 @@ void HftMocker::do_set_position(const char* stdCode, std::string instid, double 
 			//这里还需要写一笔成交记录
 			double fee = _replayer->calc_fee(stdCode, trdPx, abs(left), 0);
 			_fund_info._total_fees += fee;
-			//添加减去费率
-			_total_money -= fee;
-
 			//_engine->mutate_fund(fee, FFT_Fee);
-
-			int offset = 1;
-			if (_name != "")
-			{
-				insert_his_position(dInfo, pInfo, fee, exchid, instid, curTm);
-				insert_his_trades(dInfo, pInfo, fee, exchid, instid, curTm, offset);
-				insert_his_trade(dInfo, pInfo, fee, exchid, instid, curTm, offset, insert_date_time);
-			}
-
 			log_trade(stdCode, dInfo._long, true, curTm, trdPx, abs(left), fee, userTag);
 		}
 	}
-}
-
-void  HftMocker::set_initacc(double money)
-{
-	init_money = money;
-	_total_money = init_money;
-	_static_balance = init_money;
-}
-
-
-std::time_t HftMocker::getTimeStamp()
-{
-	std::chrono::time_point<std::chrono::system_clock, std::chrono::milliseconds> tp = std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now());
-	auto tmp = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch());
-	std::time_t timestamp = tmp.count();
-	//std::time_t timestamp = std::chrono::system_clock::to_time_t(tp);
-	return timestamp;
 }
