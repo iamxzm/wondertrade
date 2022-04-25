@@ -10,15 +10,14 @@
 #pragma once
 #include "../Includes/IParserApi.h"
 #include "../Share/DLLHelper.hpp"
-//CTP 6.3.15
-#include "./ThostTraderApi/ThostFtdcMdApi.h"
+#include "../API/CTP6.3.15/ThostFtdcMdApi.h"
 #include <map>
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSTickData;
-NS_OTP_END
+NS_WTP_END
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class ParserCTP :	public IParserApi, public CThostFtdcMdSpi
 {
@@ -36,7 +35,7 @@ public:
 
 //IQuoteParser 接口
 public:
-	virtual bool init(WTSParams* config) override;
+	virtual bool init(WTSVariant* config) override;
 
 	virtual void release() override;
 
@@ -81,7 +80,7 @@ private:
 	/*
 	 *	订阅品种行情
 	 */
-	void SubscribeMarketData();
+	void DoSubscribeMD();
 	/*
 	 *	检查错误信息
 	 */
@@ -90,7 +89,6 @@ private:
 
 private:
 	uint32_t			m_uTradingDate;
-	LoginStatus			m_loginState;
 	CThostFtdcMdApi*	m_pUserAPI;
 
 	std::string			m_strFrontAddr;
@@ -98,6 +96,7 @@ private:
 	std::string			m_strUserID;
 	std::string			m_strPassword;
 	std::string			m_strFlowDir;
+	bool 				m_bLocaltime;	//是否使用本地时间戳
 
 	CodeSet				m_filterSubs;
 

@@ -11,43 +11,24 @@
 
 #include "../Includes/WTSTypes.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 struct WTSBarStruct;
 struct WTSTickStruct;
 struct WTSOrdDtlStruct;
 struct WTSOrdQueStruct;
 struct WTSTransStruct;
-NS_OTP_END
+NS_WTP_END
 
-USING_NS_OTP;
-
-#ifdef _WIN32
-#	define EXPORT_FLAG __declspec(dllexport)
-#	define PORTER_FLAG _cdecl
-#else
-#	define PORTER_FLAG __attribute__((_cdecl))
-#	define EXPORT_FLAG __attribute__((__visibility__("default")))
-#endif
-
-#ifndef NULL
-#ifdef __cplusplus
-#define NULL 0
-#else
-#define NULL ((void *)0)
-#endif
-#endif
-
-typedef unsigned long			WtUInt32;
-typedef unsigned long long		WtUInt64;
-typedef const char*				WtString;
+USING_NS_WTP;
 
 typedef void(PORTER_FLAG *FuncLogCallback)(WtString message);
 typedef void(PORTER_FLAG *FuncGetBarsCallback)(WTSBarStruct* bar, WtUInt32 count, bool isLast);
 typedef void(PORTER_FLAG *FuncGetTicksCallback)(WTSTickStruct* tick, WtUInt32 count, bool isLast);
 typedef void(PORTER_FLAG *FuncCountDataCallback)(WtUInt32 dataCnt);
 
-typedef bool(PORTER_FLAG *FuncGetBarItem)(WTSBarStruct* curBar,int idx);
-typedef bool(PORTER_FLAG *FuncGetTickItem)(WTSTickStruct* curTick, int idx);
+//改成直接从python传内存块的方式
+//typedef bool(PORTER_FLAG *FuncGetBarItem)(WTSBarStruct* curBar,int idx);
+//typedef bool(PORTER_FLAG *FuncGetTickItem)(WTSTickStruct* curTick, int idx);
 
 #ifdef __cplusplus
 extern "C"
@@ -63,8 +44,11 @@ extern "C"
 	EXPORT_FLAG	WtUInt32	read_dmb_ticks(WtString tickFile, FuncGetTicksCallback cb, FuncCountDataCallback cbCnt, FuncLogCallback cbLogger = NULL);
 	EXPORT_FLAG	WtUInt32	read_dmb_bars(WtString barFile, FuncGetBarsCallback cb, FuncCountDataCallback cbCnt, FuncLogCallback cbLogger = NULL);
 
-	EXPORT_FLAG bool		trans_bars(WtString barFile, FuncGetBarItem getter, int count, WtString period, FuncLogCallback cbLogger = NULL);
-	EXPORT_FLAG bool		trans_ticks(WtString tickFile, FuncGetTickItem getter, int count, FuncLogCallback cbLogger = NULL);
+	//EXPORT_FLAG bool		trans_bars(WtString barFile, FuncGetBarItem getter, int count, WtString period, FuncLogCallback cbLogger = NULL);
+	//EXPORT_FLAG bool		trans_ticks(WtString tickFile, FuncGetTickItem getter, int count, FuncLogCallback cbLogger = NULL);
+
+	EXPORT_FLAG bool		store_bars(WtString barFile, WTSBarStruct* firstBar, int count, WtString period, FuncLogCallback cbLogger = NULL);
+	EXPORT_FLAG bool		store_ticks(WtString tickFile, WTSTickStruct* firstTick, int count, FuncLogCallback cbLogger = NULL);
 
 	EXPORT_FLAG WtUInt32	resample_bars(WtString barFile, FuncGetBarsCallback cb, FuncCountDataCallback cbCnt, WtUInt64 fromTime, WtUInt64 endTime, WtString period, WtUInt32 times, WtString sessInfo, FuncLogCallback cbLogger = NULL);
 #ifdef __cplusplus

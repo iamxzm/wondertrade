@@ -10,15 +10,14 @@
 #pragma once
 #include "../Includes/IParserApi.h"
 #include "../Share/DLLHelper.hpp"
-//Femas v3.02
-#include "./ustptraderapi/USTPFtdcMduserApi.h"
+#include "../API/Femas3.02/USTPFtdcMduserApi.h"
 #include <map>
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSTickData;
-NS_OTP_END
+NS_WTP_END
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class ParserFemas : public IParserApi, public CUstpFtdcMduserSpi
 {
@@ -36,7 +35,7 @@ public:
 
 //IQuoteParser ½Ó¿Ú
 public:
-	virtual bool init(WTSParams* config) override;
+	virtual bool init(WTSVariant* config) override;
 
 	virtual void release() override;
 

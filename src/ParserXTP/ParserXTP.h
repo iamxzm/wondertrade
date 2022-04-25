@@ -10,15 +10,14 @@
 #pragma once
 #include "../Includes/IParserApi.h"
 #include "../Share/DLLHelper.hpp"
-//XTP v1.1.19.2
-#include "./XTPQuoteApi/xtp_quote_api.h"
+#include "../API/XTP2.2.32.2/xtp_quote_api.h"
 #include <map>
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSTickData;
-NS_OTP_END
+NS_WTP_END
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class ParserXTP :	public IParserApi, public XTP::API::QuoteSpi
 {
@@ -36,7 +35,7 @@ public:
 
 //IQuoteParser ½Ó¿Ú
 public:
-	virtual bool init(WTSParams* config) override;
+	virtual bool init(WTSVariant* config) override;
 
 	virtual void release() override;
 

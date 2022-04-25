@@ -8,7 +8,7 @@
  * \brief 
  */
 #pragma once
-#include <fstream>
+#include <sstream>
 #include "HisDataReplayer.h"
 
 #include "../Includes/ExecuteDefs.h"
@@ -16,7 +16,7 @@
 #include "../Share/DLLHelper.hpp"
 #include "MatchEngine.h"
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class ExecMocker : public ExecuteContext, public IDataSink, public IMatchSink
 {
@@ -33,7 +33,7 @@ public:
 
 	//////////////////////////////////////////////////////////////////////////
 	//IDataSink
-	virtual void handle_tick(const char* stdCode, WTSTickData* curTick) override;
+	virtual void handle_tick(const char* stdCode, WTSTickData* curTick, bool isBarEnd = true) override;
 	virtual void handle_schedule(uint32_t uDate, uint32_t uTime) override;
 	virtual void handle_init() override;
 
@@ -43,13 +43,15 @@ public:
 
 	virtual void handle_session_end(uint32_t curTDate) override;
 
+	virtual void handle_replay_done() override;
+
 	//////////////////////////////////////////////////////////////////////////
 	//ExecuteContext
 	virtual WTSTickSlice* getTicks(const char* stdCode, uint32_t count, uint64_t etime = 0) override;
 
 	virtual WTSTickData* grabLastTick(const char* stdCode) override;
 
-	virtual double getPosition(const char* stdCode, int32_t flag = 3) override;
+	virtual double getPosition(const char* stdCode, bool validOnly = true, int32_t flag = 3) override;
 
 	virtual OrderMap* getOrders(const char* stdCode) override;
 
@@ -63,7 +65,7 @@ public:
 
 	virtual OrderIDs cancel(const char* stdCode, bool isBuy, double qty = 0) override;
 
-	virtual void writeLog(const char* fmt, ...) override;
+	virtual void writeLog(const char* message) override;
 
 	virtual WTSCommodityInfo* getCommodityInfo(const char* stdCode) override;
 	virtual WTSSessionInfo* getSessionInfo(const char* stdCode) override;
@@ -101,7 +103,10 @@ private:
 	ExecuteUnit*	_exec_unit;
 	std::string		_code;
 	std::string		_period;
-	int32_t			_volunit;
+	double			_volunit;
+	int32_t			_volmode;
+
+	double			_target;
 
 	double			_position;
 	double			_undone;
@@ -109,7 +114,7 @@ private:
 	double			_sig_px;
 	uint64_t		_sig_time;
 
-	std::ofstream	_trade_logs;
+	std::stringstream	_trade_logs;
 	uint32_t	_ord_cnt;
 	double		_ord_qty;
 	uint32_t	_cacl_cnt;

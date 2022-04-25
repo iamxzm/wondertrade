@@ -12,23 +12,14 @@
 #include <stdint.h>
 #include "../Includes/WTSTypes.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 struct WTSBarStruct;
 struct WTSTickStruct;
-NS_OTP_END
+NS_WTP_END
 
-USING_NS_OTP;
-
-#ifdef _WIN32
-#	define PORTER_FLAG _cdecl
-#else
-#	define PORTER_FLAG __attribute__((_cdecl))
-#endif
-
-typedef unsigned long		WtUInt32;
-typedef unsigned long long	WtUInt64;
-typedef const char*			WtString;
+USING_NS_WTP;
 
 typedef void(PORTER_FLAG *FuncGetBarsCallback)(WTSBarStruct* bar, WtUInt32 count, bool isLast);
 typedef void(PORTER_FLAG *FuncGetTicksCallback)(WTSTickStruct* tick, WtUInt32 count, bool isLast);
+typedef void(PORTER_FLAG *FuncCountDataCallback)(WtUInt32 dataCnt);
 

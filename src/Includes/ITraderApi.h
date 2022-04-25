@@ -14,16 +14,14 @@
 #include <functional>
 #include "WTSTypes.h"
 
-NS_OTP_BEGIN
-class WTSParams;
+NS_WTP_BEGIN
+class WTSVariant;
 class WTSEntrust;
 class WTSOrderInfo;
 class WTSTradeInfo;
 class WTSEntrustAction;
 class WTSAccountInfo;
-class WTSInvestorInfo;
 class WTSPositionItem;
-class WTSPositionDetail;
 class WTSContractInfo;
 class WTSError;
 class WTSTickData;
@@ -101,7 +99,7 @@ class ITraderSpi
 {
 public:
 	virtual IBaseDataMgr*	getBaseDataMgr() = 0;
-	virtual void handleTraderLog(WTSLogLevel ll, const char* format, ...){}
+	virtual void handleTraderLog(WTSLogLevel ll, const char* message){}
 
 	virtual IStkTraderSpi* getStkSpi(){ return NULL; }
 	virtual IOptTraderSpi* getOptSpi(){ return NULL; }
@@ -120,7 +118,7 @@ public:
 	virtual void onPushOrder(WTSOrderInfo* orderInfo){}
 	virtual void onPushTrade(WTSTradeInfo* tradeRecord){}
 
-	virtual void onTraderError(WTSError*	err){}
+	virtual void onTraderError(WTSError* err){}
 };
 
 //下单接口管理接口
@@ -136,17 +134,17 @@ public:
 	/*
 	 *	初始化解析管理器
 	 */
-	virtual bool init(WTSParams *params) = 0;
+	virtual bool init(WTSVariant *params) { return false; }
 
 	/*
 	 *	释放解析管理器
 	 */
-	virtual void release() = 0;
+	virtual void release(){}
 
 	/*
 	 *	注册回调接口
 	 */
-	virtual void registerSpi(ITraderSpi *listener) = 0;
+	virtual void registerSpi(ITraderSpi *listener) {}
 
 
 	//////////////////////////////////////////////////////////////////////////
@@ -155,14 +153,14 @@ public:
 	/*
 	 *	连接服务器
 	 */
-	virtual void connect() = 0;
+	virtual void connect() {}
 
 	/*
 	 *	断开连接
 	 */
-	virtual void disconnect() = 0;
+	virtual void disconnect() {}
 
-	virtual bool isConnected() = 0;
+	virtual bool isConnected() { return false; }
 
 	/*
 	 *	生成委托单号
@@ -172,44 +170,44 @@ public:
 	/*
 	 *	登录接口
 	 */
-	virtual int login(const char* user, const char* pass, const char* productInfo) = 0;
+	virtual int login(const char* user, const char* pass, const char* productInfo) { return -1; }
 
 	/*
 	 *	注销接口
 	 */
-	virtual int logout() = 0;
+	virtual int logout() { return -1; }
 
 	/*
 	 *	下单接口
 	 *	entrust 下单的具体数据结构
 	 */
-	virtual int orderInsert(WTSEntrust* eutrust) = 0;
+	virtual int orderInsert(WTSEntrust* eutrust) { return -1; }
 
 	/*
 	 *	订单操作接口
 	 *	action	操作的具体数据结构
 	 */
-	virtual int orderAction(WTSEntrustAction* action) = 0;
+	virtual int orderAction(WTSEntrustAction* action) { return -1; }
 
 	/*
 	 *	查询账户信息
 	 */
-	virtual int queryAccount() = 0;
+	virtual int queryAccount() { return -1; }
 
 	/*
 	 *	查询持仓信息
 	 */
-	virtual int queryPositions() = 0;
+	virtual int queryPositions() { return -1; }
 
 	/*
 	 *	查询所有订单
 	 */
-	virtual int queryOrders() = 0;
+	virtual int queryOrders() { return -1; }
 
 	/*
 	 *	查询成交明细
 	 */
-	virtual int	queryTrades() = 0;
+	virtual int	queryTrades() { return -1; }
 
 	/*
 	 *	查询结算单
@@ -218,8 +216,8 @@ public:
 
 };
 
-NS_OTP_END
+NS_WTP_END
 
 //获取IDataMgr的函数指针类型
-typedef otp::ITraderApi* (*FuncCreateTrader)();
-typedef void(*FuncDeleteTrader)(otp::ITraderApi* &trader);
+typedef wtp::ITraderApi* (*FuncCreateTrader)();
+typedef void(*FuncDeleteTrader)(wtp::ITraderApi* &trader);

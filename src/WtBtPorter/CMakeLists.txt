@@ -1,4 +1,3 @@
-
 #1. 确定CMake的最低版本需求
 CMAKE_MINIMUM_REQUIRED(VERSION 3.0.0)
 
@@ -6,57 +5,48 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.0.0)
 PROJECT(WtBtPorter LANGUAGES CXX)
 SET(CMAKE_CXX_STANDARD 11)
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-
-#3. 环境判断
-IF (WIN32)
-	IF("${CMAKE_GENERATOR}" MATCHES "(Win64|IA64)")
-		SET(INCS $ENV{MyDepends141}/include)
-		SET(LNKS $ENV{MyDepends141}/lib/x64)
-	ELSE()
-		SET(INCS $ENV{MyDepends141}/include)
-		SET(LNKS $ENV{MyDepends141}/lib/x86)
-	ENDIF()
-ELSE (UNIX)
-	SET (MyDeps "/home/mydeps")
-	SET(INCS ${MyDeps}/include)
-	SET(LNKS ${MyDeps}/lib)
-	SET(INC_1 "/usr/local/include/bsoncxx")
-	SET(INC_2 "/usr/local/include/bsoncxx/v_noabi")
-	SET(INC_3 "/usr/local/include/mongocxx")
-	SET(INC_4 "/usr/local/include/mongocxx/v_noabi")
-	SET(MONGOCXX "/usr/local//lib")
-	SET(BSONCXX "/usr/local/lib")
-ENDIF ()
-
-SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/bin/WtBtPorter)
+SET(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/build_${PLATFORM}/${CMAKE_BUILD_TYPE}/bin/WtBtPorter)
 
 #7. 添加源码
 file(GLOB SRCS *.cpp)
 file(GLOB HDRS *.h)
 
-INCLUDE_DIRECTORIES(${INCS} ${INC_2} ${INC_3} ${INC_4})
-LINK_DIRECTORIES(${LNKS} ${MONGOCXX} ${BSONCXX})
+IF(MSVC)
+	list (APPEND SRCS ../Common/mdump.cpp)
+ENDIF()
+
+INCLUDE_DIRECTORIES(${INCS})
+LINK_DIRECTORIES(${LNKS})
 ADD_LIBRARY(WtBtPorter SHARED ${SRCS} ${HDRS})
 
-SET(LIBS
-	${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/libs/libWtBtCore.a
-	${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/libs/libWTSTools.a
-	${PROJECT_SOURCE_DIR}/../build_${CMAKE_BUILD_TYPE}/libs/libWTSUtils.a
-	
-	${MyDeps}/lib/libmysqlclient.a
-	dl
-	pthread
-	boost_filesystem	
-	mongocxx
-	bsoncxx
-)
+IF(MSVC)
+	SET(LIBS
+		WtBtCore
+		WTSTools
+		WTSUtils
+	)
+ELSE(GNUCC)
+	SET(LIBS
+		WtBtCore
+		WTSTools
+		WTSUtils
+
+		dl
+		pthread
+		boost_filesystem
+	)
+	if(WIN32)
+		LIST(APPEND LIBS iconv)
+	ENDIF()
+ENDIF()
+
 
 TARGET_LINK_LIBRARIES(WtBtPorter ${LIBS})
 IF (WIN32)
 ELSE (UNIX)
 	SET_TARGET_PROPERTIES(WtBtPorter PROPERTIES
 		CXX_VISIBILITY_PRESET hidden
-		VISIBILITY_INLINES_HIDDEN 1)
+		VISIBILITY_INLINES_HIDDEN 1
+        LINK_FLAGS_RELEASE -s)
 ENDIF ()
 

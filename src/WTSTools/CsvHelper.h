@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <fstream>
 #include <vector>
+#include <sstream>
 
 class CsvReader
 {
@@ -15,7 +16,7 @@ public:
 	bool	load_from_file(const char* filename);
 
 public:
-	inline uint32_t	col_count() { return _fields_map.size(); }
+	inline uint32_t	col_count() { return (uint32_t)_fields_map.size(); }
 
 	int32_t		get_int32(int32_t col);
 	uint32_t	get_uint32(int32_t col);
@@ -38,6 +39,22 @@ public:
 	const char*	get_string(const char* field);
 
 	bool		next_row();
+
+	const char* fields() const 
+	{ 
+		static std::string s;
+		if(s.empty())
+		{
+			std::stringstream ss;
+			for (auto item : _fields_map)
+				ss << item.first << ",";
+
+			s = ss.str();
+			s = s.substr(0, s.size() - 1);
+		}
+
+		return s.c_str();
+	}
 
 private:
 	bool		check_cell(int32_t col);

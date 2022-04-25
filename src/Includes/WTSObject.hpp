@@ -10,9 +10,13 @@
 #pragma once
 #include <stdint.h>
 #include <atomic>
-#include "WTSMarcos.h"
+#include <boost/smart_ptr/detail/spinlock.hpp>
 
-NS_OTP_BEGIN
+#include "WTSMarcos.h"
+#include "../Share/ObjectPool.hpp"
+#include "../Share/SpinMutex.hpp"
+
+NS_WTP_BEGIN
 class WTSObject
 {
 public:
@@ -20,7 +24,7 @@ public:
 	virtual ~WTSObject(){}
 
 public:
-	uint32_t		retain(){ return m_uRefs.fetch_add(1) + 1; }
+	inline uint32_t		retain(){ return m_uRefs.fetch_add(1) + 1; }
 
 	virtual void	release()
 	{
@@ -41,12 +45,60 @@ public:
 		}
 	}
 
-	bool			isSingleRefs() { return m_uRefs == 1; }
+	inline bool			isSingleRefs() { return m_uRefs == 1; }
 
-	uint32_t		retainCount() { return m_uRefs; }
+	inline uint32_t		retainCount() { return m_uRefs; }
 
 protected:
 	volatile std::atomic<uint32_t>	m_uRefs;
 };
 
-NS_OTP_END
+template<typename T>
+class WTSPoolObject : public WTSObject
+{
+private:
+	typedef ObjectPool<T> MyPool;
+	MyPool*			_pool;
+	SpinMutex*	_mutex;
+
+public:
+	WTSPoolObject():_pool(NULL){}
+	virtual ~WTSPoolObject() {}
+
+public:
+	static T*	allocate()
+	{
+		thread_local static MyPool		pool;
+		thread_local static SpinMutex	mtx;
+
+		mtx.lock();
+		T* ret = pool.construct();
+		mtx.unlock();
+		ret->_pool = &pool;
+		ret->_mutex = &mtx;
+		return ret;
+	}
+
+public:
+	virtual void release() override
+	{
+		if (m_uRefs == 0)
+			return;
+
+		try
+		{
+			uint32_t cnt = m_uRefs.fetch_sub(1);
+			if (cnt == 1)
+			{
+				_mutex->lock();
+				_pool->destroy((T*)this);
+				_mutex->unlock();
+			}
+		}
+		catch (...)
+		{
+
+		}
+	}
+};
+NS_WTP_END

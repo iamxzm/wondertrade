@@ -30,9 +30,6 @@
     <ClInclude Include="WtHelper.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="WtDataReader.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="..\Common\mdump.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -48,9 +45,6 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="WtHelper.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="WtDataReader.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="..\Common\mdump.cpp">

@@ -8,55 +8,50 @@
  * \brief 
  */
 #include "WtEngine.h"
-#include "WtDataManager.h"
+#include "WtDtMgr.h"
 #include "WtHelper.h"
 
 #include "../Share/TimeUtils.hpp"
 #include "../Share/StrUtil.hpp"
-#include "../Share/StdUtils.hpp"
-#include "../Share/BoostFile.hpp"
-#include "../Share/JsonToVariant.hpp"
 #include "../Share/decimal.h"
 #include "../Share/CodeHelper.hpp"
 
 #include "../Includes/IBaseDataMgr.h"
 #include "../Includes/IHotMgr.h"
 
-#include "../Includes/WTSVariant.hpp"
 #include "../Includes/WTSContractInfo.hpp"
 #include "../Includes/WTSSessionInfo.hpp"
+#include "../Includes/WTSVariant.hpp"
 
 #include "../Includes/WTSDataDef.hpp"
 #include "../Includes/WTSRiskDef.hpp"
 
 #include "../WTSTools/WTSLogger.h"
+#include "../WTSUtils/WTSCfgLoader.h"
 
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
 namespace rj = rapidjson;
 
-#ifdef _WIN32
-#define my_stricmp _stricmp
-#else
-#define my_stricmp strcasecmp
-#endif
 
-
-USING_NS_OTP;
+USING_NS_WTP;
 
 WtEngine::WtEngine()
-	:_port_fund(NULL)
+	: _port_fund(NULL)
 	, _risk_volscale(1.0)
 	, _risk_date(0)
 	, _terminated(false)
 	, _evt_listener(NULL)
 	, _adapter_mgr(NULL)
 	, _notifier(NULL)
+	, _fund_udt_span(0)
+	, _ready(false)
 {
 	TimeUtils::getDateTime(_cur_date, _cur_time);
 	_cur_secs = _cur_time % 100000;
 	_cur_time /= 100000;
 	_cur_raw_time = _cur_time;
+	_cur_tdate = _cur_date;
 
 	WtHelper::setTime(_cur_date, _cur_time, _cur_secs);
 }
@@ -89,8 +84,7 @@ WTSCommodityInfo* WtEngine::get_commodity_info(const char* stdCode)
 
 WTSContractInfo* WtEngine::get_contract_info(const char* stdCode)
 {
-	CodeHelper::CodeInfo cInfo;
-	CodeHelper::extractStdCode(stdCode, cInfo);
+	CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
 	return _base_data_mgr->getContract(cInfo._code, cInfo._exchg);
 }
 
@@ -112,6 +106,7 @@ void WtEngine::on_tick(const char* stdCode, WTSTickData* curTick)
 
 	//先检查是否要信号要触发
 	{
+		bool bTriggered = false;
 		auto it = _sig_map.find(stdCode);
 		if (it != _sig_map.end())
 		{
@@ -122,18 +117,18 @@ void WtEngine::on_tick(const char* stdCode, WTSTickData* curTick)
 				const SigInfo& sInfo = it->second;
 				double pos = sInfo._volume;
 				std::string code = stdCode;
-				//push_task([this, code, pos](){
-				//	do_set_position(code.c_str(), pos);
-				//});
-				do_set_position(code.c_str(), pos);
+				do_set_position(code.c_str(), pos, curTick->price());
 				_sig_map.erase(it);
+				bTriggered = true;
 			}
 
 		}
 
-		save_datas();
+		if(bTriggered)
+			save_datas();
 	}
 
+	//如果成交量为0，价格也不会有变动
 	if (curTick->volume() == 0)
 		return;
 
@@ -163,6 +158,10 @@ void WtEngine::on_tick(const char* stdCode, WTSTickData* curTick)
 			pInfo->_dynprofit = dynprofit;
 		}
 	});
+
+	push_task([this]() {
+		update_fund_dynprofit();
+	});
 }
 
 void WtEngine::update_fund_dynprofit()
@@ -172,6 +171,13 @@ void WtEngine::update_fund_dynprofit()
 	{
 		//上次结算日期等于当前交易日,说明已经结算,不再更新了
 		return;
+	}
+
+	int64_t now = TimeUtils::getLocalTimeNow();
+	if(_fund_udt_span != 0)
+	{
+		if (now - fundInfo._update_time < _fund_udt_span * 1000)
+			return;
 	}
 
 	double profit = 0.0;
@@ -207,17 +213,16 @@ void WtEngine::update_fund_dynprofit()
 		fundInfo._min_md_dyn_bal._dyn_balance = dynbalance;
 		fundInfo._min_md_dyn_bal._date = _cur_tdate;
 	}
+
+	fundInfo._update_time = now;
 }
 
-void WtEngine::writeRiskLog(const char* fmt, ...)
+void WtEngine::writeRiskLog(const char* message)
 {
-	char szBuf[2048] = { 0 };
-	uint32_t length = sprintf(szBuf, "[RiskControl]");
-	strcat(szBuf, fmt);
-	va_list args;
-	va_start(args, fmt);
-	WTSLogger::vlog2("risk", LL_INFO, szBuf, args);
-	va_end(args);
+	static thread_local char szBuf[2048] = { 0 };
+	auto len = wt_strcpy(szBuf, "[RiskControl] ");
+	wt_strcpy(szBuf + len, message);
+	WTSLogger::log_raw_by_cat("risk", LL_INFO, szBuf);
 }
 
 uint32_t WtEngine::getCurDate()
@@ -246,7 +251,7 @@ void WtEngine::setVolScale(double scale)
 	_risk_volscale = scale;
 	_risk_date = _cur_tdate;
 
-	WTSLogger::log2_raw("risk", LL_INFO, fmt::format("Position risk scale updated: {} - > {}", oldScale, scale).c_str());
+	WTSLogger::log_by_cat_f("risk", LL_INFO, "Position risk scale updated: {} - > {}", oldScale, scale);
 	save_datas();
 }
 
@@ -258,14 +263,14 @@ WTSPortFundInfo* WtEngine::getFundInfo()
 	return _port_fund;
 }
 
-void WtEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDataManager* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier)
+void WtEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDtMgr* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier)
 {
 	_base_data_mgr = bdMgr;
 	_data_mgr = dataMgr;
 	_hot_mgr = hotMgr;
 	_notifier = notifier;
 
-	WTSLogger::info("Platform running mode: Production");
+	WTSLogger::info_f("Platform running mode: Production");
 
 	_filter_mgr.set_notifier(notifier);
 
@@ -281,6 +286,13 @@ void WtEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDataManager* dataMgr
 	if(cfgRisk)
 	{
 		init_riskmon(cfgRisk);
+	}
+	else
+	{
+		//如果没有配置风控线程，则需要自己更新浮动盈亏
+		//把更新时间间隔设置为5s
+		_fund_udt_span = 5;
+		WTSLogger::log_raw(LL_WARN, "RiskMon is not configured, portfilio fund will be updated every 5s");
 	}
 }
 
@@ -308,7 +320,7 @@ void WtEngine::on_session_end()
 
 		//可能这里还需要写一条资金记录
 		//date,predynbalance,prebalance,balance,closeprofit,dynprofit,fee,maxdynbalance,maxtime,mindynbalance,mintime,mdmaxbalance,mdmaxdate,mdminbalance,mdmindate
-		fund_log->write_file(StrUtil::printf("%u,%f,%f,%f,%f,%f,%f,%f,%u,%f,%u,%f,%u,%f,%u\n", 
+		fund_log->write_file(fmt::format("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n", 
 			_cur_tdate, fundInfo._predynbal, fundInfo._prebalance, fundInfo._balance, 
 			fundInfo._profit, fundInfo._dynprofit, fundInfo._fees, fundInfo._max_dyn_bal,
 			fundInfo._max_time, fundInfo._min_dyn_bal, fundInfo._min_time,
@@ -367,6 +379,8 @@ void WtEngine::save_datas()
 
 		jFund.AddMember("maxmd", jMaxMD, allocator);
 		jFund.AddMember("minmd", jMinMD, allocator);
+
+		jFund.AddMember("update_time", fundInfo._update_time, allocator);
 
 		root.AddMember("fund", jFund, allocator);
 	}
@@ -485,6 +499,11 @@ void WtEngine::load_datas()
 			const rj::Value& jMinMD = jFund["minmd"];
 			fundInfo._min_md_dyn_bal._dyn_balance = jMinMD["dyn_balance"].GetDouble();
 			fundInfo._min_md_dyn_bal._date = jMinMD["date"].GetUint();
+
+			if(jFund.HasMember("update_time"))
+			{
+				fundInfo._update_time = jFund["update_time"].GetInt64();
+			}
 		}
 	}
 
@@ -527,14 +546,14 @@ void WtEngine::load_datas()
 					pInfo._details.emplace_back(dInfo);
 				}
 
-				WTSLogger::debug(fmt::format("Porfolio position confirmed,{} -> {}", stdCode, pInfo._volume).c_str());
+				WTSLogger::debug_f("Porfolio position confirmed,{} -> {}", stdCode, pInfo._volume);
 			}
 		}
 
 		WTSFundStruct& fundInfo = _port_fund->fundInfo();
 		fundInfo._dynprofit = total_dynprofit;
 
-		WTSLogger::debug("%u position info of portfolio loaded", _pos_map.size());
+		WTSLogger::debug_f("{} position info of portfolio loaded", _pos_map.size());
 	}
 
 	if(root.HasMember("riskmon"))
@@ -565,16 +584,17 @@ WTSKlineSlice* WtEngine::get_kline_slice(uint32_t sid, const char* stdCode, cons
 	if (cInfo == NULL)
 		return NULL;
 
-	WTSSessionInfo* sInfo = _base_data_mgr->getSession(cInfo->getSession());
-	if (sInfo == NULL)
-		return NULL;
+	//WTSSessionInfo* sInfo = cInfo->getSessionInfo();
 
-	std::string key = StrUtil::printf("%s-%s-%u", stdCode, period, times);
-	SIDSet& sids = _bar_sub_map[key];
-	sids.insert(sid);
+	//std::string key = StrUtil::printf("%s-%s-%u", stdCode, period, times);
+	thread_local static char key[64] = { 0 };
+	fmtutil::format_to(key, "{}-{}-{}", stdCode, period, times);
+
+	SubList& sids = _bar_sub_map[key];
+	sids[sid] = std::make_pair(sid, 0);
 
 	WTSKlinePeriod kp;
-	if (strcmp(period, "m") == 0)
+	if (period[0] == 'm')
 	{
 		if (times % 5 == 0)
 		{
@@ -627,16 +647,29 @@ void WtEngine::handle_push_quote(WTSTickData* curTick, uint32_t hotFlag)
 
 double WtEngine::get_cur_price(const char* stdCode)
 {
-	auto it = _price_map.find(stdCode);
+	auto len = strlen(stdCode);
+	char lastChar = stdCode[len - 1];
+	//前复权直接读取标准合约代码
+	bool bAdjusted = (lastChar == SUFFIX_QFQ || lastChar == SUFFIX_HFQ);
+	//前复权需要去掉－，后复权和未复权都直接查找
+	std::string sCode = (lastChar == SUFFIX_QFQ) ? std::string(stdCode, len - 1) : stdCode;
+	auto it = _price_map.find(sCode);
 	if(it == _price_map.end())
 	{
-		WTSTickData* lastTick = _data_mgr->grab_last_tick(stdCode);
+		//找不到的时候，先读取未复权的tick数据
+		std::string fCode = bAdjusted ? std::string(stdCode, len - 1) : stdCode;
+		WTSTickData* lastTick = _data_mgr->grab_last_tick(fCode.c_str());
 		if (lastTick == NULL)
 			return 0.0;
 
 		double ret = lastTick->price();
 		lastTick->release();
-		_price_map[stdCode] = ret;
+
+		//如果是后复权，则进行复权处理
+		if (lastChar == SUFFIX_HFQ)
+			ret *= _data_mgr->get_adjusting_factor(fCode.c_str(), get_trading_date());
+
+		_price_map[sCode] = ret;
 		return ret;
 	}
 	else
@@ -651,36 +684,39 @@ void WtEngine::sub_tick(uint32_t sid, const char* stdCode)
 	//因为执行器只识别原合约代码
 	if (CodeHelper::isStdFutHotCode(stdCode))
 	{
-		SIDSet& sids = _tick_sub_map[stdCode];
-		sids.insert(sid);
+		SubList& sids = _tick_sub_map[stdCode];
+		sids[sid] = std::make_pair(sid, 0);
 
-		CodeHelper::CodeInfo cInfo;
-		CodeHelper::extractStdFutCode(stdCode, cInfo);
+		CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
 		std::string rawCode = _hot_mgr->getRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
-		std::string stdRawCode = CodeHelper::bscFutCodeToStdCode(rawCode.c_str(), cInfo._exchg);
-		_ticksubed_raw_codes.insert(stdRawCode);
+		std::string stdRawCode = CodeHelper::rawMonthCodeToStdCode(rawCode.c_str(), cInfo._exchg);
+		//_ticksubed_raw_codes.insert(stdRawCode);
 	}
 	else if (CodeHelper::isStdFut2ndCode(stdCode))
 	{
-		SIDSet& sids = _tick_sub_map[stdCode];
-		sids.insert(sid);
+		SubList& sids = _tick_sub_map[stdCode];
+		sids[sid] = std::make_pair(sid, 0);
 
-		CodeHelper::CodeInfo cInfo;
-		CodeHelper::extractStdFutCode(stdCode, cInfo);
+		CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
 		std::string rawCode = _hot_mgr->getSecondRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
-		std::string stdRawCode = CodeHelper::bscFutCodeToStdCode(rawCode.c_str(), cInfo._exchg);
-		_ticksubed_raw_codes.insert(stdRawCode);
+		std::string stdRawCode = CodeHelper::rawMonthCodeToStdCode(rawCode.c_str(), cInfo._exchg);
+		//_ticksubed_raw_codes.insert(stdRawCode);
 	}
 	else
 	{
 		std::size_t length = strlen(stdCode);
-		if (stdCode[length - 1] == 'Q' || stdCode[length - 1] == 'H')
+		uint32_t flag = 0;
+		if (stdCode[length - 1] == SUFFIX_QFQ || stdCode[length - 1] == SUFFIX_HFQ)
+		{
 			length--;
 
-		SIDSet& sids = _tick_sub_map[std::string(stdCode, length)];
-		sids.insert(sid);
+			flag = (stdCode[length - 1] == SUFFIX_QFQ) ? 1 : 2;
+		}
 
-		_ticksubed_raw_codes.insert(std::string(stdCode, length));
+		SubList& sids = _tick_sub_map[std::string(stdCode, length)];
+		sids[sid] = std::make_pair(sid, flag);
+
+		//_ticksubed_raw_codes.insert(std::string(stdCode, length));
 	}
 }
 
@@ -691,32 +727,14 @@ void WtEngine::load_fees(const char* filename)
 
 	if (!StdFile::exists(filename))
 	{
-		WTSLogger::error("Fee templates file %s not exists", filename);
+		WTSLogger::error_f("Fee templates file {} not exists", filename);
 		return;
 	}
 
-
-	std::string content;
-	StdFile::read_file_content(filename, content);
-	if (content.empty())
+	WTSVariant* cfg = WTSCfgLoader::load_from_file(filename, true);
+	if (cfg == NULL)
 	{
-		WTSLogger::error("Fee templates file %s is empty", filename);
-		return;
-	}
-
-	rj::Document root;
-	root.Parse(content.c_str());
-
-	if (root.HasParseError())
-	{
-		WTSLogger::error("Fee templates file %s parsing failed", filename);
-		return;
-	}
-
-	WTSVariant* cfg = WTSVariant::createObject();
-	if (!jsonToVariant(root, cfg))
-	{
-		WTSLogger::error("Fee templates file %s converting failed", filename);
+		WTSLogger::error_f("Fee templates file {} loading failed", filename);
 		return;
 	}
 
@@ -733,7 +751,7 @@ void WtEngine::load_fees(const char* filename)
 
 	cfg->release();
 
-	WTSLogger::info("%u fee templates loaded", _fee_map.size());
+	WTSLogger::info_f("{} fee templates loaded", _fee_map.size());
 }
 
 double WtEngine::calc_fee(const char* stdCode, double price, double qty, uint32_t offset)
@@ -742,7 +760,7 @@ double WtEngine::calc_fee(const char* stdCode, double price, double qty, uint32_
 	auto it = _fee_map.find(stdPID);
 	if (it == _fee_map.end())
 	{
-		WTSLogger::warn("Fee template of %s not found, return 0.0 as default", stdCode);
+		WTSLogger::warn_f("Fee template of {} not found, return 0.0 as default", stdCode);
 		return 0.0;
 	}
 
@@ -774,13 +792,30 @@ double WtEngine::calc_fee(const char* stdCode, double price, double qty, uint32_
 	return (int32_t)(ret * 100 + 0.5) / 100.0;
 }
 
-void WtEngine::append_signal(const char* stdCode, double qty)
+void WtEngine::append_signal(const char* stdCode, double qty, bool bStandBy /* = true */)
 {
 	/*
-	 *	这个函数的目的，是防止有时候需要重新同步组合头寸的时候
-	 *	如果没有最新价格导致计算出错的情况，所以这里加了一个等待
-	 *	ontick的时候会处理信号
+	 *	By Wesley @ 2021.12.16
+	 *	这里发现一个问题，就是组合的理论成交价和策略的理论成交价不一致
+	 *	检查以后发现，策略的理论成交价会在下一个tick更新
+	 *	但是组合的理论成交价这一个tick就直接更新了
+	 *	这就导致组合成交价永远比策略提前一个tick
+	 *	这里做一个修正，等下一个tick进来，触发signal
+	 *	如果是bar内触发的，bStandBy为false，则直接修改持仓
 	 */
+	double curPx = get_cur_price(stdCode);
+	if(bStandBy || decimal::eq(curPx, 0.0))
+	{
+		SigInfo& sInfo = _sig_map[stdCode];
+		sInfo._volume = qty;
+		sInfo._gentime = (uint64_t)_cur_date * 1000000000 + (uint64_t)_cur_raw_time * 100000 + _cur_secs;
+	}
+	else
+	{
+		do_set_position(stdCode, qty);
+	}
+
+	/*
 	double curPx = get_cur_price(stdCode);
 	if(decimal::eq(curPx, 0.0))
 	{
@@ -792,12 +827,16 @@ void WtEngine::append_signal(const char* stdCode, double qty)
 	{
 		do_set_position(stdCode, qty);
 	}
+	*/
 }
 
-void WtEngine::do_set_position(const char* stdCode, double qty)
+void WtEngine::do_set_position(const char* stdCode, double qty, double curPx /* = -1 */)
 {
 	PosInfo& pInfo = _pos_map[stdCode];
-	double curPx = get_cur_price(stdCode);
+
+	if(decimal::lt(curPx, 0))
+		curPx = get_cur_price(stdCode);
+
 	uint64_t curTm = (uint64_t)_cur_date * 10000 + _cur_time;
 	uint32_t curTDate = _cur_tdate;
 
@@ -973,7 +1012,7 @@ bool WtEngine::init_riskmon(WTSVariant* cfg)
 	DllHandle hInst = DLLHelper::load_library(dllpath.c_str());
 	if (hInst == NULL)
 	{
-		WTSLogger::error2("risk", "Riskmon module %s loading failed", dllpath.c_str());
+		WTSLogger::log_by_cat_f("risk", LL_ERROR, "Riskmon module {} loading failed", dllpath.c_str());
 		return false;
 	}
 
@@ -981,7 +1020,7 @@ bool WtEngine::init_riskmon(WTSVariant* cfg)
 	if (creator == NULL)
 	{
 		DLLHelper::free_library(hInst);
-		WTSLogger::error2("risk", "Riskmon module %s is not compatible", module.c_str());
+		WTSLogger::log_by_cat_f("risk", LL_ERROR, "Riskmon module {} is not compatible", module.c_str());
 		return false;
 	}
 

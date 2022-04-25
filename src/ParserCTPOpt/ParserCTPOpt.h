@@ -10,15 +10,14 @@
 #pragma once
 #include "../Includes/IParserApi.h"
 #include "../Share/DLLHelper.hpp"
-//CTPOpt v3.5.8P4
-#include "./ThostTraderApi/ThostFtdcMdApi.h"
+#include "../API/CTPOpt3.5.8/ThostFtdcMdApi.h"
 #include <map>
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSTickData;
-NS_OTP_END
+NS_WTP_END
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class ParserCTPOpt :	public IParserApi, public CThostFtdcMdSpi
 {
@@ -36,7 +35,7 @@ public:
 
 //IQuoteParser ½Ó¿Ú
 public:
-	virtual bool init(WTSParams* config) override;
+	virtual bool init(WTSVariant* config) override;
 
 	virtual void release() override;
 

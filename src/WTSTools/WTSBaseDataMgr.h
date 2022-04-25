@@ -8,24 +8,22 @@
  * \brief 基础数据管理器实现
  */
 #pragma once
-#include <cstring>
 #include "../Includes/IBaseDataMgr.h"
 #include "../Includes/WTSCollection.hpp"
-
 #include "../Includes/FasterDefs.h"
 
-USING_NS_OTP;
-typedef faster_hashmap<std::string, TradingDayTpl>	TradingDayTplMap;
+USING_NS_WTP;
 
-typedef WTSHashMap<std::string>		WTSContractList;
-typedef WTSHashMap<std::string>		WTSExchgContract;
-typedef WTSHashMap<std::string>		WTSContractMap;
+typedef faster_hashmap<ShortKey, TradingDayTpl>	TradingDayTplMap;
 
-typedef WTSHashMap<std::string>		WTSSessionMap;
-typedef WTSHashMap<std::string>		WTSCommodityMap;
+typedef WTSHashMap<LongKey>		WTSContractList;
+typedef WTSHashMap<ShortKey>	WTSExchgContract;
+typedef WTSHashMap<LongKey>		WTSContractMap;
 
-typedef faster_hashset<std::string> CodeSet;
-typedef faster_hashmap<std::string, CodeSet> SessionCodeMap;
+typedef WTSHashMap<ShortKey>		WTSSessionMap;
+typedef WTSHashMap<ShortKey>		WTSCommodityMap;
+
+typedef faster_hashmap<ShortKey, CodeSet> SessionCodeMap;
 
 
 class WTSBaseDataMgr : public IBaseDataMgr
@@ -37,7 +35,6 @@ public:
 public:
 	virtual WTSCommodityInfo*	getCommodity(const char* stdPID) override;
 	virtual WTSCommodityInfo*	getCommodity(const char* exchg, const char* pid) override;
-	virtual WTSCommodityInfo*	getCommodity(WTSContractInfo* ct) override;
 
 	virtual WTSContractInfo*	getContract(const char* code, const char* exchg = "") override;
 	virtual WTSArray*			getContracts(const char* exchg = "") override;
@@ -53,11 +50,10 @@ public:
 	void		release();
 
 
-	bool		loadSessions(const char* filename);
-	bool		loadCommodities(const char* filename);
-	bool		loadContracts(const char* filename);
+	bool		loadSessions(const char* filename, bool isUTF8);
+	bool		loadCommodities(const char* filename, bool isUTF8);
+	bool		loadContracts(const char* filename, bool isUTF8);
 	bool		loadHolidays(const char* filename);
-	//bool		loadFees(const char* filename);
 
 public:
 	uint32_t	getTradingDate(const char* stdPID, uint32_t uOffDate = 0, uint32_t uOffMinute = 0, bool isTpl = false);
@@ -65,8 +61,6 @@ public:
 	uint32_t	getPrevTDate(const char* stdPID, uint32_t uDate, int days = 1, bool isTpl = false);
 	bool		isTradingDate(const char* stdPID, uint32_t uDate, bool isTpl = false);
 	void		setTradingDate(const char* stdPID, uint32_t uDate, bool isTpl = false);
-
-	//double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
 
 	CodeSet*	getSessionComms(const char* sid);
 
@@ -82,20 +76,5 @@ private:
 	WTSSessionMap*		m_mapSessions;
 	WTSCommodityMap*	m_mapCommodities;
 	WTSContractMap*		m_mapContracts;
-	////手续费模板
-	//typedef struct _FeeItem
-	//{
-	//	double	_open;
-	//	double	_close;
-	//	double	_close_today;
-	//	bool	_by_volume;
-
-	//	_FeeItem()
-	//	{
-	//		memset(this, 0, sizeof(_FeeItem));
-	//	}
-	//} FeeItem;
-	//typedef faster_hashmap<std::string, FeeItem>	FeeMap;
-	//FeeMap		_fee_map;
 };
 

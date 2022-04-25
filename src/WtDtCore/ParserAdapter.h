@@ -14,11 +14,11 @@
 #include <boost/core/noncopyable.hpp>
 #include "../Includes/IParserApi.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSVariant;
-NS_OTP_END
+NS_WTP_END
 
-USING_NS_OTP;
+USING_NS_WTP;
 class wxMainFrame;
 class WTSBaseDataMgr;
 class DataManager;
@@ -43,7 +43,7 @@ public:
 public:
 	virtual void handleSymbolList(const WTSArray* aySymbols) override;
 
-	virtual void handleQuote(WTSTickData *quote, bool bNeedSlice) override;
+	virtual void handleQuote(WTSTickData *quote, uint32_t procFlag) override;
 
 	virtual void handleOrderQueue(WTSOrdQueData* ordQueData) override;
 
@@ -51,7 +51,7 @@ public:
 
 	virtual void handleOrderDetail(WTSOrdDtlData* ordDetailData) override;
 
-	virtual void handleParserLog(WTSLogLevel ll, const char* format, ...) override;
+	virtual void handleParserLog(WTSLogLevel ll, const char* message) override;
 
 	virtual IBaseDataMgr* getBaseDataMgr() override;
 
@@ -84,7 +84,7 @@ public:
 
 	bool	addAdapter(const char* id, ParserAdapterPtr& adapter);
 
-	uint32_t size() const { return _adapters.size(); }
+	uint32_t size() const { return (uint32_t)_adapters.size(); }
 
 public:
 	ParserAdapterMap _adapters;

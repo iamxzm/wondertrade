@@ -13,7 +13,7 @@
 
 #include "../Includes/IHftStraCtx.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 
 class WTSVariant;
 class WtHftRtTicker;
@@ -29,7 +29,7 @@ public:
 public:
 	//////////////////////////////////////////////////////////////////////////
 	//WtEngine 接口
-	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDataManager* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier) override;
+	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDtMgr* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier) override;
 
 	virtual void run(bool bAsync = false) override;
 
@@ -75,4 +75,4 @@ private:
 	StraSubMap		_trans_sub_map;		//成交明细订阅表
 };
 
-NS_OTP_END
+NS_WTP_END

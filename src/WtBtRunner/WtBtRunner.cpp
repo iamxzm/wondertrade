@@ -12,30 +12,51 @@
 #include "../WtBtCore/ExecMocker.h"
 #include "../WtBtCore/HftMocker.h"
 #include "../WtBtCore/SelMocker.h"
+#include "../WtBtCore/UftMocker.h"
+#include "../WtBtCore/WtHelper.h"
 
 #include "../WTSTools/WTSLogger.h"
+#include "../WTSUtils/SignalHook.hpp"
 
+#include "../WTSUtils/WTSCfgLoader.h"
+#include "../Includes/WTSVariant.hpp"
 #include "../Share/StdUtils.hpp"
-#include "../Share/JsonToVariant.hpp"
+
+#ifdef _MSC_VER
+#include "../Common/mdump.h"
+#endif
 
 int main()
 {
-	WTSLogger::init("logcfg.json");
+#ifdef _MSC_VER
+    CMiniDumper::Enable("WtBtRunner.exe", true, WtHelper::getCWD().c_str());
+#endif
 
-	std::string filename = "config.json";
+	std::string filename = "logcfgbt.json";
+	if (!StdFile::exists(filename.c_str()))
+		filename = "logcfgbt.yaml";
 
-	std::string content;
-	StdFile::read_file_content(filename.c_str(), content);
+	WTSLogger::init(filename.c_str());
 
-	rj::Document root;
-	if (root.Parse(content.c_str()).HasParseError())
+#if _WIN32
+#pragma message("Signal hooks disabled in WIN32")
+#else
+#pragma message("Signal hooks enabled in UNIX")
+	install_signal_hooks([](const char* message) {
+		WTSLogger::error_f(message);
+	});
+#endif
+
+	filename = "configbt.json";
+	if(!StdFile::exists(filename.c_str()))
+		filename = "configbt.yaml";
+
+	WTSVariant* cfg = WTSCfgLoader::load_from_file(filename.c_str(), true);
+	if (cfg == NULL)
 	{
-		WTSLogger::info("Parsing configuration file failed");
+		WTSLogger::info_f("Loading configuration file {} failed", filename);
 		return -1;
 	}
-
-	WTSVariant* cfg = WTSVariant::createObject();
-	jsonToVariant(root, cfg);
 
 	HisDataReplayer replayer;
 	replayer.init(cfg->get("replayer"));
@@ -67,6 +88,14 @@ int main()
 		mocker->init(cfg->get("exec"));
 		replayer.register_sink(mocker, "exec");
 	}
+	else if (strcmp(mode, "uft") == 0)
+	{
+		UftMocker* mocker = new UftMocker(&replayer, "uft");
+		mocker->init_uft_factory(cfg->get("uft"));
+		replayer.register_sink(mocker, "uft");
+	}
+
+	replayer.prepare();
 
 	replayer.run();
 
