@@ -1,7 +1,7 @@
 #pragma once
 #include "../WtCore/HftStraBaseCtx.h"
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class ExpHftContext : public HftStraBaseCtx
 {
@@ -35,5 +35,7 @@ public:
 	virtual void on_transaction(const char* stdCode, WTSTransData* newTrans) override;
 
 	virtual void on_trade(uint32_t localid, const char* stdCode, bool isBuy, double vol, double price) override;
+
+	virtual void on_position(const char* stdCode, bool isLong, double prevol, double preavail, double newvol, double newavail, uint32_t tradingday) override;
 };
 

@@ -14,7 +14,7 @@
 #include "../Includes/WTSMarcos.h"
 #include "../Share/StdUtils.hpp"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSSessionInfo;
 class IDataReader;
 class WTSTickData;
@@ -63,8 +63,8 @@ private:
 	std::atomic<uint64_t>	_next_check_time;
 	std::atomic<uint32_t>	_last_emit_pos;
 
-	bool		_stopped;
+	bool			_stopped;
 	StdThreadPtr	_thrd;
 
 };
-NS_OTP_END
+NS_WTP_END

@@ -10,7 +10,7 @@
 #pragma once
 #include "WTSObject.hpp"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 typedef struct _TradeStatInfo
 {
 	char		_code[MAX_INSTRUMENT_LENGTH];
@@ -34,6 +34,12 @@ typedef struct _TradeStatInfo
 	uint32_t	s_cancels;	//撤卖笔数
 	double		s_canclqty;	//撤卖数量
 
+	//自动撤单统计
+	uint32_t	b_auto_cancels;		//撤买笔数
+	double		b_auto_canclqty;	//撤买数量
+	uint32_t	s_auto_cancels;		//撤卖笔数
+	double		s_auto_canclqty;	//撤卖数量
+
 	//错单统计
 	uint32_t	b_wrongs;	//错单笔数
 	double		b_wrongqty;	//错单数量
@@ -55,7 +61,7 @@ public:
 	static WTSTradeStateInfo* create(const char* code)
 	{
 		WTSTradeStateInfo* pRet = new WTSTradeStateInfo();
-		strcpy(pRet->_trd_stat_info._code, code);
+		wt_strcpy(pRet->_trd_stat_info._code, code);
 
 		return pRet;
 	}
@@ -104,6 +110,8 @@ typedef struct _WTSFundStruct
 	uint32_t	_max_time;		//日内高点产生时间
 	double		_min_dyn_bal;	//日内最小净值
 	uint32_t	_min_time;		//日内低点产生时间
+
+	int64_t		_update_time;	//数据更新时间
 
 	typedef struct _DynBalPair
 	{
@@ -168,4 +176,4 @@ private:
 	WTSFundStruct	_fund_info;
 };
 
-NS_OTP_END
+NS_WTP_END

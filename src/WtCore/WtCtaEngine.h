@@ -12,7 +12,7 @@
 #include "WtExecMgr.h"
 #include "WtEngine.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSVariant;
 typedef std::shared_ptr<ICtaStraCtx> CtaContextPtr;
 
@@ -39,7 +39,7 @@ public:
 
 	virtual void run(bool bAsync = false) override;
 
-	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDataManager* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier) override;
+	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDtMgr* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier) override;
 
 	virtual bool isInTrading() override;
 	virtual uint32_t transTimeToMin(uint32_t uTime) override;
@@ -79,5 +79,5 @@ private:
 	WTSVariant*		_cfg;
 };
 
-NS_OTP_END
+NS_WTP_END
 

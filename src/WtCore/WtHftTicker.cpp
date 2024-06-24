@@ -14,13 +14,12 @@
 #include "../Share/TimeUtils.hpp"
 #include "../Includes/WTSSessionInfo.hpp"
 #include "../Includes/IBaseDataMgr.h"
-#include "../Includes/WTSDataDef.hpp"
 #include "../Includes/IHotMgr.h"
 #include "../Share/CodeHelper.hpp"
 
 #include "../WTSTools/WTSLogger.h"
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 
 WtHftRtTicker::WtHftRtTicker(WtHftEngine* engine)
@@ -57,8 +56,8 @@ void WtHftRtTicker::trigger_price(WTSTickData* curTick, uint32_t hotFlag /* = 0 
 		if (hotFlag !=0)
 		{
 			WTSTickData* hotTick = WTSTickData::create(curTick->getTickStruct());
-			std::string hotCode = (hotFlag != 1) ? CodeHelper::stdCodeToStdHotCode(stdCode.c_str()) : CodeHelper::stdCodeToStd2ndCode(stdCode.c_str());
-			strcpy(hotTick->getTickStruct().code, hotCode.c_str());
+			std::string hotCode = (hotFlag == 1) ? CodeHelper::stdCodeToStdHotCode(stdCode.c_str()) : CodeHelper::stdCodeToStd2ndCode(stdCode.c_str());
+			hotTick->setCode(hotCode.c_str(), hotCode.size());
 			_engine->on_tick(hotCode.c_str(), hotTick);
 			hotTick->release();
 		}
@@ -78,7 +77,7 @@ void WtHftRtTicker::on_tick(WTSTickData* curTick, uint32_t hotFlag/* = 0*/)
 
 	if (_date != 0 && (uDate < _date || (uDate == _date && uTime < _time)))
 	{
-		//WTSLogger::info("行情时间%u小于本地时间%u", uTime, _time);
+		//WTSLogger::info_f("行情时间{}小于本地时间{}", uTime, _time);
 		trigger_price(curTick, hotFlag);
 		return;
 	}
@@ -117,13 +116,13 @@ void WtHftRtTicker::on_tick(WTSTickData* curTick, uint32_t hotFlag/* = 0*/)
 
 			uint32_t thisMin = _s_info->minuteToTime(_cur_pos);
 
-			WTSLogger::info("Minute Bar %u.%04u Closed by data", _date, thisMin);
+			WTSLogger::info_f("Minute Bar {}.{:04d} Closed by data", _date, thisMin);
 			if (_store)
 				_store->onMinuteEnd(_date, thisMin);
 
 			_engine->on_minute_end(_date, thisMin);
 
-			uint32_t offMin = _s_info->offsetTime(thisMin);
+			uint32_t offMin = _s_info->offsetTime(thisMin, true);
 			if (offMin == _s_info->getCloseTime(true))
 			{
 				_engine->on_session_end();
@@ -166,7 +165,7 @@ void WtHftRtTicker::run()
 	_engine->on_session_begin();
 
 	//先检查当前时间, 如果大于
-	uint32_t offTime = _s_info->offsetTime(_engine->get_min_time());
+	uint32_t offTime = _s_info->offsetTime(_engine->get_min_time(), true);
 
 	_thrd.reset(new StdThread([this, offTime](){
 		while (!_stopped)
@@ -195,16 +194,16 @@ void WtHftRtTicker::run()
 						uint32_t lastDate = _date;
 						_date = TimeUtils::getNextDate(_date);
 						_time = 0;
-						WTSLogger::info("Data automatically changed at time 00:00: %u -> %u", lastDate, _date);
+						WTSLogger::info_f("Data automatically changed at time 00:00: {} -> {}", lastDate, _date);
 					}
 
-					WTSLogger::info("Minute bar %u.%04u closed automatically", _date, thisMin);
+					WTSLogger::info_f("Minute bar {}.{:04d} closed automatically", _date, thisMin);
 					if (_store)
 						_store->onMinuteEnd(_date, thisMin);
 
 					_engine->on_minute_end(_date, thisMin);
 
-					uint32_t offMin = _s_info->offsetTime(thisMin);
+					uint32_t offMin = _s_info->offsetTime(thisMin, true);
 					if (offMin >= _s_info->getCloseTime(true))
 					{
 						_engine->on_session_end();

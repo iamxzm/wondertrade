@@ -16,18 +16,28 @@
 #include "../Includes/WTSVariant.hpp"
 #include "../Includes/WTSDataDef.hpp"
 
-#include "../Share/JsonToVariant.hpp"
-#include "../Share/DLLHelper.hpp"
+#include "../Share/StrUtil.hpp"
 
+#include "../WTSUtils/WTSCfgLoader.h"
 #include "../WTSTools/WTSLogger.h"
 #include "../WTSUtils/SignalHook.hpp"
 
 
 WtDtRunner::WtDtRunner()
+	: _dumper_for_bars(NULL)
+	, _dumper_for_ticks(NULL)
+	, _dumper_for_ordque(NULL)
+	, _dumper_for_orddtl(NULL)
+	, _dumper_for_trans(NULL)
 {
+#if _WIN32
+#pragma message("Signal hooks disabled in WIN32")
+#else
+#pragma message("Signal hooks enabled in UNIX")
 	install_signal_hooks([](const char* message) {
-		WTSLogger::error(message);
+		WTSLogger::error_f(message);
 	});
+#endif
 }
 
 
@@ -35,17 +45,25 @@ WtDtRunner::~WtDtRunner()
 {
 }
 
-void WtDtRunner::start()
+void WtDtRunner::start(bool bAsync /* = false */, bool bAlldayMode /* = false */)
 {
-	m_parsers.run();
+	_parsers.run();
 
-	m_asyncIO.post([this](){
+    if(!bAsync)
+    {
+		_async_io.post([this]() {
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			_state_mon.run();
+		});
+
+        boost::asio::io_service::work work(_async_io);
+        _async_io.run();
+    }
+	else
+	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(5));
-		m_stateMon.run();
-	});
-
-	boost::asio::io_service::work work(m_asyncIO);
-	m_asyncIO.run();
+		_state_mon.run();
+	}
 }
 
 void WtDtRunner::initialize(const char* cfgFile, const char* logCfg, const char* modDir /* = "" */)
@@ -53,77 +71,113 @@ void WtDtRunner::initialize(const char* cfgFile, const char* logCfg, const char*
 	WTSLogger::init(logCfg);
 	WtHelper::set_module_dir(modDir);
 
-	std::string json;
-	StdFile::read_file_content(cfgFile, json);
-	rj::Document document;
-	document.Parse(json.c_str());
-
-	WTSVariant* config = WTSVariant::createObject();
-	jsonToVariant(document, config);
+	WTSVariant* config = WTSCfgLoader::load_from_file(cfgFile, true);
+	if(config == NULL)
+	{
+		WTSLogger::error_f("Loading config file {} failed", cfgFile);
+		return;
+	}
 
 	//基础数据文件
 	WTSVariant* cfgBF = config->get("basefiles");
+	bool isUTF8 = cfgBF->getBoolean("utf-8");
 	if (cfgBF->get("session"))
 	{
-		m_baseDataMgr.loadSessions(cfgBF->getCString("session"));
-		WTSLogger::info("Trading sessions loaded");
+		_bd_mgr.loadSessions(cfgBF->getCString("session"), isUTF8);
+		WTSLogger::info_f("Trading sessions loaded");
 	}
 
-	if (cfgBF->get("commodity"))
+	WTSVariant* cfgItem = cfgBF->get("commodity");
+	if (cfgItem)
 	{
-		m_baseDataMgr.loadCommodities(cfgBF->getCString("commodity"));
-		WTSLogger::info("Commodities loaded");
+		if (cfgItem->type() == WTSVariant::VT_String)
+		{
+			_bd_mgr.loadCommodities(cfgItem->asCString(), isUTF8);
+		}
+		else if (cfgItem->type() == WTSVariant::VT_Array)
+		{
+			for (uint32_t i = 0; i < cfgItem->size(); i++)
+			{
+				_bd_mgr.loadCommodities(cfgItem->get(i)->asCString(), isUTF8);
+			}
+		}
 	}
 
-	if (cfgBF->get("contract"))
+	cfgItem = cfgBF->get("contract");
+	if (cfgItem)
 	{
-		m_baseDataMgr.loadContracts(cfgBF->getCString("contract"));
-		WTSLogger::info("Contracts loades");
+		if (cfgItem->type() == WTSVariant::VT_String)
+		{
+			_bd_mgr.loadContracts(cfgItem->asCString(), isUTF8);
+		}
+		else if (cfgItem->type() == WTSVariant::VT_Array)
+		{
+			for (uint32_t i = 0; i < cfgItem->size(); i++)
+			{
+				_bd_mgr.loadContracts(cfgItem->get(i)->asCString(), isUTF8);
+			}
+		}
 	}
 
 	if (cfgBF->get("holiday"))
 	{
-		m_baseDataMgr.loadHolidays(cfgBF->getCString("holiday"));
-		WTSLogger::info("Holidays loaded");
+		_bd_mgr.loadHolidays(cfgBF->getCString("holiday"));
+		WTSLogger::info_f("Holidays loaded");
 	}
 
-	if (cfgBF->get("hot"))
+    /*
+     *  By Wesley @ 2021.12.27
+     *  数据组件实际上不需要单独处理主力合约
+     */
+//	if (cfgBF->get("hot"))//	{
+//		_hot_mgr.loadHots(cfgBF->getCString("hot"));
+//		WTSLogger::info_f("Hot rules loaded");
+//	}
+//
+//	if (cfgBF->get("second"))
+//	{
+//		_hot_mgr.loadSeconds(cfgBF->getCString("second"));
+//		WTSLogger::info_f("Second rules loaded");
+//	}
+
+	_udp_caster.init(config->get("broadcaster"), &_bd_mgr, &_data_mgr);
+
+	//By Wesley @ 2021.12.27
+	//全天候模式，不需要再使用状态机
+	bool bAlldayMode = config->getBoolean("allday");
+	if (!bAlldayMode)
 	{
-		m_hotMgr.loadHots(cfgBF->getCString("hot"));
-		WTSLogger::info("Hot rules loaded");
+		_state_mon.initialize(config->getCString("statemonitor"), &_bd_mgr, &_data_mgr);
 	}
-
-	if (cfgBF->get("second"))
+	else
 	{
-		m_hotMgr.loadSeconds(cfgBF->getCString("second"));
-		WTSLogger::info("Second rules loaded");
+		WTSLogger::info_f("QuoteFactory will run in allday mode");
 	}
 
-	m_udpCaster.init(config->get("broadcaster"), &m_baseDataMgr, &m_dataMgr);
+	initDataMgr(config->get("writer"), bAlldayMode);
 
-	initDataMgr(config->get("writer"));
-
-	m_stateMon.initialize(config->getCString("statemonitor"), &m_baseDataMgr, &m_dataMgr);
-
-	initParsers(config->getCString("parsers"));
+	if (config->has("parsers"))
+		initParsers(config->getCString("parsers"));
+	else
+		WTSLogger::log_raw(LL_WARN, "No parsers config, skipped loading parsers");
 
 	config->release();
 }
 
-void WtDtRunner::initDataMgr(WTSVariant* config)
+void WtDtRunner::initDataMgr(WTSVariant* config, bool bAlldayMode /* = false */)
 {
-	m_dataMgr.init(config, &m_baseDataMgr, &m_stateMon, &m_udpCaster);
+	_data_mgr.init(config, &_bd_mgr, bAlldayMode ? NULL : &_state_mon, &_udp_caster);
 }
 
 void WtDtRunner::initParsers(const char* filename)
 {
-	std::string json;
-	StdFile::read_file_content(filename, json);
-	rj::Document document;
-	document.Parse(json.c_str());
+	WTSVariant* config = WTSCfgLoader::load_from_file(filename, true);
+	if(config == NULL)
+	{
+		WTSLogger::error_f("Loading parser file {} failed", filename);
+		return;
+	}
 
-	WTSVariant* config = WTSVariant::createObject();
-	jsonToVariant(document, config);
 	WTSVariant* cfg = config->get("parsers");
 
 	for (uint32_t idx = 0; idx < cfg->size(); idx++)
@@ -134,12 +188,21 @@ void WtDtRunner::initParsers(const char* filename)
 
 		const char* id = cfgItem->getCString("id");
 
-		ParserAdapterPtr adapter(new ParserAdapter(&m_baseDataMgr, &m_dataMgr));
-		adapter->init(id, cfgItem);
-		m_parsers.addAdapter(id, adapter);
+		// By Wesley @ 2021.12.14
+		// 如果id为空，则生成自动id
+		std::string realid = id;
+		if (realid.empty())
+		{
+			static uint32_t auto_parserid = 1000;
+			realid = StrUtil::printf("auto_parser_%u", auto_parserid++);
+		}
+		
+		ParserAdapterPtr adapter(new ParserAdapter(&_bd_mgr, &_data_mgr));
+		adapter->init(realid.c_str(), cfgItem);
+		_parsers.addAdapter(realid.c_str(), adapter);
 	}
 
-	WTSLogger::info("%u market data parsers loaded in total", m_parsers.size());
+	WTSLogger::info_f("{} market data parsers loaded in total", _parsers.size());
 	config->release();
 }
 
@@ -149,7 +212,7 @@ void WtDtRunner::registerParserPorter(FuncParserEvtCallback cbEvt, FuncParserSub
 	_cb_parser_evt = cbEvt;
 	_cb_parser_sub = cbSub;
 
-	WTSLogger::info("Callbacks of Extented Parser registration done");
+	WTSLogger::info_f("Callbacks of Extented Parser registration done");
 }
 
 void WtDtRunner::parser_init(const char* id)
@@ -188,25 +251,108 @@ void WtDtRunner::parser_unsubscribe(const char* id, const char* code)
 		_cb_parser_sub(id, code, false);
 }
 
-void WtDtRunner::on_parser_quote(const char* id, WTSTickStruct* curTick, bool bNeedSlice /* = true */)
+void WtDtRunner::on_ext_parser_quote(const char* id, WTSTickStruct* curTick, uint32_t uProcFlag)
 {
-	ParserAdapterPtr adapter = m_parsers.getAdapter(id);
+	ParserAdapterPtr adapter = _parsers.getAdapter(id);
 	if (adapter)
 	{
 		WTSTickData* newTick = WTSTickData::create(*curTick);
-		adapter->handleQuote(newTick, bNeedSlice);
+		adapter->handleQuote(newTick, uProcFlag);
 		newTick->release();
+	}
+	else
+	{
+		WTSLogger::warn_f("Parser {} not exists", id);
 	}
 }
 
 bool WtDtRunner::createExtParser(const char* id)
 {
-	ParserAdapterPtr adapter(new ParserAdapter(&m_baseDataMgr, &m_dataMgr));
+	ParserAdapterPtr adapter(new ParserAdapter(&_bd_mgr, &_data_mgr));
 	ExpParser* parser = new ExpParser(id);
 	adapter->initExt(id, parser);
-	m_parsers.addAdapter(id, adapter);
-	WTSLogger::info("Extended parser %s created", id);
+	_parsers.addAdapter(id, adapter);
+	WTSLogger::info_f("Extended parser {} created", id);
 	return true;
 }
 
 #pragma endregion 
+
+bool WtDtRunner::createExtDumper(const char* id)
+{
+	ExpDumperPtr dumper(new ExpDumper(id));
+	_dumpers[id] = dumper;
+
+	_data_mgr.add_ext_dumper(id, dumper.get());
+
+	WTSLogger::info_f("Extended dumper {} created", id);
+	return true;
+}
+
+void WtDtRunner::registerExtDumper(FuncDumpBars barDumper, FuncDumpTicks tickDumper)
+{
+	_dumper_for_bars = barDumper;
+	_dumper_for_ticks = tickDumper;
+}
+
+void WtDtRunner::registerExtHftDataDumper(FuncDumpOrdQue ordQueDumper, FuncDumpOrdDtl ordDtlDumper, FuncDumpTrans transDumper)
+{
+	_dumper_for_ordque = ordQueDumper;
+	_dumper_for_orddtl = ordDtlDumper;
+	_dumper_for_trans = transDumper;
+}
+
+bool WtDtRunner::dumpHisTicks(const char* id, const char* stdCode, uint32_t uDate, WTSTickStruct* ticks, uint32_t count)
+{
+	if (NULL == _dumper_for_ticks)
+	{
+		WTSLogger::error_f("Extended tick dumper not enabled");
+		return false;
+	}
+
+	return _dumper_for_ticks(id, stdCode, uDate, ticks, count);
+}
+
+bool WtDtRunner::dumpHisBars(const char* id, const char* stdCode, const char* period, WTSBarStruct* bars, uint32_t count)
+{
+	if (NULL == _dumper_for_bars)
+	{
+		WTSLogger::error_f("Extended bar dumper not enabled");
+		return false;
+	}
+
+	return _dumper_for_bars(id, stdCode, period, bars, count);
+}
+
+bool WtDtRunner::dumpHisOrdDtl(const char* id, const char* stdCode, uint32_t uDate, WTSOrdDtlStruct* items, uint32_t count)
+{
+	if (NULL == _dumper_for_orddtl)
+	{
+		WTSLogger::error_f("Extended order detail dumper not enabled");
+		return false;
+	}
+
+	return _dumper_for_orddtl(id, stdCode, uDate, items, count);
+}
+
+bool WtDtRunner::dumpHisOrdQue(const char* id, const char* stdCode, uint32_t uDate, WTSOrdQueStruct* items, uint32_t count)
+{
+	if (NULL == _dumper_for_ordque)
+	{
+		WTSLogger::error_f("Extended order queue dumper not enabled");
+		return false;
+	}
+
+	return _dumper_for_ordque(id, stdCode, uDate, items, count);
+}
+
+bool WtDtRunner::dumpHisTrans(const char* id, const char* stdCode, uint32_t uDate, WTSTransStruct* items, uint32_t count)
+{
+	if (NULL == _dumper_for_trans)
+	{
+		WTSLogger::error_f("Extended transaction dumper not enabled");
+		return false;
+	}
+
+	return _dumper_for_trans(id, stdCode, uDate, items, count);
+}

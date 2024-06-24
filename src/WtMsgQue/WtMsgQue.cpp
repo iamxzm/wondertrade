@@ -10,14 +10,13 @@
 #include "WtMsgQue.h"
 #include "MQManager.h"
 
-#ifdef _WIN32
+#ifdef _MSC_VER
 #pragma comment(lib, "Ws2_32.lib")
-#pragma comment(lib, "Wldap32.lib")
 #pragma comment(lib, "Mswsock.lib")
 #pragma comment(lib, "nanomsg.lib")
 #endif
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 MQManager& getMgr()
 {

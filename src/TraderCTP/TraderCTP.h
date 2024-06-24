@@ -11,47 +11,19 @@
 
 #include <string>
 #include <queue>
-#include <map>
 #include <stdint.h>
 
 #include "../Includes/WTSTypes.h"
 #include "../Includes/ITraderApi.h"
 #include "../Includes/WTSCollection.hpp"
 
-//CTP 6.3.15
-#include "./ThostTraderApi/ThostFtdcTraderApi.h"
+#include "../API/CTP6.3.15/ThostFtdcTraderApi.h"
 
-#include "../Share/IniHelper.hpp"
 #include "../Share/StdUtils.hpp"
 #include "../Share/DLLHelper.hpp"
+#include "../Share/WtKVCache.hpp"
 
-#include <bsoncxx/builder/stream/document.hpp>
-#include <bsoncxx/builder/basic/array.hpp>
-#include <bsoncxx/builder/basic/document.hpp>
-#include <bsoncxx/builder/basic/kvp.hpp>
-#include <bsoncxx/json.hpp>
-#include <bsoncxx/types.hpp>
-
-#include <mongocxx/client.hpp>
-#include <mongocxx/instance.hpp>
-#include <mongocxx/uri.hpp>
-#include <mongocxx/database.hpp>
-
-using bsoncxx::builder::basic::kvp;
-using bsoncxx::builder::basic::make_array;
-using bsoncxx::builder::basic::make_document;
-using bsoncxx::to_json;
-
-using bsoncxx::builder::stream::close_array;
-using bsoncxx::builder::stream::close_document;
-using bsoncxx::builder::stream::document;
-using bsoncxx::builder::stream::finalize;
-using bsoncxx::builder::stream::open_array;
-using bsoncxx::builder::stream::open_document;
-
-using namespace mongocxx;
-
-USING_NS_OTP;
+USING_NS_WTP;
 
 class TraderCTP : public ITraderApi, public CThostFtdcTraderSpi
 {
@@ -71,39 +43,7 @@ public:
 		WS_ALLREADY			//全部就绪
 	} WrapperState;
 
-	typedef struct
-	{
-		double _open = 20.0;
-		double _close = 21.0;
-		double _close_today = 20.5;
-		bool _by_volume = 100;
-	} FeeItem;
 
-	FeeItem m_feeitem;
-	mongocxx::instance _instance;
-	mongocxx::uri _uri;
-	mongocxx::client _client;
-
-	struct front_session_ref
-	{
-		int front_id;
-		int session_id;
-		std::string oref;
-
-		bool operator==(const front_session_ref& key) const //需要重载==才能find
-		{
-			return front_id == key.front_id && session_id == key.session_id && oref == key.oref;
-		};
-		bool operator < (const front_session_ref& key) const
-		{
-			return front_id < key.front_id || (front_id == key.front_id && session_id < key.session_id) ||
-				(front_id == key.front_id && session_id == key.session_id && oref < key.oref);
-		}
-
-	}_f_s_r_struct;
-
-	std::map<std::string, front_session_ref> _sys_front_map;
-	std::map<front_session_ref, time_t> _front_time_map;
 private:
 
 	int confirm();
@@ -117,7 +57,7 @@ private:
 	//////////////////////////////////////////////////////////////////////////
 	//ITraderApi接口
 public:
-	virtual bool init(WTSParams* params) override;
+	virtual bool init(WTSVariant* params) override;
 
 	virtual void release() override;
 
@@ -192,7 +132,7 @@ public:
 
 	virtual void OnErrRtnOrderInsert(CThostFtdcInputOrderField *pInputOrder, CThostFtdcRspInfoField *pRspInfo) override;
 
-protected:
+private:
 	/*
 	*	检查错误信息
 	*/
@@ -203,10 +143,6 @@ protected:
 	int wrapOffsetType(WTSOffsetType offType);
 	int	wrapTimeCondition(WTSTimeCondition timeCond);
 	int wrapActionFlag(WTSActionFlag actionFlag);
-	void insert_his_positions(CThostFtdcInvestorPositionField* pInvestorPosition);
-	void insert_his_order(CThostFtdcOrderField* pOrder);
-	void insert_his_trades(CThostFtdcTradeField* pTrade);
-	void insert_his_trade(CThostFtdcTradeField* pTrade);
 
 	WTSPriceType		wrapPriceType(TThostFtdcOrderPriceTypeType priceType);
 	WTSDirectionType	wrapDirectionType(TThostFtdcDirectionType dirType, TThostFtdcOffsetFlagType offType);
@@ -220,17 +156,11 @@ protected:
 	WTSError*		makeError(CThostFtdcRspInfoField* rspInfo, WTSErroCode ec = WEC_NONE);
 	WTSTradeInfo*	makeTradeRecord(CThostFtdcTradeField *tradeField);
 
-	std::string		generateEntrustID(uint32_t frontid, uint32_t sessionid, uint32_t orderRef);
+	void			generateEntrustID(char* buffer, uint32_t frontid, uint32_t sessionid, uint32_t orderRef);
 	bool			extractEntrustID(const char* entrustid, uint32_t &frontid, uint32_t &sessionid, uint32_t &orderRef);
-
-	//uint64_t		calcCommission(uint32_t qty, uint32_t price, WTSOffsetType flag, WTSContractInfo* ct);
-	//uint64_t		calcMargin(uint32_t qty, uint32_t price, WTSDirectionType direct, WTSContractInfo* ct);
 
 	uint32_t		genRequestID();
 
-	//void			triggerQuery();
-
-	double calc_fee(const char* stdCode, double price, double qty, uint32_t offset);
 protected:
 	std::string		m_strBroker;
 	std::string		m_strFront;
@@ -252,12 +182,12 @@ protected:
 	std::string		m_strUserName;
 	std::string		m_strFlowDir;
 
-	ITraderSpi*	m_sink;
+	ITraderSpi*		m_sink;
 	uint64_t		m_uLastQryTime;
 
 	uint32_t					m_lDate;
-	TThostFtdcFrontIDType		m_frontID;		//前置编号
-	TThostFtdcSessionIDType		m_sessionID;	//会话编号
+	uint32_t					m_frontID;		//前置编号
+	uint32_t					m_sessionID;	//会话编号
 	std::atomic<uint32_t>		m_orderRef;		//报单引用
 
 	WrapperState				m_wrapperState;
@@ -287,8 +217,9 @@ protected:
 	typedef CThostFtdcTraderApi* (*CTPCreator)(const char *);
 	CTPCreator		m_funcCreator;
 
-	IniHelper		m_iniHelper;
-
-	std::string m_stra_name;
+	//委托单标记缓存器
+	WtKVCache		m_eidCache;
+	//订单标记缓存器
+	WtKVCache		m_oidCache;
 };
 

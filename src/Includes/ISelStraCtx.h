@@ -12,7 +12,7 @@
 #include <functional>
 #include "../Includes/WTSMarcos.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSCommodityInfo;
 class WTSSessionInfo;
 class WTSTickData;
@@ -54,7 +54,7 @@ public:
 	virtual void enum_position(FuncEnumSelPositionCallBack cb) = 0;
 
 	//²ßÂÔ½Ó¿Ú
-	virtual double stra_get_position(const char* stdCode, const char* userTag = "") = 0;
+	virtual double stra_get_position(const char* stdCode, bool bOnlyValid = false, const char* userTag = "") = 0;
 	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "") = 0;
 
 	virtual double stra_get_price(const char* stdCode) = 0;
@@ -70,9 +70,9 @@ public:
 
 	virtual void stra_sub_ticks(const char* stdCode) = 0;
 
-	virtual void stra_log_info(const char* fmt, ...) = 0;
-	virtual void stra_log_debug(const char* fmt, ...) = 0;
-	virtual void stra_log_error(const char* fmt, ...) = 0;
+	virtual void stra_log_info(const char* message) = 0;
+	virtual void stra_log_debug(const char* message) = 0;
+	virtual void stra_log_error(const char* message) = 0;
 
 	virtual void stra_save_user_data(const char* key, const char* val){}
 
@@ -82,4 +82,4 @@ protected:
 	std::string _name;
 };
 
-NS_OTP_END
+NS_WTP_END

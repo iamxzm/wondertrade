@@ -58,7 +58,7 @@ void MatchEngine::match_orders(WTSTickData* curTick, OrderIDs& to_erase)
 
 			to_erase.emplace_back(localid);
 
-			WTSLogger::info("订单%u已撤销, 剩余数量: %d", localid, ordInfo._left*(ordInfo._buy ? 1 : -1));
+			WTSLogger::info_f("订单{}已撤销, 剩余数量: {}", localid, ordInfo._left*(ordInfo._buy ? 1 : -1));
 			ordInfo._left = 0;
 			continue;
 		}
@@ -88,12 +88,12 @@ void MatchEngine::match_orders(WTSTickData* curTick, OrderIDs& to_erase)
 				//如果价格相等,需要先看排队位置,如果价格不等说明已经全部被大单吃掉了
 				if (!ordInfo._positive && decimal::eq(price, ordInfo._limit))
 				{
-					uint32_t& quepos = ordInfo._queue;
+					double& quepos = ordInfo._queue;
 
 					//如果成交量小于排队位置,则不能成交
 					if (volume <= quepos)
 					{
-						quepos -= (uint32_t)volume;
+						quepos -= volume;
 						continue;
 					}
 					else if (quepos != 0)
@@ -109,6 +109,9 @@ void MatchEngine::match_orders(WTSTickData* curTick, OrderIDs& to_erase)
 				}
 
 				double qty = min(volume, ordInfo._left);
+				if (decimal::eq(qty, 0.0))
+					qty = 1;
+
 				_sink->handle_trade(localid, ordInfo._code, ordInfo._buy, qty, ordInfo._price, price, ordInfo._time);
 
 				ordInfo._traded += qty;
@@ -143,12 +146,12 @@ void MatchEngine::match_orders(WTSTickData* curTick, OrderIDs& to_erase)
 				//如果价格相等,需要先看排队位置,如果价格不等说明已经全部被大单吃掉了
 				if (!ordInfo._positive && decimal::eq(price, ordInfo._limit))
 				{
-					uint32_t& quepos = ordInfo._queue;
+					double& quepos = ordInfo._queue;
 
 					//如果成交量小于排队位置,则不能成交
 					if (volume <= quepos)
 					{
-						quepos -= (uint32_t)volume;
+						quepos -= volume;
 						continue;
 					}
 					else if (quepos != 0)
@@ -164,6 +167,9 @@ void MatchEngine::match_orders(WTSTickData* curTick, OrderIDs& to_erase)
 				}
 
 				double qty = min(volume, ordInfo._left);
+				if (decimal::eq(qty, 0.0))
+					qty = 1;
+
 				_sink->handle_trade(localid, ordInfo._code, ordInfo._buy, qty, ordInfo._price, price, ordInfo._time);
 				ordInfo._traded += qty;
 				ordInfo._left -= qty;
@@ -193,14 +199,14 @@ void MatchEngine::update_lob(WTSTickData* curTick)
 		uint32_t px = PRICE_DOUBLE_TO_INT(curTick->askprice(i));
 		if (px != 0)
 		{
-			uint32_t& volume = curBook._items[px];
+			double& volume = curBook._items[px];
 			volume = curTick->askqty(i);
 		}
 
 		px = PRICE_DOUBLE_TO_INT(curTick->bidprice(i));
 		if (px != 0)
 		{
-			uint32_t& volume = curBook._items[px];
+			double& volume = curBook._items[px];
 			volume = curTick->askqty(i);
 		}
 	}

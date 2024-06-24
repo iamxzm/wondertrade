@@ -12,10 +12,13 @@
 #include "../Includes/FasterDefs.h"
 #include "../Includes/IHftStraCtx.h"
 #include "../Share/BoostFile.hpp"
+#include "../Share/fmtlib.h"
+
+#include <boost/circular_buffer.hpp>
 
 #include "ITrdNotifySink.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 
 class WtHftEngine;
 class TraderAdapter;
@@ -53,14 +56,67 @@ public:
 
 	virtual OrderIDs stra_cancel(const char* stdCode, bool isBuy, double qty) override;
 
-	virtual OrderIDs stra_buy(const char* stdCode, double price, double qty, const char* userTag) override;
+	/*
+	 *	下单接口: 买入
+	 *
+	 *	@stdCode	合约代码
+	 *	@price		下单价格，0则是市价单
+	 *	@qty		下单数量
+	 *	@flag		下单标志: 0-normal，1-fak，2-fok，默认0
+	 */
+	virtual OrderIDs stra_buy(const char* stdCode, double price, double qty, const char* userTag, int flag = 0) override;
 
-	virtual OrderIDs stra_sell(const char* stdCode, double price, double qty, const char* userTag) override;
+	/*
+	 *	下单接口: 卖出
+	 *
+	 *	@stdCode	合约代码
+	 *	@price		下单价格，0则是市价单
+	 *	@qty		下单数量
+	 *	@flag		下单标志: 0-normal，1-fak，2-fok，默认0
+	 */
+	virtual OrderIDs stra_sell(const char* stdCode, double price, double qty, const char* userTag, int flag = 0) override;
 
-	virtual uint32_t	stra_enter_long(const char* stdCode, double price, double qty, const char* userTag) override;
-	virtual uint32_t	stra_enter_short(const char* stdCode, double price, double qty, const char* userTag) override;
-	virtual uint32_t	stra_exit_long(const char* stdCode, double price, double qty, const char* userTag, bool isToday = false) override;
-	virtual uint32_t	stra_exit_short(const char* stdCode, double price, double qty, const char* userTag, bool isToday = false) override;
+	/*
+	 *	下单接口: 开多
+	 *
+	 *	@stdCode	合约代码
+	 *	@price		下单价格，0则是市价单
+	 *	@qty		下单数量
+	 *	@flag		下单标志: 0-normal，1-fak，2-fok
+	 */
+	virtual uint32_t	stra_enter_long(const char* stdCode, double price, double qty, const char* userTag, int flag = 0) override;
+
+	/*
+	 *	下单接口: 开空
+	 *
+	 *	@stdCode	合约代码
+	 *	@price		下单价格，0则是市价单
+	 *	@qty		下单数量
+	 *	@flag		下单标志: 0-normal，1-fak，2-fok
+	 */
+	virtual uint32_t	stra_enter_short(const char* stdCode, double price, double qty, const char* userTag, int flag = 0) override;
+
+	/*
+	 *	下单接口: 平多
+	 *
+	 *	@stdCode	合约代码
+	 *	@price		下单价格，0则是市价单
+	 *	@qty		下单数量
+	 *	@isToday	是否今仓，默认false
+	 *	@flag		下单标志: 0-normal，1-fak，2-fok，默认0
+	 */
+	virtual uint32_t	stra_exit_long(const char* stdCode, double price, double qty, const char* userTag, bool isToday = false, int flag = 0) override;
+
+	/*
+	 *	下单接口: 平空
+	 *
+	 *	@stdCode	合约代码
+	 *	@price		下单价格，0则是市价单
+	 *	@qty		下单数量
+	 *	@isToday	是否今仓，默认false
+	 *	@flag		下单标志: 0-normal，1-fak，2-fok，默认0
+	 */
+	virtual uint32_t	stra_exit_short(const char* stdCode, double price, double qty, const char* userTag, bool isToday = false, int flag = 0) override;
 
 	virtual WTSCommodityInfo* stra_get_comminfo(const char* stdCode) override;
 
@@ -76,11 +132,11 @@ public:
 
 	virtual WTSTickData* stra_get_last_tick(const char* stdCode) override;
 
-	virtual void stra_log_info(const char* fmt, ...) override;
-	virtual void stra_log_debug(const char* fmt, ...) override;
-	virtual void stra_log_error(const char* fmt, ...) override;
+	virtual void stra_log_info(const char* message) override;
+	virtual void stra_log_debug(const char* message) override;
+	virtual void stra_log_error(const char* message) override;
 
-	virtual double stra_get_position(const char* stdCode) override;
+	virtual double stra_get_position(const char* stdCode, bool bOnlyValid = false) override;
 	virtual double stra_get_position_profit(const char* stdCode) override;
 	virtual double stra_get_price(const char* stdCode) override;
 	virtual double stra_get_undone(const char* stdCode) override;
@@ -112,6 +168,28 @@ public:
 	virtual void on_position(const char* stdCode, bool isLong, double prevol, double preavail, double newvol, double newavail, uint32_t tradingday) override;
 
 protected:
+	template<typename... Args>
+	void log_debug(const char* format, const Args& ...args)
+	{
+		const char* buffer = fmtutil::format(format, args...);
+		stra_log_debug(buffer);
+	}
+
+	template<typename... Args>
+	void log_info(const char* format, const Args& ...args)
+	{
+		const char* buffer = fmtutil::format(format, args...);
+		stra_log_info(buffer);
+	}
+
+	template<typename... Args>
+	void log_error(const char* format, const Args& ...args)
+	{
+		const char* buffer = fmtutil::format(format, args...);
+		stra_log_error(buffer);
+	}
+
+protected:
 	const char* get_inner_code(const char* stdCode);
 
 	void	load_userdata();
@@ -128,20 +206,44 @@ protected:
 
 	inline const char* getOrderTag(uint32_t localid)
 	{
-		auto it = _orders.find(localid);
+		thread_local static OrderTag oTag;
+		oTag._localid = localid;
+		auto it = std::lower_bound(_orders.begin(), _orders.end(), oTag, [](const OrderTag& a, const OrderTag& b) {
+			return a._localid < b._localid;
+		});
+
 		if (it == _orders.end())
 			return "";
 
-		return it->second.c_str();
+		return (*it)._usertag;
 	}
 
+
+	inline void setUserTag(uint32_t localid, const char* usertag)
+	{
+		_orders.push_back({ localid, usertag });
+	}
+
+	inline void eraseOrderTag(uint32_t localid)
+	{
+		thread_local static OrderTag oTag;
+		oTag._localid = localid;
+		auto it = std::lower_bound(_orders.begin(), _orders.end(), oTag, [](const OrderTag& a, const OrderTag& b) {
+			return a._localid < b._localid;
+		});
+
+		if (it == _orders.end())
+			return;
+
+		_orders.erase(it);
+	}
 
 protected:
 	uint32_t		_context_id;
 	WtHftEngine*	_engine;
 	TraderAdapter*	_trader;
 
-	faster_hashmap<std::string, std::string> _code_map;
+	faster_hashmap<LongKey, std::string> _code_map;
 
 	BoostFilePtr	_sig_logs;
 	BoostFilePtr	_close_logs;
@@ -149,11 +251,14 @@ protected:
 	BoostFilePtr	_fund_logs;
 
 	//用户数据
-	typedef faster_hashmap<std::string, std::string> StringHashMap;
+	typedef faster_hashmap<LongKey, std::string> StringHashMap;
 	StringHashMap	_user_datas;
 	bool			_ud_modified;
 
 	bool			_data_agent;	//数据托管
+
+	//tick订阅列表
+	faster_hashset<LongKey> _tick_subs;
 
 private:
 	typedef struct _DetailInfo
@@ -189,11 +294,24 @@ private:
 			_dynprofit = 0;
 		}
 	} PosInfo;
-	typedef faster_hashmap<std::string, PosInfo> PositionMap;
+	typedef faster_hashmap<LongKey, PosInfo> PositionMap;
 	PositionMap		_pos_map;
 
-	typedef faster_hashmap<uint32_t, std::string> OrderMap;
-	OrderMap		_orders;
+	typedef struct _OrderTag
+	{
+		uint32_t	_localid;
+		char		_usertag[64] = { 0 };
+
+		_OrderTag(){}
+		_OrderTag(uint32_t localid, const char* usertag)
+		{
+			_localid = localid;
+			wt_strcpy(_usertag, usertag);
+		}
+	} OrderTag;
+	//typedef faster_hashmap<uint32_t, LongKey> OrderMap;
+	//OrderMap		_orders;
+	boost::circular_buffer<OrderTag> _orders;
 
 	typedef struct _StraFundInfo
 	{
@@ -209,8 +327,8 @@ private:
 
 	StraFundInfo		_fund_info;
 
-	typedef faster_hashmap<std::string, double> PriceMap;
+	typedef faster_hashmap<LongKey, double> PriceMap;
 	PriceMap		_price_map;
 };
 
-NS_OTP_END
+NS_WTP_END

@@ -18,10 +18,10 @@ xcopy ..\%plat%\%env%\TraderMocker.dll ..\%plat%\%env%\WtRunner\traders\ /C /Y
 xcopy ..\%plat%\%env%\TraderCTPMini.dll ..\%plat%\%env%\WtRunner\traders\ /C /Y
 xcopy ..\%plat%\%env%\TraderCTPOpt.dll ..\%plat%\%env%\WtRunner\traders\ /C /Y
 xcopy ..\%plat%\%env%\TraderFemas.dll ..\%plat%\%env%\WtRunner\traders\ /C /Y
-xcopy ..\%plat%\%env%\TraderiTap.dll ..\%plat%\%env%\WtRunner\traders\ /C /Y
 
 xcopy ..\%plat%\%env%\WtExeFact.dll ..\%plat%\%env%\WtRunner\executer\ /C /Y
 
-xcopy ..\%plat%\%env%\WtDataReader.dll ..\%plat%\%env%\WtRunner\ /C /Y
+xcopy ..\%plat%\%env%\WtDataStorage.dll ..\%plat%\%env%\WtRunner\ /C /Y
+xcopy ..\%plat%\%env%\WtDataStorageAD.dll ..\%plat%\%env%\WtRunner\ /C /Y
 xcopy ..\%plat%\%env%\WtRiskMonFact.dll ..\%plat%\%env%\WtRunner\ /C /Y
 xcopy ..\%plat%\%env%\WtMsgQue.dll ..\%plat%\%env%\WtPorter\ /C /Y

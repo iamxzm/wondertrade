@@ -40,7 +40,7 @@ bool DataManager::isSessionProceeded(const char* sid)
 	return _writer->isSessionProceeded(sid);
 }
 
-bool DataManager::init(WTSVariant* params, WTSBaseDataMgr* bdMgr, StateMonitor* stMonitor, UDPCaster* caster)
+bool DataManager::init(WTSVariant* params, WTSBaseDataMgr* bdMgr, StateMonitor* stMonitor, UDPCaster* caster /* = NULL */)
 {
 	_bd_mgr = bdMgr;
 	_state_mon = stMonitor;
@@ -48,14 +48,9 @@ bool DataManager::init(WTSVariant* params, WTSBaseDataMgr* bdMgr, StateMonitor* 
 
 	std::string module = params->getCString("module");
 	if (module.empty())
-	{
-		module = WtHelper::get_module_dir();
-#ifdef _WIN32
-		module += "WtDataWriter.dll";
-#else
-		module += "libWtDataWriter.so";
-#endif
-	}
+		module = WtHelper::get_module_dir() + DLLHelper::wrap_module("WtDataStorage");
+	else
+		module = WtHelper::get_module_dir() + DLLHelper::wrap_module(module.c_str());
 	
 	DllHandle libParser = DLLHelper::load_library(module.c_str());
 	if (libParser)
@@ -63,13 +58,13 @@ bool DataManager::init(WTSVariant* params, WTSBaseDataMgr* bdMgr, StateMonitor* 
 		FuncCreateWriter pFuncCreateWriter = (FuncCreateWriter)DLLHelper::get_symbol(libParser, "createWriter");
 		if (pFuncCreateWriter == NULL)
 		{
-			WTSLogger::error("Initializing of data writer failed: function createWriter not found...");
+			WTSLogger::error_f("Initializing of data writer failed: function createWriter not found...");
 		}
 
 		FuncDeleteWriter pFuncDeleteWriter = (FuncDeleteWriter)DLLHelper::get_symbol(libParser, "deleteWriter");
 		if (pFuncDeleteWriter == NULL)
 		{
-			WTSLogger::error("Initializing of data writer failed: function deleteWriter not found...");
+			WTSLogger::error_f("Initializing of data writer failed: function deleteWriter not found...");
 		}
 
 		if (pFuncCreateWriter && pFuncDeleteWriter)
@@ -77,15 +72,23 @@ bool DataManager::init(WTSVariant* params, WTSBaseDataMgr* bdMgr, StateMonitor* 
 			_writer = pFuncCreateWriter();
 			_remover = pFuncDeleteWriter;
 		}
-
+		WTSLogger::info_f("Data storage module {} loaded", module);
 	}
 	else
 	{
-		WTSLogger::error("Initializing of data writer failed: loading module %s failed...", module.c_str());
+		WTSLogger::error_f("Initializing of data writer failed: loading module {} failed...", module.c_str());
 
 	}
 
 	return _writer->init(params, this);
+}
+
+void DataManager::add_ext_dumper(const char* id, IHisDataDumper* dumper)
+{
+	if (_writer == NULL)
+		return;
+
+	_writer->add_ext_dumper(id, dumper);
 }
 
 void DataManager::release()
@@ -97,12 +100,12 @@ void DataManager::release()
 	}
 }
 
-bool DataManager::writeTick(WTSTickData* curTick, bool bNeedSlice /* = true */)
+bool DataManager::writeTick(WTSTickData* curTick, uint32_t procFlag)
 {
 	if (_writer == NULL)
 		return false;
 
-	return _writer->writeTick(curTick, bNeedSlice);
+	return _writer->writeTick(curTick, procFlag);
 }
 
 bool DataManager::writeOrderQueue(WTSOrdQueData* curOrdQue)
@@ -152,6 +155,11 @@ IBaseDataMgr* DataManager::getBDMgr()
 
 bool DataManager::canSessionReceive(const char* sid)
 {
+	//By Wesley @ 2021.12.27
+	//如果状态机为NULL，说明是全天候模式，直接返回true即可
+	if (_state_mon == NULL)
+		return true;
+
 	return _state_mon->isInState(sid, SS_RECEIVING);
 }
 
@@ -189,12 +197,9 @@ uint32_t DataManager::getTradingDate(const char* pid)
 	return  _bd_mgr->getTradingDate(pid);
 }
 
-void DataManager::outputWriterLog(WTSLogLevel ll, const char* format, ...)
+void DataManager::outputLog(WTSLogLevel ll, const char* message)
 {
-	va_list args;
-	va_start(args, format);
-	WTSLogger::vlog(ll, format, args);
-	va_end(args);
+	WTSLogger::log_raw(ll, message);
 }
 
 #pragma endregion "IDataWriterSink"

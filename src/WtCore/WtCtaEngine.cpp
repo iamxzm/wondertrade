@@ -10,13 +10,12 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include "WtCtaEngine.h"
-#include "WtDataManager.h"
+#include "WtDtMgr.h"
 #include "WtCtaTicker.h"
 #include "WtHelper.h"
 #include "TraderAdapter.h"
 
 #include "../Share/CodeHelper.hpp"
-#include "../Share/StrUtil.hpp"
 #include "../Includes/WTSVariant.hpp"
 #include "../Share/TimeUtils.hpp"
 #include "../Includes/IBaseDataMgr.h"
@@ -24,7 +23,6 @@
 #include "../Includes/WTSContractInfo.hpp"
 #include "../Includes/WTSRiskDef.hpp"
 #include "../Share/decimal.h"
-#include "../Share/StdUtils.hpp"
 
 #include "../WTSTools/WTSLogger.h"
 
@@ -35,7 +33,6 @@ namespace rj = rapidjson;
 #include <boost/asio.hpp>
 
 boost::asio::io_service g_asyncIO;
-
 
 WtCtaEngine::WtCtaEngine()
 	: _tm_ticker(NULL)
@@ -116,7 +113,7 @@ void WtCtaEngine::run(bool bAsync /* = false */)
 	}
 }
 
-void WtCtaEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDataManager* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier /* = NULL */)
+void WtCtaEngine::init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDtMgr* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier /* = NULL */)
 {
 	WtEngine::init(cfg, bdMgr, dataMgr, hotMgr, notifier);
 
@@ -143,32 +140,70 @@ CtaContextPtr WtCtaEngine::getContext(uint32_t id)
 
 void WtCtaEngine::on_init()
 {
-	faster_hashmap<std::string, double> target_pos;
+	faster_hashmap<LongKey, double> target_pos;
 	for (auto it = _ctx_map.begin(); it != _ctx_map.end(); it++)
 	{
 		CtaContextPtr& ctx = (CtaContextPtr&)it->second;
 		ctx->on_init();
 
-		ctx->enum_position([this, &target_pos](const char* stdCode, double qty){
-			std::string realCode = stdCode;
-			if (CodeHelper::isStdFutHotCode(stdCode))
-			{
-				CodeHelper::CodeInfo cInfo;
-				CodeHelper::extractStdCode(stdCode, cInfo);
-				std::string code = _hot_mgr->getRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
-				realCode = CodeHelper::bscFutCodeToStdCode(code.c_str(), cInfo._exchg);
-			}
-			else if (CodeHelper::isStdFut2ndCode(stdCode))
-			{
-				CodeHelper::CodeInfo cInfo;
-				CodeHelper::extractStdCode(stdCode, cInfo);
-				std::string code = _hot_mgr->getSecondRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
-				realCode = CodeHelper::bscFutCodeToStdCode(code.c_str(), cInfo._exchg);
-			}
+		ctx->enum_position([this, &target_pos, ctx](const char* stdCode, double qty){
 
-			double& vol = target_pos[realCode];
-			vol += qty;
+			double oldQty = qty;
+			bool bFilterd = _filter_mgr.is_filtered_by_strategy(ctx->name(), qty);
+			if (!bFilterd)
+			{
+				if (!decimal::eq(qty, oldQty))
+				{
+					//输出日志
+					WTSLogger::info_f("[Filters] Target position of {} of strategy {} reset by strategy filter: {} -> {}", 
+						stdCode, ctx->name(), oldQty, qty);
+				}
+
+				std::string realCode = stdCode;
+				if (CodeHelper::isStdFutHotCode(stdCode))
+				{
+					CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
+					std::string code = _hot_mgr->getRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
+					realCode = CodeHelper::rawMonthCodeToStdCode(code.c_str(), cInfo._exchg);
+				}
+				else if (CodeHelper::isStdFut2ndCode(stdCode))
+				{
+					CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
+					std::string code = _hot_mgr->getSecondRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
+					realCode = CodeHelper::rawMonthCodeToStdCode(code.c_str(), cInfo._exchg);
+				}
+
+				double& vol = target_pos[realCode];
+				vol += qty;
+			}
+			else
+			{
+				//输出日志
+				WTSLogger::info_f("[Filters] Target position of {} of strategy {} ignored by strategy filter", stdCode, ctx->name());
+			}
 		});
+	}
+
+	bool bRiskEnabled = false;
+	if (!decimal::eq(_risk_volscale, 1.0) && _risk_date == _cur_tdate)
+	{
+		WTSLogger::log_by_cat_f("risk", LL_INFO, "Risk scale of portfolio is {:.2f}", _risk_volscale);
+		bRiskEnabled = true;
+	}
+
+	//初始化仓位打印出来
+	for (auto it = target_pos.begin(); it != target_pos.end(); it++)
+	{
+		const auto& stdCode = it->first;
+		double& pos = (double&)it->second;
+
+		if (bRiskEnabled && !decimal::eq(pos, 0))
+		{
+			double symbol = pos / abs(pos);
+			pos = decimal::rnd(abs(pos)*_risk_volscale)*symbol;
+		}
+
+		WTSLogger::info_f("Portfolio initial position of {} is {}", stdCode.c_str(), pos);
 	}
 
 	_exec_mgr.set_positions(target_pos);
@@ -179,7 +214,7 @@ void WtCtaEngine::on_init()
 
 void WtCtaEngine::on_session_begin()
 {
-	WTSLogger::info("Trading day %u begun", _cur_tdate);
+	WTSLogger::info_f("Trading day {} begun", _cur_tdate);
 	for (auto it = _ctx_map.begin(); it != _ctx_map.end(); it++)
 	{
 		CtaContextPtr& ctx = (CtaContextPtr&)it->second;
@@ -188,6 +223,8 @@ void WtCtaEngine::on_session_begin()
 
 	if (_evt_listener)
 		_evt_listener->on_session_event(_cur_tdate, true);
+
+	_ready = true;
 }
 
 void WtCtaEngine::on_session_end()
@@ -200,7 +237,7 @@ void WtCtaEngine::on_session_end()
 		ctx->on_session_end(_cur_tdate);
 	}
 
-	WTSLogger::info("Trading day %u ended", _cur_tdate);
+	WTSLogger::info_f("Trading day {} ended", _cur_tdate);
 	if (_evt_listener)
 		_evt_listener->on_session_event(_cur_tdate, false);
 }
@@ -210,7 +247,7 @@ void WtCtaEngine::on_schedule(uint32_t curDate, uint32_t curTime)
 	//去检查一下过滤器
 	_filter_mgr.load_filters();
 
-	faster_hashmap<std::string, double> target_pos;
+	faster_hashmap<LongKey, double> target_pos;
 
 	for (auto it = _ctx_map.begin(); it != _ctx_map.end(); it++)
 	{
@@ -225,24 +262,22 @@ void WtCtaEngine::on_schedule(uint32_t curDate, uint32_t curTime)
 				if(!decimal::eq(qty, oldQty))
 				{
 					//输出日志
-					//WTSLogger::info(fmt::format("[Filters] 策略{}的{}的目标仓位被策略过滤器调整: {} -> {}", ctx->name(), stdCode, oldQty, qty).c_str());
-					WTSLogger::info(fmt::format("[Filters] Target position of {} of strategy {} reset by strategy filter: {} -> {}", stdCode, ctx->name(), oldQty, qty).c_str());
+					WTSLogger::info_f("[Filters] Target position of {} of strategy {} reset by strategy filter: {} -> {}", 
+						stdCode, ctx->name(), oldQty, qty);
 				}
 
 				std::string realCode = stdCode;
 				if (CodeHelper::isStdFutHotCode(stdCode))
 				{
-					CodeHelper::CodeInfo cInfo;
-					CodeHelper::extractStdCode(stdCode, cInfo);
+					CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
 					std::string code = _hot_mgr->getRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
-					realCode = CodeHelper::bscFutCodeToStdCode(code.c_str(), cInfo._exchg);
+					realCode = CodeHelper::rawMonthCodeToStdCode(code.c_str(), cInfo._exchg);
 				}
 				else if (CodeHelper::isStdFut2ndCode(stdCode))
 				{
-					CodeHelper::CodeInfo cInfo;
-					CodeHelper::extractStdCode(stdCode, cInfo);
+					CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
 					std::string code = _hot_mgr->getSecondRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
-					realCode = CodeHelper::bscFutCodeToStdCode(code.c_str(), cInfo._exchg);
+					realCode = CodeHelper::rawMonthCodeToStdCode(code.c_str(), cInfo._exchg);
 				}
 
 				double& vol = target_pos[realCode];
@@ -251,8 +286,7 @@ void WtCtaEngine::on_schedule(uint32_t curDate, uint32_t curTime)
 			else
 			{
 				//输出日志
-				//WTSLogger::info("[过滤器] 策略%s的%s的目标仓位被策略过滤器忽略", ctx->name(), stdCode);
-				WTSLogger::info("[Filters] Target position of %s of strategy %s ignored by strategy filter", stdCode, ctx->name());
+				WTSLogger::info_f("[Filters] Target position of {} of strategy {} ignored by strategy filter", stdCode, ctx->name());
 			}
 		});
 	}
@@ -260,14 +294,14 @@ void WtCtaEngine::on_schedule(uint32_t curDate, uint32_t curTime)
 	bool bRiskEnabled = false;
 	if(!decimal::eq(_risk_volscale, 1.0) && _risk_date == _cur_tdate)
 	{
-		WTSLogger::info2("risk", "Risk scale of strategy group is %.2f", _risk_volscale);
+		WTSLogger::log_by_cat_f("risk", LL_INFO, "Risk scale of strategy group is {:.2f}", _risk_volscale);
 		bRiskEnabled = true;
 	}
 
 	//处理组合理论部位
 	for (auto it = target_pos.begin(); it != target_pos.end(); it++)
 	{
-		std::string stdCode = it->first;
+		const auto& stdCode = it->first;
 		double& pos = (double&)it->second;
 
 		if (bRiskEnabled && !decimal::eq(pos, 0))
@@ -276,20 +310,20 @@ void WtCtaEngine::on_schedule(uint32_t curDate, uint32_t curTime)
 			pos = decimal::rnd(abs(pos)*_risk_volscale)*symbol;
 		}
 
-		append_signal(stdCode.c_str(), pos);
+		append_signal(stdCode.c_str(), pos, true);
 	}
 
 	for(auto& m : _pos_map)
 	{
-		std::string stdCode = m.first;
+		const auto& stdCode = m.first;
 		if (target_pos.find(stdCode) == target_pos.end())
 		{
 			if(!decimal::eq(m.second._volume, 0))
 			{
 				//这里是通知WtEngine去更新组合持仓数据
-				append_signal(stdCode.c_str(), 0);
+				append_signal(stdCode.c_str(), 0, true);
 
-				WTSLogger::error("Instrument %s not in target positions, setup to 0 automatically", stdCode.c_str());
+				WTSLogger::error_f("Instrument {} not in target positions, setup to 0 automatically", stdCode.c_str());
 			}
 
 			//因为组合持仓里会有过期的合约代码存在，所以这里在丢给执行以前要做一个检查
@@ -324,24 +358,22 @@ void WtCtaEngine::handle_pos_change(const char* straName, const char* stdCode, d
 	if(_filter_mgr.is_filtered_by_strategy(straName, diffQty, true))
 	{
 		//输出日志
-		WTSLogger::info("[Filters] Target position of %s of strategy %s ignored by strategy filter", stdCode, straName);
+		WTSLogger::info_f("[Filters] Target position of {} of strategy {} ignored by strategy filter", stdCode, straName);
 		return;
 	}
 
 	std::string realCode = stdCode;
 	if (CodeHelper::isStdFutHotCode(stdCode))
 	{
-		CodeHelper::CodeInfo cInfo;
-		CodeHelper::extractStdCode(stdCode, cInfo);
+		CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
 		std::string code = _hot_mgr->getRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
-		realCode = CodeHelper::bscFutCodeToStdCode(code.c_str(), cInfo._exchg);
+		realCode = CodeHelper::rawMonthCodeToStdCode(code.c_str(), cInfo._exchg);
 	}
 	else if (CodeHelper::isStdFut2ndCode(stdCode))
 	{
-		CodeHelper::CodeInfo cInfo;
-		CodeHelper::extractStdCode(stdCode, cInfo);
+		CodeHelper::CodeInfo cInfo = CodeHelper::extractStdCode(stdCode);
 		std::string code = _hot_mgr->getSecondRawCode(cInfo._exchg, cInfo._product, _cur_tdate);
-		realCode = CodeHelper::bscFutCodeToStdCode(code.c_str(), cInfo._exchg);
+		realCode = CodeHelper::rawMonthCodeToStdCode(code.c_str(), cInfo._exchg);
 	}
 
 	PosInfo& pItem = _pos_map[realCode];
@@ -350,7 +382,7 @@ void WtCtaEngine::handle_pos_change(const char* straName, const char* stdCode, d
 	bool bRiskEnabled = false;
 	if (!decimal::eq(_risk_volscale, 1.0) && _risk_date == _cur_tdate)
 	{
-		WTSLogger::info2("risk", "Risk scale of strategy group is %.2f", _risk_volscale);
+		WTSLogger::log_by_cat_f("risk", LL_INFO, "Risk scale of portfolio is {:.2f}", _risk_volscale);
 		bRiskEnabled = true;
 	}
 	if (bRiskEnabled && !decimal::eq(targetPos, 0))
@@ -359,7 +391,7 @@ void WtCtaEngine::handle_pos_change(const char* straName, const char* stdCode, d
 		targetPos = decimal::rnd(abs(targetPos)*_risk_volscale)*symbol;
 	}
 
-	append_signal(realCode.c_str(), targetPos);
+	append_signal(realCode.c_str(), targetPos, false);
 	save_datas();
 
 	_exec_mgr.handle_pos_change(realCode.c_str(), targetPos);
@@ -377,28 +409,74 @@ void WtCtaEngine::on_tick(const char* stdCode, WTSTickData* curTick)
 	 *	主要场景为主力合约换月期间
 	 *	By Wesley @ 2021.08.19
 	 */
-	//auto it = _ticksubed_raw_codes.find(stdCode);
-	//if (it != _ticksubed_raw_codes.end())
 	{
 		//是否主力合约代码的标记, 主要用于给执行器发数据的
 		_exec_mgr.handle_tick(stdCode, curTick);
 	}
 
-	auto sit = _tick_sub_map.find(stdCode);
-	if (sit != _tick_sub_map.end())
+	/*
+	 *	By Wesley @ 2022.02.07
+	 *	这里做了一个彻底的调整
+	 *	第一，检查订阅标记，如果标记为0，即无复权模式，则直接按照原始代码触发ontick
+	 *	第二，如果标记为1，即前复权模式，则将代码转成xxxx-，再触发ontick
+	 *	第三，如果标记为2，即后复权模式，则将代码转成xxxx+，再把tick数据做一个修正，再触发ontick
+	 */
+	if(_ready)
 	{
-		const SIDSet& sids = sit->second;
-		for (auto it = sids.begin(); it != sids.end(); it++)
+		auto sit = _tick_sub_map.find(stdCode);
+		if (sit != _tick_sub_map.end())
 		{
-			uint32_t sid = *it;
-			auto cit = _ctx_map.find(sid);
-			if (cit != _ctx_map.end() && curTick->volume())
+			const SubList& sids = sit->second;
+			for (auto it = sids.begin(); it != sids.end(); it++)
 			{
-				CtaContextPtr& ctx = (CtaContextPtr&)cit->second;
-				ctx->on_tick(stdCode, curTick);
+				uint32_t sid = it->first;
+				
+
+				auto cit = _ctx_map.find(sid);
+				if (cit != _ctx_map.end())
+				{
+					CtaContextPtr& ctx = (CtaContextPtr&)cit->second;
+					uint32_t opt = it->second.second;
+					
+					if (opt == 0)
+					{
+						ctx->on_tick(stdCode, curTick);
+					}
+					else
+					{
+						std::string wCode = stdCode;
+						wCode = fmt::format("{}{}", stdCode, opt == 1 ? SUFFIX_QFQ : SUFFIX_HFQ);
+						if (opt == 1)
+						{
+							ctx->on_tick(wCode.c_str(), curTick);
+						}
+						else //(opt == 2)
+						{
+							WTSTickData* newTick = WTSTickData::create(curTick->getTickStruct());
+							WTSTickStruct& newTS = newTick->getTickStruct();
+
+							//这里做一个复权因子的处理
+							double factor = _data_mgr->get_adjusting_factor(stdCode, get_trading_date());
+							newTS.open *= factor;
+							newTS.high *= factor;
+							newTS.low *= factor;
+							newTS.price *= factor;
+
+							_price_map[wCode] = newTS.price;
+
+							ctx->on_tick(wCode.c_str(), newTick);
+							newTick->release();
+						}
+					}
+					
+				}
+
+				
 			}
+
 		}
 	}
+	
 
 	//暂时先不考虑成本, 先计算出来
 	/*
@@ -413,12 +491,12 @@ void WtCtaEngine::on_tick(const char* stdCode, WTSTickData* curTick)
 	fundInfo._dynprofit = dynprofit;
 	double dynbal = fundInfo._balance + dynprofit;
 	if (fundInfo._max_dyn_bal != DBL_MAX)
-		fundInfo._max_dyn_bal = max(fundInfo._max_dyn_bal, dynbal);
+		fundInfo._max_dyn_bal = std::max(fundInfo._max_dyn_bal, dynbal);
 	else
 		fundInfo._max_dyn_bal = dynbal;
 
 	if (fundInfo._min_dyn_bal != DBL_MAX)
-		fundInfo._min_dyn_bal = min(fundInfo._min_dyn_bal, dynbal);
+		fundInfo._min_dyn_bal = std::min(fundInfo._min_dyn_bal, dynbal);
 	else
 		fundInfo._min_dyn_bal = dynbal;
 	*/
@@ -426,11 +504,13 @@ void WtCtaEngine::on_tick(const char* stdCode, WTSTickData* curTick)
 
 void WtCtaEngine::on_bar(const char* stdCode, const char* period, uint32_t times, WTSBarStruct* newBar)
 {
-	std::string key = StrUtil::printf("%s-%s-%u", stdCode, period, times);
-	const SIDSet& sids = _bar_sub_map[key];
+	thread_local static char key[64] = { 0 };
+	fmtutil::format_to(key, "{}-{}-{}", stdCode, period, times);
+
+	const SubList& sids = _bar_sub_map[key];
 	for (auto it = sids.begin(); it != sids.end(); it++)
 	{
-		uint32_t sid = *it;
+		uint32_t sid = it->first;
 		auto cit = _ctx_map.find(sid);
 		if(cit != _ctx_map.end())
 		{
@@ -439,7 +519,7 @@ void WtCtaEngine::on_bar(const char* stdCode, const char* period, uint32_t times
 		}
 	}
 
-	WTSLogger::info("KBar [%s#%s%d] @ %u closed", stdCode, period, times, period[0] == 'd' ? newBar->date : newBar->time);
+	WTSLogger::info_f("KBar [{}] @ {} closed", key, period[0] == 'd' ? newBar->date : newBar->time);
 }
 
 bool WtCtaEngine::isInTrading()

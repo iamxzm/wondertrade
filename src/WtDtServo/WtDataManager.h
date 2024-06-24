@@ -12,14 +12,14 @@
 #include <stdint.h>
 
 #include "../Includes/IDataManager.h"
+#include "../Includes/IRdmDtReader.h"
 #include "../Includes/FasterDefs.h"
 #include "../Includes/WTSCollection.hpp"
 
-#include "WtDataReader.h"
 
 class WtDtRunner;
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSVariant;
 class WTSTickData;
 class WTSKlineSlice;
@@ -28,11 +28,9 @@ class WTSTickSlice;
 class IBaseDataMgr;
 class IHotMgr;
 class WTSSessionInfo;
-
-class WtDataReader;
 struct WTSBarStruct;
 
-class WtDataManager
+class WtDataManager : public IRdmDtReaderSink
 {
 public:
 	WtDataManager();
@@ -43,23 +41,45 @@ private:
 
 	WTSSessionInfo* get_session_info(const char* sid, bool isCode = false);
 
+//////////////////////////////////////////////////////////////////////////
+//IRdmDtReaderSink
+public:
+	/*
+	 *	@brief	获取基础数据管理接口指针
+	 */
+	virtual IBaseDataMgr*	get_basedata_mgr() override { return _bd_mgr; }
+
+	/*
+	 *	@brief	获取主力切换规则管理接口指针
+	 */
+	virtual IHotMgr*		get_hot_mgr() override { return _hot_mgr; }
+
+	/*
+	 *	@brief	输出数据读取模块的日志
+	 */
+	virtual void			reader_log(WTSLogLevel ll, const char* message) override;
+
 public:
 	bool	init(WTSVariant* cfg, WtDtRunner* runner);
-
-	void	handle_push_quote(const char* stdCode, WTSTickData* newTick);
 
 	WTSOrdQueSlice* get_order_queue_slice(const char* stdCode, uint64_t stime, uint64_t etime = 0);
 	WTSOrdDtlSlice* get_order_detail_slice(const char* stdCode, uint64_t stime, uint64_t etime = 0);
 	WTSTransSlice* get_transaction_slice(const char* stdCode, uint64_t stime, uint64_t etime = 0);
 
-	WTSArray* get_tick_slices_by_range(const char* stdCode, uint64_t stime, uint64_t etime = 0);
+	WTSTickSlice* get_tick_slice_by_date(const char* stdCode, uint32_t uDate = 0);
+	WTSKlineSlice* get_skline_slice_by_date(const char* stdCode, uint32_t secs, uint32_t uDate = 0);
+	WTSKlineSlice* get_kline_slice_by_date(const char* stdCode, WTSKlinePeriod period, uint32_t times, uint32_t uDate = 0);
+
+	WTSTickSlice* get_tick_slices_by_range(const char* stdCode, uint64_t stime, uint64_t etime = 0);
 	WTSKlineSlice* get_kline_slice_by_range(const char* stdCode, WTSKlinePeriod period, uint32_t times, uint64_t stime, uint64_t etime = 0);
 
-	WTSArray* get_tick_slices_by_count(const char* stdCode, uint32_t count, uint64_t etime = 0);
+	WTSTickSlice* get_tick_slice_by_count(const char* stdCode, uint32_t count, uint64_t etime = 0);
 	WTSKlineSlice* get_kline_slice_by_count(const char* stdCode, WTSKlinePeriod period, uint32_t times, uint32_t count, uint64_t etime = 0);
 
 private:
-	WtDataReader	_reader;
+	IRdmDtReader*			_reader;
+	FuncDeleteRdmDtReader	_remover;
+
 	IBaseDataMgr*	_bd_mgr;
 	IHotMgr*		_hot_mgr;
 	WtDtRunner*		_runner;
@@ -78,4 +98,4 @@ private:
 	BarCacheMap	_bars_cache;
 };
 
-NS_OTP_END
+NS_WTP_END

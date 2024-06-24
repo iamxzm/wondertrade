@@ -9,22 +9,30 @@
  */
 #pragma once
 #include "WTSMarcos.h"
+#include <stdint.h>
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 
 /*
  *	合约分类
  */
+//从CTP复制过来的
 typedef enum tagContractCategory
 {
 	CC_Stock,			//股票
 	CC_Future,			//期货
-	CC_FutOption,		//期货期权
+	CC_FutOption,		//期货期权，商品期权是这个分类
 	CC_Combination,		//组合
 	CC_Spot,			//即期
 	CC_EFP,				//期转现
-	CC_SpotOption,		//现货期权
-	CC_ETFOption		//个股期权
+	CC_SpotOption,		//现货期权，股指期权是这个分类
+	CC_ETFOption,		//个股期权，ETF期权是这个分类
+
+	CC_DC_Spot	= 20,	//数币现货
+	CC_DC_Swap,			//数币永续
+	CC_DC_Future,		//数币期货
+	CC_DC_Margin,		//数币杠杆
+	CC_DC_Option		//数币期权
 } ContractCategory;
 
 /*
@@ -47,6 +55,16 @@ typedef enum tagCoverMode
 	CM_UNFINISHED,		//平未了结的
 	CM_None			//不区分开平
 } CoverMode;
+
+/*
+ *	交易模式
+ */
+typedef enum tagTradingMode
+{
+	TM_Both,	//多空都支持
+	TM_Long,	//只能做多
+	TM_LongT1	//做多T+1
+} TradingMode;
 
 /*
 *	价格模式
@@ -86,6 +104,16 @@ typedef enum tagKlinePeriod
 	KP_Month
 } WTSKlinePeriod;
 
+static const char* PERIOD_NAME[] = 
+{
+	"tick",
+	"min1",
+	"min5",
+	"day",
+	"week",
+	"month"
+};
+
 /*
  *	日志级别
  */
@@ -105,21 +133,32 @@ typedef enum tagLogLevel
  */
 typedef enum tagPriceType
 {
-	WPT_ANYPRICE	= '1',	//市价单
-	WPT_LIMITPRICE,			//限价单
-	WPT_BESTPRICE,			//最优价
-	WPT_LASTPRICE,			//最新价
-	//WTP_LASTPRICEPLUSONETICKS,		//最新价+1ticks
-	//WPT_LASTPRICEPLUSTWOTICKS,		//最新价+2ticks
-	//WPT_LASTPRICEPLUSTHREETICKS,	//最新价+3ticks
-	//WPT_ASKPRICE1,					//卖一价
-	//WPT_ASKPRICE1PLUSONETICKS,		//卖一价+1ticks
-	//WPT_ASKPRICE1PLUSTWOTICKS,		//卖一价+2ticks
-	//WPT_ASKPRICE1PLUSTHREETICKS,	//卖一价+3ticks
-	//WPT_BIDPRICE1,					//买一价
-	//WPT_BIDPRICE1PLUSONETICKS,		//卖一价+1ticks
-	//WPT_BIDPRICE1PLUSTWOTICKS,		//卖一价+2ticks
-	//WPT_BIDPRICE1PLUSTHREETICKS,	//卖一价+3ticks
+	WPT_ANYPRICE	= 0,			//市价单
+	WPT_LIMITPRICE,					//限价单
+	WPT_BESTPRICE,					//最优价
+	WPT_LASTPRICE,					//最新价
+
+	//////////////////////////////////////////////////////////////////////////
+	//以下对标CTP的价格类型
+	WPT_CTP_LASTPLUSONETICKS = 20,	//最新价+1ticks
+	WPT_CTP_LASTPLUSTWOTICKS,		//最新价+2ticks
+	WPT_CTP_LASTPLUSTHREETICKS,		//最新价+3ticks
+	WPT_CTP_ASK1,					//卖一价
+	WPT_CTP_ASK1PLUSONETICKS,		//卖一价+1ticks
+	WPT_CTP_ASK1PLUSTWOTICKS,		//卖一价+2ticks
+	WPT_CTP_ASK1PLUSTHREETICKS,		//卖一价+3ticks
+	WPT_CTP_BID1,					//买一价
+	WPT_CTP_BID1PLUSONETICKS,		//卖一价+1ticks
+	WPT_CTP_BID1PLUSTWOTICKS,		//卖一价+2ticks
+	WPT_CTP_BID1PLUSTHREETICKS,		//卖一价+3ticks
+	WPT_CTP_FIVELEVELPRICE,			//五档价，中金所市价
+
+	//////////////////////////////////////////////////////////////////////////
+	//以下对标DC的价格类型
+	WPT_DC_POSTONLY	= 100,			//只做maker单
+	WPT_DC_FOK,						//全部成交或立即取消
+	WPT_DC_IOC,						//立即成交并取消剩余
+	WPT_DC_OPTLIMITIOC				//市价委托立即成交并取消剩余
 } WTSPriceType;
 
 /*
@@ -131,6 +170,16 @@ typedef enum tagTimeCondition
 	WTC_GFS,			//本节有效
 	WTC_GFD,			//当日有效
 } WTSTimeCondition;
+
+/*
+ *	订单标志
+ */
+typedef enum tagOrderFlag
+{
+	WOF_NOR = '0',		//普通订单
+	WOF_FAK,			//fak
+	WOF_FOK,			//fok
+} WTSOrderFlag;
 
 /*
  *	开平方向
@@ -207,7 +256,7 @@ typedef enum tagOrderType
 /*
  *	成交类型
  */
-typedef enum tagTrageType
+typedef enum tagTradeType
 {
 	WTT_Common				= '0',	//普通
 	WTT_OptionExecution		= '1',	//期权执行
@@ -277,63 +326,30 @@ typedef enum tagTraderEvent
 }WTSTraderEvent;
 
 /*
- *	指标类型
- */
-typedef enum tagExpressType
-{
-	WET_Unique,
-	WET_SubExp
-} WTSExpressType;
-
-/*
- *	指标线类型
- */
-typedef enum tagExpressLineType
-{
-	WELT_Polyline,	//线条	
-	WELT_VolStick,	//量柱
-	WELT_StickLine,	//柱状线
-	WELT_AStickLine,	//柱状线绝对值
-} WTSExpressLineType;
-
-//指标线风格
-typedef enum tagExpLineStyle
-{
-	ELS_LINE_VISIBLE = 0x00000001,	//线条可见
-	ELS_TITLE_VISIBLE = 0x00000002	//标题可见
-} ExpLineStyle;
-
-/*
  *	买卖方向类型
  */
-typedef enum tagBSDirectType
-{
-	BDT_Buy		= 'B',	//买入	
-	BDT_Sell	= 'S',	//卖出
-	BDT_Unknown = ' ',	//未知
-	BDT_Borrow	= 'G',	//借入
-	BDT_Lend	= 'F'	//借出
-} WTSBSDirectType;
+typedef uint32_t WTSBSDirectType;
+#define BDT_Buy		'B'	//买入	
+#define BDT_Sell	'S'	//卖出
+#define BDT_Unknown ' '	//未知
+#define BDT_Borrow	'G'	//借入
+#define BDT_Lend	'F'	//借出
 
 /*
  *	成交类型
  */
-typedef enum tagTransType
-{
-	TT_Unknown	= 'U',	//未知类型
-	TT_Match	= 'M',	//撮合成交
-	TT_Cancel	= 'C'	//撤单
-} WTSTransType;
+typedef uint32_t WTSTransType;
+#define TT_Unknown	'U'	//未知类型
+#define TT_Match	'M'	//撮合成交
+#define TT_Cancel	'C'	//撤单
 
 /*
- *	
+ *	委托明细类型
  */
-typedef enum tagOrdDetailType
-{
-	ODT_Unknown		= 0,	//未知类型
-	ODT_BestPrice	= 'U',	//本方最优
-	ODT_AnyPrice	= '1',	//市价
-	ODT_LimitPrice	= '2'	//限价
-} WTSOrdDetailType;
+typedef uint32_t WTSOrdDetailType;
+#define ODT_Unknown		0	//未知类型
+#define ODT_BestPrice	'U'	//本方最优
+#define ODT_AnyPrice	'1'	//市价
+#define ODT_LimitPrice	'2'	//限价
 
-NS_OTP_END
+NS_WTP_END

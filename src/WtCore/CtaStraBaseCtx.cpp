@@ -17,7 +17,6 @@
 namespace rj = rapidjson;
 
 #include "../Share/StrUtil.hpp"
-#include "../Share/StdUtils.hpp"
 #include "../Includes/WTSContractInfo.hpp"
 #include "../Includes/WTSSessionInfo.hpp"
 #include "../Includes/WTSTradeDef.hpp"
@@ -29,10 +28,10 @@ namespace rj = rapidjson;
 const char* CMP_ALG_NAMES[] =
 {
 	"＝",
-	"＞",
-	"＜",
-	"≥",
-	"≤"
+	">",
+	"<",
+	">=",
+	"<="
 };
 
 const char* ACTION_NAMES[] =
@@ -232,7 +231,7 @@ void CtaStraBaseCtx::load_userdata()
 void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 {
 	std::string filename = WtHelper::getStraDataDir();
-	filename += _name;//策略名
+	filename += _name;
 	filename += ".json";
 	
 	if (!StdFile::exists(filename.c_str()))
@@ -275,7 +274,7 @@ void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 				const char* stdCode = pItem["code"].GetString();
 				if (!CodeHelper::isStdFutHotCode(stdCode) && !CodeHelper::isStdFut2ndCode(stdCode) && _engine->get_contract_info(stdCode) == NULL)
 				{
-					stra_log_info("%s not exists or expired, position ignored", stdCode);
+					log_info("{} not exists or expired, position ignored", stdCode);
 					continue;
 				}
 				PosInfo& pInfo = _pos_map[stdCode];
@@ -283,10 +282,20 @@ void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 				pInfo._volume = pItem["volume"].GetDouble();
 				pInfo._last_entertime = pItem["lastentertime"].GetUint64();
 				pInfo._last_exittime = pItem["lastexittime"].GetUint64();
+				if (pItem.HasMember("frozen"))
+				{
+					pInfo._frozen = pItem["frozen"].GetDouble();
+					pInfo._frozen_date = pItem["frozendate"].GetUint();
+				}
+
 				if (pInfo._volume == 0)
+				{
 					pInfo._dynprofit = 0;
+					pInfo._frozen = 0;
+				}
 				else
 					pInfo._dynprofit = pItem["dynprofit"].GetDouble();
+				
 
 				total_profit += pInfo._closeprofit;
 				total_dynprofit += pInfo._dynprofit;
@@ -323,7 +332,7 @@ void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 					pInfo._details.emplace_back(dInfo);
 				}
 
-				stra_log_info(fmt::format("Position confirmed,{} -> {}", stdCode, pInfo._volume).c_str());
+				log_info("Position confirmed,{} -> {}", stdCode, pInfo._volume);
 				stra_sub_ticks(stdCode);
 			}
 		}
@@ -344,7 +353,7 @@ void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 				const char* stdCode = m.name.GetString();
 				if (!CodeHelper::isStdFutHotCode(stdCode) && !CodeHelper::isStdFut2ndCode(stdCode) && _engine->get_contract_info(stdCode) == NULL)
 				{
-					stra_log_info("%s not exists or expired, condition ignored", stdCode);
+					log_info("{} not exists or expired, condition ignored", stdCode);
 					continue;
 				}
 
@@ -366,13 +375,13 @@ void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 
 					condList.emplace_back(condInfo);
 
-					stra_log_info(fmt::format("{} condition recovered, {} {}, condition: newprice {} {}",
-						stdCode, ACTION_NAMES[condInfo._action], condInfo._qty, CMP_ALG_NAMES[condInfo._alg], condInfo._target).c_str());
+					log_info("{} condition recovered, {} {}, condition: newprice {} {}",
+						stdCode, ACTION_NAMES[condInfo._action], condInfo._qty, CMP_ALG_NAMES[condInfo._alg], condInfo._target);
 					count++;
 				}
 			}
 
-			stra_log_info(fmt::format("{} conditions recovered, setup time: {}", count, _last_cond_min).c_str());
+			log_info("{} conditions recovered, setup time: {}", count, _last_cond_min);
 		}
 	}
 
@@ -387,7 +396,7 @@ void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 				const char* stdCode = m.name.GetString();
 				if (!CodeHelper::isStdFutHotCode(stdCode) && !CodeHelper::isStdFut2ndCode(stdCode) && _engine->get_contract_info(stdCode) == NULL)
 				{
-					stra_log_info("%s not exists or expired, signal ignored", stdCode);
+					log_info("{} not exists or expired, signal ignored", stdCode);
 					continue;
 				}
 
@@ -399,7 +408,7 @@ void CtaStraBaseCtx::load_data(uint32_t flag /* = 0xFFFFFFFF */)
 				sInfo._sigprice = jItem["sigprice"].GetDouble();
 				sInfo._gentime = jItem["gentime"].GetUint64();
 				
-				stra_log_info(fmt::format("{} untouched signal recovered, target pos: {}", stdCode, sInfo._volume).c_str());
+				log_info("{} untouched signal recovered, target pos: {}", stdCode, sInfo._volume);
 				stra_sub_ticks(stdCode);
 			}
 		}
@@ -437,6 +446,8 @@ void CtaStraBaseCtx::save_data(uint32_t flag /* = 0xFFFFFFFF */)
 			pItem.AddMember("dynprofit", pInfo._dynprofit, allocator);
 			pItem.AddMember("lastentertime", pInfo._last_entertime, allocator);
 			pItem.AddMember("lastexittime", pInfo._last_exittime, allocator);
+			pItem.AddMember("frozen", pInfo._frozen, allocator);
+			pItem.AddMember("frozendate", pInfo._frozen_date, allocator);
 
 			rj::Value details(rj::kArrayType);
 			for (auto dit = pInfo._details.begin(); dit != pInfo._details.end(); dit++)
@@ -569,20 +580,19 @@ void CtaStraBaseCtx::on_bar(const char* stdCode, const char* period, uint32_t ti
 	if (newBar == NULL)
 		return;
 
-	std::string realPeriod;
-	if (period[0] == 'd')
-		realPeriod = StrUtil::printf("%s%u", period, times);
-	else
-		realPeriod = StrUtil::printf("m%u", times);
+	thread_local static char realPeriod[8] = { 0 };
+	fmtutil::format_to(realPeriod, "{}{}", period, times);
 
-	std::string key = StrUtil::printf("%s#%s", stdCode, realPeriod.c_str());
+	thread_local static char key[64] = { 0 };
+	fmtutil::format_to(key, "{}#{}", stdCode, realPeriod);
+
 	KlineTag& tag = _kline_tags[key];
 	tag._closed = true;
 
-	on_bar_close(stdCode, realPeriod.c_str(), newBar);
+	on_bar_close(stdCode, realPeriod, newBar);
 
 	if(key == _main_key)
-		stra_log_debug("Main KBars %s closed", key.c_str());
+		log_debug("Main KBars {} closed", key);
 }
 
 void CtaStraBaseCtx::on_init()
@@ -615,9 +625,9 @@ void CtaStraBaseCtx::update_dyn_profit(const char* stdCode, double price)
 				DetailInfo& dInfo = *pit;
 				dInfo._profit = dInfo._volume*(price - dInfo._price)*commInfo->getVolScale()*(dInfo._long ? 1 : -1);
 				if (dInfo._profit > 0)
-					dInfo._max_profit = max(dInfo._profit, dInfo._max_profit);
+					dInfo._max_profit = std::max(dInfo._profit, dInfo._max_profit);
 				else if (dInfo._profit < 0)
-					dInfo._max_loss = min(dInfo._profit, dInfo._max_loss);
+					dInfo._max_loss = std::min(dInfo._profit, dInfo._max_loss);
 
 				dynprofit += dInfo._profit;
 			}
@@ -627,7 +637,7 @@ void CtaStraBaseCtx::update_dyn_profit(const char* stdCode, double price)
 	}
 
 	double total_dynprofit = 0;
-	for(auto v : _pos_map)
+	for(auto& v : _pos_map)
 	{
 		const PosInfo& pInfo = v.second;
 		total_dynprofit += pInfo._dynprofit;
@@ -697,8 +707,8 @@ void CtaStraBaseCtx::on_tick(const char* stdCode, WTSTickData* newTick, bool bEm
 
 			if (isMatched)
 			{
-				stra_log_info(fmt::format("Condition triggered[newprice {}{} targetprice {}], instrument: {}, {} {}", 
-					curPrice, CMP_ALG_NAMES[entrust._alg], entrust._target, stdCode, ACTION_NAMES[entrust._action], entrust._qty).c_str());
+				log_info("Condition triggered[newprice {}{} targetprice {}], instrument: {}, {} {}",
+					curPrice, CMP_ALG_NAMES[entrust._alg], entrust._target, stdCode, ACTION_NAMES[entrust._action], entrust._qty);
 
 				switch (entrust._action)
 				{
@@ -711,25 +721,18 @@ void CtaStraBaseCtx::on_tick(const char* stdCode, WTSTickData* newTick, bool bEm
 					else
 						desQty = curQty + entrust._qty;
 
-					//uint64_t sigTime = (uint64_t)_engine->get_date() * 1000000000 + (uint64_t)_engine->get_raw_time() * 100000 + _engine->get_secs();
-					//log_signal(stdCode, desQty, curPrice, sigTime, entrust._usertag);						
-					//do_set_position(stdCode, desQty, entrust._usertag, true);
 					append_signal(stdCode, desQty, entrust._usertag);
 				}
 				break;
 				case COND_ACTION_CL:
 				{
 					double curQty = stra_get_position(stdCode);
-					if (decimal::le(curQty, 0))
-						return;
-
-					double maxQty = min(curQty, entrust._qty);
-					double desQty = curQty - maxQty;
-
-					//uint64_t sigTime = (uint64_t)_engine->get_date() * 1000000000 + (uint64_t)_engine->get_raw_time() * 100000 + _engine->get_secs();
-					//log_signal(stdCode, desQty, curPrice, sigTime, entrust._usertag);
-					//do_set_position(stdCode, desQty, entrust._usertag, true);
-					append_signal(stdCode, desQty, entrust._usertag);
+					if (decimal::gt(curQty, 0))
+					{
+						double maxQty = min(curQty, entrust._qty);
+						double desQty = curQty - maxQty;
+						append_signal(stdCode, desQty, entrust._usertag);
+					}
 				}
 				break;
 				case COND_ACTION_OS:
@@ -741,32 +744,22 @@ void CtaStraBaseCtx::on_tick(const char* stdCode, WTSTickData* newTick, bool bEm
 					else
 						desQty = curQty - entrust._qty;
 
-					//uint64_t sigTime = (uint64_t)_engine->get_date() * 1000000000 + (uint64_t)_engine->get_raw_time() * 100000 + _engine->get_secs();
-					//log_signal(stdCode, desQty, curPrice, sigTime, entrust._usertag);
-					//do_set_position(stdCode, desQty, entrust._usertag, true);
 					append_signal(stdCode, desQty, entrust._usertag);
 				}
 				break;
 				case COND_ACTION_CS:
 				{
 					double curQty = stra_get_position(stdCode);
-					if (decimal::ge(curQty, 0))
-						return;
-
-					double maxQty = min(abs(curQty), entrust._qty);
-					double desQty = curQty + maxQty;
-
-					//uint64_t sigTime = (uint64_t)_engine->get_date() * 1000000000 + (uint64_t)_engine->get_raw_time() * 100000 + _engine->get_secs();
-					//log_signal(stdCode, desQty, curPrice, sigTime, entrust._usertag);
-					//do_set_position(stdCode, desQty, entrust._usertag, true);
-					append_signal(stdCode, desQty, entrust._usertag);
+					if (decimal::lt(curQty, 0))
+					{
+						double maxQty = min(abs(curQty), entrust._qty);
+						double desQty = curQty + maxQty;
+						append_signal(stdCode, desQty, entrust._usertag);
+					}
 				}
 				break;
 				case COND_ACTION_SP: 
 				{
-					//uint64_t sigTime = (uint64_t)_engine->get_date() * 1000000000 + (uint64_t)_engine->get_raw_time() * 100000 + _engine->get_secs();
-					//log_signal(stdCode, entrust._qty, curPrice, sigTime, entrust._usertag);
-					//do_set_position(stdCode, entrust._qty, entrust._usertag, true);
 					append_signal(stdCode, entrust._qty, entrust._usertag);
 				}
 				break;
@@ -803,11 +796,12 @@ bool CtaStraBaseCtx::on_schedule(uint32_t curDate, uint32_t curTime)
 
 	for (auto it = _kline_tags.begin(); it != _kline_tags.end(); it++)
 	{
-		const std::string& key = it->first;
+		const char* key = it->first.c_str();
 		KlineTag& marker = (KlineTag&)it->second;
 
-		StringVector ay = StrUtil::split(key, "#");
-		const char* stdCode = ay[0].c_str();
+		auto idx = StrUtil::findFirst(key, '#');
+
+		std::string stdCode(key, idx);
 
 		if (key == _main_key)
 		{
@@ -823,18 +817,18 @@ bool CtaStraBaseCtx::on_schedule(uint32_t curDate, uint32_t curTime)
 			}
 		}
 
-		WTSSessionInfo* sInfo = _engine->get_session_info(stdCode, true);
+		WTSSessionInfo* sInfo = _engine->get_session_info(stdCode.c_str(), true);
 
 		if (isMainUdt || _kline_tags.empty())
 		{	
 			TimeUtils::Ticker ticker;
 
-			uint32_t offTime = sInfo->offsetTime(curTime);
+			uint32_t offTime = sInfo->offsetTime(curTime, true);
 			if(offTime <= sInfo->getCloseTime(true))
 			{
 				_condtions.clear();
 				on_calculate(curDate, curTime);
-				stra_log_info("Strategy scheduled @ %u", curTime);
+				log_debug("Strategy {} scheduled @ {}", _context_id, curTime);
 				emmited = true;
 
 				_emit_times++;
@@ -842,8 +836,8 @@ bool CtaStraBaseCtx::on_schedule(uint32_t curDate, uint32_t curTime)
 
 				if (_emit_times % 20 == 0)
 				{
-					stra_log_info(fmt::format("Strategy scheduled {} times, {} microsecs elapsed, {} microsecs per time in average",
-						_emit_times, _total_calc_time, _total_calc_time / _emit_times).c_str());
+					log_info("Strategy has been scheduled {} times, totally taking {} us, {:.3f} us each time",
+						_emit_times, _total_calc_time, _total_calc_time*1.0 / _emit_times);
 				}
 
 				if (_ud_modified)
@@ -860,7 +854,7 @@ bool CtaStraBaseCtx::on_schedule(uint32_t curDate, uint32_t curTime)
 			}
 			else
 			{
-				stra_log_info("%u not in trading time, schedule canceled", curTime);
+				log_info("{} not in trading time, schedule canceled", curTime);
 			}
 			break;
 		}
@@ -873,13 +867,31 @@ bool CtaStraBaseCtx::on_schedule(uint32_t curDate, uint32_t curTime)
 
 void CtaStraBaseCtx::on_session_begin(uint32_t uTDate)
 {
+	//每个交易日开始，要把冻结持仓置零
+	for (auto& it : _pos_map)
+	{
+		const char* stdCode = it.first.c_str();
+		PosInfo& pInfo = (PosInfo&)it.second;
+		if(pInfo._frozen_date < uTDate && !decimal::eq(pInfo._frozen, 0))
+		{
+			log_debug("{} of %s frozen on {} released on {}", pInfo._frozen, stdCode, pInfo._frozen_date, uTDate);
 
+			pInfo._frozen = 0;
+			pInfo._frozen_date = 0;
+		}
+	}
+
+	if (_ud_modified)
+	{
+		save_userdata();
+		_ud_modified = false;
+	}
 }
 
 void CtaStraBaseCtx::enum_position(FuncEnumCtaPosCallBack cb)
 {
 	std::unordered_map<std::string, double> desPos;
-	for (auto it:_pos_map)
+	for (auto& it:_pos_map)
 	{
 		const char* stdCode = it.first.c_str();
 		const PosInfo& pInfo = it.second;
@@ -918,11 +930,17 @@ void CtaStraBaseCtx::on_session_end(uint32_t uTDate)
 	//这里要把当日结算的数据写到日志文件里
 	//而且这里回测和实盘写法不同, 先留着, 后面来做
 	if (_fund_logs)
-		_fund_logs->write_file(StrUtil::printf("%d,%.2f,%.2f,%.2f,%.2f\n", curDate, 
+		_fund_logs->write_file(fmt::format("{},{:.2f},{:.2f},{:.2f},{:.2f}\n", curDate, 
 		_fund_info._total_profit, _fund_info._total_dynprofit, 
 		_fund_info._total_profit + _fund_info._total_dynprofit - _fund_info._total_fees, _fund_info._total_fees));
 
 	save_data();
+
+	if (_ud_modified)
+	{
+		save_userdata();
+		_ud_modified = false;
+	}
 }
 
 CondList& CtaStraBaseCtx::get_cond_entrusts(const char* stdCode)
@@ -933,8 +951,15 @@ CondList& CtaStraBaseCtx::get_cond_entrusts(const char* stdCode)
 
 //////////////////////////////////////////////////////////////////////////
 //策略接口
-void CtaStraBaseCtx::stra_enter_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
+void CtaStraBaseCtx::stra_enter_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
+	WTSCommodityInfo* commInfo = _engine->get_commodity_info(stdCode);
+	if (commInfo == NULL)
+	{
+		log_error("Cannot find corresponding commodity info of {}", stdCode);
+		return;
+	}
+
 	_engine->sub_tick(id(), stdCode);
 	
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式, 则直接触发
@@ -956,8 +981,8 @@ void CtaStraBaseCtx::stra_enter_long(const char* stdCode, double qty, const char
 		CondList& condList = get_cond_entrusts(stdCode);
 
 		CondEntrust entrust;
-		strcpy(entrust._code, stdCode);
-		strcpy(entrust._usertag, userTag);
+		wt_strcpy(entrust._code, stdCode);
+		wt_strcpy(entrust._usertag, userTag);
 
 		entrust._qty = qty;
 		entrust._field = WCF_NEWPRICE;
@@ -978,8 +1003,21 @@ void CtaStraBaseCtx::stra_enter_long(const char* stdCode, double qty, const char
 	}
 }
 
-void CtaStraBaseCtx::stra_enter_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
+void CtaStraBaseCtx::stra_enter_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
+	WTSCommodityInfo* commInfo = _engine->get_commodity_info(stdCode);
+	if (commInfo == NULL)
+	{
+		log_error("Cannot find corresponding commodity info of {}", stdCode);
+		return;
+	}
+
+	if (!commInfo->canShort())
+	{
+		log_error("Cannot short on {}", stdCode);
+		return;
+	}
+
 	_engine->sub_tick(id(), stdCode);
 	
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式, 则直接触发
@@ -1001,8 +1039,8 @@ void CtaStraBaseCtx::stra_enter_short(const char* stdCode, double qty, const cha
 		CondList& condList = get_cond_entrusts(stdCode);
 
 		CondEntrust entrust;
-		strcpy(entrust._code, stdCode);
-		strcpy(entrust._usertag, userTag);
+		wt_strcpy(entrust._code, stdCode);
+		wt_strcpy(entrust._usertag, userTag);
 
 		entrust._qty = qty;
 		entrust._field = WCF_NEWPRICE;
@@ -1023,17 +1061,22 @@ void CtaStraBaseCtx::stra_enter_short(const char* stdCode, double qty, const cha
 	}
 }
 
-void CtaStraBaseCtx::stra_exit_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
+void CtaStraBaseCtx::stra_exit_long(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
-	_engine->sub_tick(id(), stdCode);
+	WTSCommodityInfo* commInfo = _engine->get_commodity_info(stdCode);
+	if (commInfo == NULL)
+	{
+		log_error("Cannot find corresponding commodity info of {}", stdCode);
+		return;
+	}
+
+	//读取可平持仓
+	double curQty = stra_get_position(stdCode, true);
+	if (decimal::le(curQty, 0))
+		return;
 	
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式, 则直接触发
 	{
-		double curQty = stra_get_position(stdCode);
-		//如果持仓为空,则不需要再执行退出多头的逻辑了
-		if (decimal::le(curQty, 0))
-			return;
-
 		double maxQty = min(curQty, qty);
 		append_signal(stdCode, curQty - maxQty, userTag);
 	}
@@ -1042,8 +1085,8 @@ void CtaStraBaseCtx::stra_exit_long(const char* stdCode, double qty, const char*
 		CondList& condList = get_cond_entrusts(stdCode);
 
 		CondEntrust entrust;
-		strcpy(entrust._code, stdCode);
-		strcpy(entrust._usertag, userTag);
+		wt_strcpy(entrust._code, stdCode);
+		wt_strcpy(entrust._usertag, userTag);
 
 		entrust._qty = qty;
 		entrust._field = WCF_NEWPRICE;
@@ -1064,17 +1107,28 @@ void CtaStraBaseCtx::stra_exit_long(const char* stdCode, double qty, const char*
 	}
 }
 
-void CtaStraBaseCtx::stra_exit_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice, bool insert_mongo)
+void CtaStraBaseCtx::stra_exit_short(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice, double stopprice)
 {
-	_engine->sub_tick(id(), stdCode);
+	WTSCommodityInfo* commInfo = _engine->get_commodity_info(stdCode);
+	if (commInfo == NULL)
+	{
+		log_error("Cannot find corresponding commodity info of {}", stdCode);
+		return;
+	}
+
+	if (!commInfo->canShort())
+	{
+		log_error("Cannot short on {}", stdCode);
+		return;
+	}
+
+	double curQty = stra_get_position(stdCode);
+	//如果持仓是多,则不需要执行退出空头的逻辑了
+	if (decimal::ge(curQty, 0))
+		return;
 	
 	if (decimal::eq(limitprice, 0.0) && decimal::eq(stopprice, 0.0))	//如果不是动态下单模式, 则直接触发
 	{
-		double curQty = stra_get_position(stdCode);
-		//如果持仓是多,则不需要执行退出空头的逻辑了
-		if (decimal::ge(curQty, 0))
-			return ;
-
 		double maxQty = min(abs(curQty), qty);
 		append_signal(stdCode, curQty + maxQty, userTag);
 	}
@@ -1083,8 +1137,8 @@ void CtaStraBaseCtx::stra_exit_short(const char* stdCode, double qty, const char
 		CondList& condList = get_cond_entrusts(stdCode);
 
 		CondEntrust entrust;
-		strcpy(entrust._code, stdCode);
-		strcpy(entrust._usertag, userTag);
+		wt_strcpy(entrust._code, stdCode);
+		wt_strcpy(entrust._usertag, userTag);
 
 		entrust._qty = qty;
 		entrust._field = WCF_NEWPRICE;
@@ -1113,7 +1167,7 @@ double CtaStraBaseCtx::stra_get_price(const char* stdCode)
 	return 0.0;
 }
 
-void CtaStraBaseCtx::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */, bool insert_mongo/*=true*/)
+void CtaStraBaseCtx::stra_set_position(const char* stdCode, double qty, const char* userTag /* = "" */, double limitprice /* = 0.0 */, double stopprice /* = 0.0 */)
 {
 	_engine->sub_tick(id(), stdCode);
 
@@ -1134,8 +1188,8 @@ void CtaStraBaseCtx::stra_set_position(const char* stdCode, double qty, const ch
 		bool isBuy = decimal::gt(qty, curVol);
 
 		CondEntrust entrust;
-		strcpy(entrust._code, stdCode);
-		strcpy(entrust._usertag, userTag);
+		wt_strcpy(entrust._code, stdCode);
+		wt_strcpy(entrust._usertag, userTag);
 
 		entrust._qty = qty;
 		entrust._field = WCF_NEWPRICE;
@@ -1185,10 +1239,20 @@ void CtaStraBaseCtx::do_set_position(const char* stdCode, double qty, const char
 	double diff = qty - pInfo._volume;
 
 	WTSCommodityInfo* commInfo = _engine->get_commodity_info(stdCode);
+	if (commInfo == NULL)
+		return;
 
 	if (decimal::gt(pInfo._volume*diff, 0))
 	{//当前持仓和仓位变化方向一致, 增加一条明细, 增加数量即可
 		pInfo._volume = qty;
+
+		//如果T+1，则冻结仓位要增加
+		if (commInfo->isT1())
+		{
+			//ASSERT(diff>0);
+			pInfo._frozen += diff;
+			log_debug("{} frozen position updated to {}", stdCode, pInfo._frozen);
+		}
 
 		DetailInfo dInfo;
 		dInfo._long = decimal::gt(qty, 0);
@@ -1197,7 +1261,7 @@ void CtaStraBaseCtx::do_set_position(const char* stdCode, double qty, const char
 		dInfo._opentime = curTm;
 		dInfo._opentdate = curTDate;
 		dInfo._open_barno = _last_barno;
-		strcpy(dInfo._opentag, userTag);
+		wt_strcpy(dInfo._opentag, userTag);
 		pInfo._details.emplace_back(dInfo);
 		pInfo._last_entertime = curTm;
 
@@ -1268,6 +1332,13 @@ void CtaStraBaseCtx::do_set_position(const char* stdCode, double qty, const char
 		{
 			left = left * qty / abs(qty);
 
+			//如果T+1，则冻结仓位要增加
+			if (commInfo->isT1())
+			{
+				pInfo._frozen += left;
+				log_debug("{} frozen position up to {}", stdCode, pInfo._frozen);
+			}
+
 			DetailInfo dInfo;
 			dInfo._long = decimal::gt(qty, 0);
 			dInfo._price = curPx;
@@ -1275,7 +1346,7 @@ void CtaStraBaseCtx::do_set_position(const char* stdCode, double qty, const char
 			dInfo._opentime = curTm;
 			dInfo._opentdate = curTDate;
 			dInfo._open_barno = _last_barno;
-			strcpy(dInfo._opentag, userTag);
+			wt_strcpy(dInfo._opentag, userTag);
 			pInfo._details.emplace_back(dInfo);
 			pInfo._last_entertime = curTm;
 
@@ -1298,31 +1369,27 @@ void CtaStraBaseCtx::do_set_position(const char* stdCode, double qty, const char
 
 WTSKlineSlice* CtaStraBaseCtx::stra_get_bars(const char* stdCode, const char* period, uint32_t count, bool isMain /* = false */)
 {
-	std::string key = StrUtil::printf("%s#%s", stdCode, period);
+	thread_local static char key[64] = { 0 };
+	fmtutil::format_to(key, "{}#{}", stdCode, period);
+
 	if (isMain)
 	{
 		if (_main_key.empty())
 		{
 			_main_key = key;
-			stra_log_debug("Main KBars confirmed：%s", key.c_str());
+			log_debug("Main KBars confirmed：{}", key);
 		}
 		else if (_main_key != key)
 			throw std::runtime_error("Main KBars already confirmed");
 	}
 
-	std::string basePeriod = "";
+	thread_local static char basePeriod[2] = { 0 };
+	basePeriod[0] = period[0];
 	uint32_t times = 1;
 	if (strlen(period) > 1)
-	{
-		basePeriod.append(period, 1);
 		times = strtoul(period + 1, NULL, 10);
-	}
-	else
-	{
-		basePeriod = period;
-	}
 
-	WTSKlineSlice* kline = _engine->get_kline_slice(_context_id, stdCode, basePeriod.c_str(), count, times);
+	WTSKlineSlice* kline = _engine->get_kline_slice(_context_id, stdCode, basePeriod, count, times);
 	if(kline)
 	{
 		//如果K线获取不到,说明也不会有闭合事件发生,所以不更新本地标记
@@ -1330,21 +1397,21 @@ WTSKlineSlice* CtaStraBaseCtx::stra_get_bars(const char* stdCode, const char* pe
 		KlineTag& tag = _kline_tags[key];
 		tag._closed = false;
 
-		double lastClose = kline->close(-1);
+		double lastClose = kline->at(-1)->close;
 		_price_map[stdCode] = lastClose;
 
 		if(isMain && isFirst && !_condtions.empty())
 		{
 			//如果是第一次拉取主K线,则检查条件单触发时间
 			bool isDay = basePeriod[0] == 'd';
-			uint64_t lastBartime = isDay ? kline->date(-1) : kline->time(-1);
+			uint64_t lastBartime = isDay ? kline->at(-1)->date : kline->at(-1)->time;
 			if(!isDay)
 				lastBartime += 199000000000;
 
 			//如果最后一条已闭合的K线的时间大于条件单设置时间，说明条件单已经过期了，则需要清理
 			if(lastBartime > _last_cond_min)
 			{
-				stra_log_info(fmt::format("Conditions expired, setup time: {}, time of last bar of main kbars: {}, all cleared", _last_cond_min, lastBartime).c_str());
+				log_info("Conditions expired, setup time: {}, time of last bar of main kbars: {}, all cleared", _last_cond_min, lastBartime);
 				_condtions.clear();
 			}
 		}
@@ -1378,8 +1445,15 @@ WTSTickData* CtaStraBaseCtx::stra_get_last_tick(const char* stdCode)
 
 void CtaStraBaseCtx::stra_sub_ticks(const char* code)
 {
+	/*
+	 *	By Wesley @ 2022.03.01
+	 *	主动订阅tick会在本地记一下
+	 *	tick数据回调的时候先检查一下
+	 */
+	_tick_subs.insert(code);
+
 	_engine->sub_tick(_context_id, code);
-	stra_log_info("Market data subscribed: %s", code);
+	log_info("Market data subscribed: {}", code);
 }
 
 WTSCommodityInfo* CtaStraBaseCtx::stra_get_comminfo(const char* stdCode)
@@ -1419,40 +1493,20 @@ double CtaStraBaseCtx::stra_get_fund_data(int flag )
 	}
 }
 
-void CtaStraBaseCtx::stra_log_info(const char* fmt, ...)
+void CtaStraBaseCtx::stra_log_info(const char* message)
 {
-	char szBuf[256] = { 0 };
-	uint32_t length = sprintf(szBuf, "[%s]", _name.c_str());
-	strcat(szBuf, fmt);
-	va_list args;
-	va_start(args, fmt);
-	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_INFO, szBuf, args);
-	va_end(args);
+	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_INFO, message);
 }
 
-void CtaStraBaseCtx::stra_log_debug(const char* fmt, ...)
+void CtaStraBaseCtx::stra_log_debug(const char* message)
 {
-	char szBuf[256] = { 0 };
-	uint32_t length = sprintf(szBuf, "[%s]", _name.c_str());
-	strcat(szBuf, fmt);
-	va_list args;
-	va_start(args, fmt);
-	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_DEBUG, szBuf, args);
-	va_end(args);
+	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_DEBUG, message);
 }
 
-
-void CtaStraBaseCtx::stra_log_error(const char* fmt, ...)
+void CtaStraBaseCtx::stra_log_error(const char* message)
 {
-	char szBuf[256] = { 0 };
-	uint32_t length = sprintf(szBuf, "[%s]", _name.c_str());
-	strcat(szBuf, fmt);
-	va_list args;
-	va_start(args, fmt);
-	WTSLogger::vlog_dyn("strategy", _name.c_str(), LL_ERROR, szBuf, args);
-	va_end(args);
+	WTSLogger::log_dyn_raw("strategy", _name.c_str(), LL_ERROR, message);
 }
-
 
 const char* CtaStraBaseCtx::stra_load_user_data(const char* key, const char* defVal /*= ""*/)
 {
@@ -1518,7 +1572,7 @@ double CtaStraBaseCtx::stra_get_last_enterprice(const char* stdCode)
 	return pInfo._details[pInfo._details.size() - 1]._price;
 }
 
-double CtaStraBaseCtx::stra_get_position(const char* stdCode, const char* userTag /* = "" */)
+double CtaStraBaseCtx::stra_get_position(const char* stdCode, bool bOnlyValid /* = false */, const char* userTag /* = "" */)
 {
 	auto it = _pos_map.find(stdCode);
 	if (it == _pos_map.end())
@@ -1526,7 +1580,17 @@ double CtaStraBaseCtx::stra_get_position(const char* stdCode, const char* userTa
 
 	const PosInfo& pInfo = it->second;
 	if (strlen(userTag) == 0)
-		return pInfo._volume;
+	{
+		//只有userTag为空的时候时候，才会用bOnlyValid
+		if (bOnlyValid)
+		{
+			//这里理论上，只有多头才会进到这里
+			//其他地方要保证，空头持仓的话，_frozen要为0
+			return pInfo._volume - pInfo._frozen;
+		}
+		else
+			return pInfo._volume;
+	}
 
 	for (auto it = pInfo._details.begin(); it != pInfo._details.end(); it++)
 	{

@@ -12,22 +12,24 @@
 
 #include "../Includes/WTSSessionInfo.hpp"
 #include "../Includes/WTSVariant.hpp"
-
-#include "../Share/DLLHelper.hpp"
-#include "../Share/JsonToVariant.hpp"
-#include "../Share/StdUtils.hpp"
-
-#include "../WTSTools/WTSLogger.h"
 #include "../WTSUtils/SignalHook.hpp"
+
+#include "../WTSUtils/WTSCfgLoader.h"
+#include "../WTSTools/WTSLogger.h"
 
 
 WtDtRunner::WtDtRunner()
 	: _data_store(NULL)
-	, m_bInited(false)
+	, _is_inited(false)
 {
+#if _WIN32
+#pragma message("Signal hooks disabled in WIN32")
+#else
+#pragma message("Signal hooks enabled in UNIX")
 	install_signal_hooks([](const char* message) {
-		WTSLogger::error(message);
+		WTSLogger::error_f(message);
 	});
+#endif
 }
 
 
@@ -35,78 +37,88 @@ WtDtRunner::~WtDtRunner()
 {
 }
 
-void WtDtRunner::initialize(const char* cfgFile, bool isFile /* = true */, const char* modDir /* = "" */)
+void WtDtRunner::initialize(const char* cfgFile, bool isFile /* = true */, const char* modDir /* = "" */, const char* logCfg /* = "logcfg.yaml" */)
 {
-	if(m_bInited)
+	if(_is_inited)
 	{
-		WTSLogger::error("WtDtServo has already been initialized");
+		WTSLogger::error_f("WtDtServo has already been initialized");
 		return;
 	}
 
-	WTSLogger::init();
+	WTSLogger::init(logCfg);
 	WtHelper::set_module_dir(modDir);
 
-	std::string json;
-	if (isFile)
-		StdFile::read_file_content(cfgFile, json);
-	else
-		json = cfgFile;
-
-	if(json.empty())
+	WTSVariant* config = isFile ? WTSCfgLoader::load_from_file(cfgFile, true) : WTSCfgLoader::load_from_content(cfgFile, false, true);
+	if(config == NULL)
 	{
-		throw std::runtime_error("configuration file not exists");
+		WTSLogger::error_f("Loading config failed");
 		return;
 	}
-
-	rj::Document document;
-	document.Parse(json.c_str());
-
-	WTSVariant* config = WTSVariant::createObject();
-	jsonToVariant(document, config);
 
 	//基础数据文件
 	WTSVariant* cfgBF = config->get("basefiles");
+	bool isUTF8 = cfgBF->getBoolean("utf-8");
 	if (cfgBF->get("session"))
 	{
-		m_baseDataMgr.loadSessions(cfgBF->getCString("session"));
-		WTSLogger::info("Trading sessions loaded");
+		_bd_mgr.loadSessions(cfgBF->getCString("session"), isUTF8);
+		WTSLogger::info_f("Trading sessions loaded");
 	}
 
-	if (cfgBF->get("commodity"))
+	WTSVariant* cfgItem = cfgBF->get("commodity");
+	if (cfgItem)
 	{
-		m_baseDataMgr.loadCommodities(cfgBF->getCString("commodity"));
-		WTSLogger::info("Commodities loaded");
+		if (cfgItem->type() == WTSVariant::VT_String)
+		{
+			_bd_mgr.loadCommodities(cfgItem->asCString(), isUTF8);
+		}
+		else if (cfgItem->type() == WTSVariant::VT_Array)
+		{
+			for (uint32_t i = 0; i < cfgItem->size(); i++)
+			{
+				_bd_mgr.loadCommodities(cfgItem->get(i)->asCString(), isUTF8);
+			}
+		}
 	}
 
-	if (cfgBF->get("contract"))
+	cfgItem = cfgBF->get("contract");
+	if (cfgItem)
 	{
-		m_baseDataMgr.loadContracts(cfgBF->getCString("contract"));
-		WTSLogger::info("Contracts loades");
+		if (cfgItem->type() == WTSVariant::VT_String)
+		{
+			_bd_mgr.loadContracts(cfgItem->asCString(), isUTF8);
+		}
+		else if (cfgItem->type() == WTSVariant::VT_Array)
+		{
+			for (uint32_t i = 0; i < cfgItem->size(); i++)
+			{
+				_bd_mgr.loadContracts(cfgItem->get(i)->asCString(), isUTF8);
+			}
+		}
 	}
 
 	if (cfgBF->get("holiday"))
 	{
-		m_baseDataMgr.loadHolidays(cfgBF->getCString("holiday"));
-		WTSLogger::info("Holidays loaded");
+		_bd_mgr.loadHolidays(cfgBF->getCString("holiday"));
+		WTSLogger::info_f("Holidays loaded");
 	}
 
 	if (cfgBF->get("hot"))
 	{
-		m_hotMgr.loadHots(cfgBF->getCString("hot"));
-		WTSLogger::info("Hot rules loaded");
+		_hot_mgr.loadHots(cfgBF->getCString("hot"));
+		WTSLogger::info_f("Hot rules loaded");
 	}
 
 	if (cfgBF->get("second"))
 	{
-		m_hotMgr.loadSeconds(cfgBF->getCString("second"));
-		WTSLogger::info("Second rules loaded");
+		_hot_mgr.loadSeconds(cfgBF->getCString("second"));
+		WTSLogger::info_f("Second rules loaded");
 	}
 
 	initDataMgr(config->get("data"));
 
 	config->release();
 
-	m_bInited = true;
+	_is_inited = true;
 }
 
 void WtDtRunner::initDataMgr(WTSVariant* config)
@@ -116,32 +128,26 @@ void WtDtRunner::initDataMgr(WTSVariant* config)
 
 	_data_mgr.init(config, this);
 
-	WTSLogger::info("Data manager initialized");
+	WTSLogger::info_f("Data manager initialized");
 }
 
 WTSKlineSlice* WtDtRunner::get_bars_by_range(const char* stdCode, const char* period, uint64_t beginTime, uint64_t endTime /* = 0 */)
 {
-	if(!m_bInited)
+	if(!_is_inited)
 	{
-		WTSLogger::error("WtDtServo not initialized");
+		WTSLogger::error_f("WtDtServo not initialized");
 		return NULL;
 	}
 
-	std::string basePeriod = "";
+	thread_local static char basePeriod[2] = { 0 };
+	basePeriod[0] = period[0];
 	uint32_t times = 1;
 	if (strlen(period) > 1)
-	{
-		basePeriod.append(period, 1);
 		times = strtoul(period + 1, NULL, 10);
-	}
-	else
-	{
-		basePeriod = period;
-	}
 
 	WTSKlinePeriod kp;
 	uint32_t realTimes = times;
-	if (strcmp(basePeriod.c_str(), "m") == 0)
+	if (basePeriod[0] == 'm')
 	{
 		if (times % 5 == 0)
 		{
@@ -166,11 +172,53 @@ WTSKlineSlice* WtDtRunner::get_bars_by_range(const char* stdCode, const char* pe
 	return _data_mgr.get_kline_slice_by_range(stdCode, kp, realTimes, beginTime, endTime);
 }
 
-WTSArray* WtDtRunner::get_ticks_by_range(const char* stdCode, uint64_t beginTime, uint64_t endTime /* = 0 */)
+WTSKlineSlice* WtDtRunner::get_bars_by_date(const char* stdCode, const char* period, uint32_t uDate /* = 0 */)
 {
-	if (!m_bInited)
+	if (!_is_inited)
 	{
-		WTSLogger::error("WtDtServo not initialized");
+		WTSLogger::error_f("WtDtServo not initialized");
+		return NULL;
+	}
+
+	thread_local static char basePeriod[2] = { 0 };
+	basePeriod[0] = period[0];
+	uint32_t times = 1;
+	if (strlen(period) > 1)
+		times = strtoul(period + 1, NULL, 10);
+
+	WTSKlinePeriod kp;
+	uint32_t realTimes = times;
+	if (basePeriod[0] == 'm')
+	{
+		if (times % 5 == 0)
+		{
+			kp = KP_Minute5;
+			realTimes /= 5;
+		}
+		else
+		{
+			kp = KP_Minute1;
+		}
+	}
+	else
+	{
+		WTSLogger::log_raw(LL_ERROR, "get_bars_by_date only supports minute period");
+		return NULL;
+	}
+
+	if (uDate == 0)
+	{
+		uDate = TimeUtils::getCurDate();
+	}
+
+	return _data_mgr.get_kline_slice_by_date(stdCode, kp, realTimes, uDate);
+}
+
+WTSTickSlice* WtDtRunner::get_ticks_by_range(const char* stdCode, uint64_t beginTime, uint64_t endTime /* = 0 */)
+{
+	if (!_is_inited)
+	{
+		WTSLogger::error_f("WtDtServo not initialized");
 		return NULL;
 	}
 
@@ -183,29 +231,34 @@ WTSArray* WtDtRunner::get_ticks_by_range(const char* stdCode, uint64_t beginTime
 	return _data_mgr.get_tick_slices_by_range(stdCode, beginTime, endTime);
 }
 
-WTSKlineSlice* WtDtRunner::get_bars_by_count(const char* stdCode, const char* period, uint32_t count, uint64_t endTime /* = 0 */)
+WTSTickSlice* WtDtRunner::get_ticks_by_date(const char* stdCode, uint32_t uDate /* = 0 */)
 {
-	if (!m_bInited)
+	if (!_is_inited)
 	{
-		WTSLogger::error("WtDtServo not initialized");
+		WTSLogger::error_f("WtDtServo not initialized");
 		return NULL;
 	}
 
-	std::string basePeriod = "";
+	return _data_mgr.get_tick_slice_by_date(stdCode, uDate);
+}
+
+WTSKlineSlice* WtDtRunner::get_bars_by_count(const char* stdCode, const char* period, uint32_t count, uint64_t endTime /* = 0 */)
+{
+	if (!_is_inited)
+	{
+		WTSLogger::error_f("WtDtServo not initialized");
+		return NULL;
+	}
+
+	thread_local static char basePeriod[2] = { 0 };
+	basePeriod[0] = period[0];
 	uint32_t times = 1;
 	if (strlen(period) > 1)
-	{
-		basePeriod.append(period, 1);
 		times = strtoul(period + 1, NULL, 10);
-	}
-	else
-	{
-		basePeriod = period;
-	}
 
 	WTSKlinePeriod kp;
 	uint32_t realTimes = times;
-	if (strcmp(basePeriod.c_str(), "m") == 0)
+	if (basePeriod[0] == 'm')
 	{
 		if (times % 5 == 0)
 		{
@@ -230,11 +283,11 @@ WTSKlineSlice* WtDtRunner::get_bars_by_count(const char* stdCode, const char* pe
 	return _data_mgr.get_kline_slice_by_count(stdCode, kp, realTimes, count, endTime);
 }
 
-WTSArray* WtDtRunner::get_ticks_by_count(const char* stdCode, uint32_t count, uint64_t endTime /* = 0 */)
+WTSTickSlice* WtDtRunner::get_ticks_by_count(const char* stdCode, uint32_t count, uint64_t endTime /* = 0 */)
 {
-	if (!m_bInited)
+	if (!_is_inited)
 	{
-		WTSLogger::error("WtDtServo not initialized");
+		WTSLogger::error_f("WtDtServo not initialized");
 		return NULL;
 	}
 
@@ -244,5 +297,16 @@ WTSArray* WtDtRunner::get_ticks_by_count(const char* stdCode, uint32_t count, ui
 		TimeUtils::getDateTime(curDate, curTime);
 		endTime = (uint64_t)curDate * 10000 + curTime;
 	}
-	return _data_mgr.get_tick_slices_by_count(stdCode, count, endTime);
+	return _data_mgr.get_tick_slice_by_count(stdCode, count, endTime);
+}
+
+WTSKlineSlice* WtDtRunner::get_sbars_by_date(const char* stdCode, uint32_t secs, uint32_t uDate /* = 0 */)
+{
+	if (!_is_inited)
+	{
+		WTSLogger::error_f("WtDtServo not initialized");
+		return NULL;
+	}
+
+	return _data_mgr.get_skline_slice_by_date(stdCode, secs, uDate);
 }

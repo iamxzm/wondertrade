@@ -3,7 +3,7 @@
 
 extern WtDtRunner& getRunner();
 
-bool ExpParser::init(WTSParams* config)
+bool ExpParser::init(WTSVariant* config)
 {
 	getRunner().parser_init(_id.c_str());
 	return true;
@@ -28,13 +28,13 @@ bool ExpParser::disconnect()
 
 void ExpParser::subscribe(const CodeSet& setCodes)
 {
-	for(const std::string& code : setCodes)
+	for(const auto& code : setCodes)
 		getRunner().parser_subscribe(_id.c_str(), code.c_str());
 }
 
 void ExpParser::unsubscribe(const CodeSet& setCodes)
 {
-	for (const std::string& code : setCodes)
+	for (const auto& code : setCodes)
 		getRunner().parser_unsubscribe(_id.c_str(), code.c_str());
 }
 

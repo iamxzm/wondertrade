@@ -12,7 +12,6 @@
 
 #include "../Share/StrUtil.hpp"
 #include "../Includes/WTSDataDef.hpp"
-#include "../Includes/WTSCollection.hpp"
 #include "../Includes/WTSContractInfo.hpp"
 #include "../Includes/WTSVariant.hpp"
 
@@ -88,12 +87,18 @@ bool UDPCaster::init(WTSVariant* cfg, WTSBaseDataMgr* bdMgr, DataManager* dtMgr)
 		}
 	}
 
-	start(cfg->getInt32("bport"));
+	//By Wesley @ 2022.01.11
+	//这是订阅端口，但是以前全部用的bport，属于笔误
+	//只能写一个兼容了
+	int32_t sport = cfg->getInt32("sport");
+	if (sport == 0)
+		sport = cfg->getInt32("bport");
+	start(sport);
 
 	return true;
 }
 
-void UDPCaster::start(int bport)
+void UDPCaster::start(int sport)
 {
 	if (!m_listFlatRecver.empty() || !m_listJsonRecver.empty() || !m_listRawRecver.empty())
 	{
@@ -102,7 +107,14 @@ void UDPCaster::start(int bport)
 		m_sktBroadcast->set_option(option);
 	}
 
-	m_sktSubscribe.reset(new UDPSocket(m_ioservice, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), bport)));
+	try
+	{
+		m_sktSubscribe.reset(new UDPSocket(m_ioservice, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), sport)));
+	}
+	catch(...)
+	{
+		WTSLogger::error_f("Exception raised while start subscribing service @ port {}", sport);
+	}
 
 	do_receive();
 
@@ -182,7 +194,7 @@ void UDPCaster::do_receive()
 						delete data;
 						if (ec)
 						{
-							WTSLogger::error("Sending data on UDP failed: %s", ec.message().c_str());
+							WTSLogger::error_f("Sending data on UDP failed: {}", ec.message().c_str());
 						}
 					});
 				}
@@ -198,7 +210,7 @@ void UDPCaster::do_receive()
 				delete data;
 				if (ec)
 				{
-					WTSLogger::error("Sending data on UDP failed: %s", ec.message().c_str());
+					WTSLogger::error_f("Sending data on UDP failed: {}", ec.message().c_str());
 				}
 			});
 		}
@@ -351,17 +363,28 @@ void UDPCaster::broadcast(WTSObject* data, uint32_t dataType)
 						}
 
 						//广播
+						boost::system::error_code ec;
 						for (auto it = m_listRawRecver.begin(); it != m_listRawRecver.end(); it++)
 						{
 							const UDPReceiverPtr& receiver = (*it);
-							m_sktBroadcast->send_to(boost::asio::buffer(buf_raw), receiver->_ep);
+							m_sktBroadcast->send_to(boost::asio::buffer(buf_raw), receiver->_ep, 0, ec);
+							if (ec)
+							{
+								WTSLogger::error_f("Error occured while sending to ({}:{}): {}({})", 
+									receiver->_ep.address().to_string(), receiver->_ep.port(), ec.value(), ec.message());
+							}
 						}
 
 						//组播
 						for (auto it = m_listRawGroup.begin(); it != m_listRawGroup.end(); it++)
 						{
 							const MulticastPair& item = *it;
-							it->first->send_to(boost::asio::buffer(buf_raw), item.second->_ep);
+							it->first->send_to(boost::asio::buffer(buf_raw), item.second->_ep, 0, ec);
+							if (ec)
+							{
+								WTSLogger::error_f("Error occured while sending to ({}:{}): {}({})",
+									item.second->_ep.address().to_string(), item.second->_ep.port(), ec.value(), ec.message());
+							}
 						}
 					}
 
@@ -374,124 +397,13 @@ void UDPCaster::broadcast(WTSObject* data, uint32_t dataType)
 	{
 		m_condCast.notify_all();
 	}
-
-	//纯文本格式
-	/*
-	if(!m_listFlatRecver.empty() || !m_listFlatGroup.empty())
-	{
-		uint32_t curTime = curTick->actiontime()/1000;
-		char buf_flat[2048] = {0};
-		char *str = buf_flat;
-		//日期,时间,买价,卖价,代码,最新价,开,高,低,今结,昨结,总手,现手,总持,增仓,档位[买x价,买x量,卖x价,卖x量]
-		str += sprintf(str, "%04d.%02d.%02d,", 
-			curTick->actiondate()/10000, curTick->actiondate()%10000/100, curTick->actiondate()%100);
-		str += sprintf(str, "%02d:%02d:%02d,", 
-			curTime/10000, curTime%10000/100, curTime%100);
-		str += sprintf(str, "%.2f,", PRICE_INT_TO_DOUBLE(curTick->bidprice(0)));
-		str += sprintf(str, "%.2f,", PRICE_INT_TO_DOUBLE(curTick->askprice(0)));
-		str += sprintf(str, "%s,", curTick->code());
-
-		str += sprintf(str, "%.2f,", PRICE_INT_TO_DOUBLE(curTick->price()));
-		str += sprintf(str, "%.2f,", PRICE_INT_TO_DOUBLE(curTick->open()));
-		str += sprintf(str, "%.2f,", PRICE_INT_TO_DOUBLE(curTick->high()));
-		str += sprintf(str, "%.2f,", PRICE_INT_TO_DOUBLE(curTick->low()));
-		str += sprintf(str, "%.2f,", PRICE_INT_TO_DOUBLE(curTick->settlepx()));
-		str += sprintf(str, "%.2f,", PRICE_INT_TO_DOUBLE(curTick->preclose()));
-
-		str += sprintf(str, "%u,", curTick->totalvolume());
-		str += sprintf(str, "%u,", curTick->volume());
-		str += sprintf(str, "%u,", curTick->openinterest());
-		str += sprintf(str, "%d,", curTick->additional());
-
-		for(int i = 0; i < 5; i++)
-		{
-			str += sprintf(str, "%.2f,%u,", PRICE_INT_TO_DOUBLE(curTick->bidprice(i)), curTick->bidqty(i));
-			str += sprintf(str, "%.2f,%u,", PRICE_INT_TO_DOUBLE(curTick->askprice(i)), curTick->askqty(i));
-		}
-
-		for(auto it = m_listFlatRecver.begin(); it != m_listFlatRecver.end(); it++)
-		{
-			const UDPReceiverPtr& receiver = (*it);
-			m_sktBroadcast->send_to(boost::asio::buffer(buf_flat, strlen(buf_flat)), receiver->_ep);
-			sendTicks++;
-			sendBytes += strlen(buf_flat);
-		}
-
-		//组播
-		for(auto it = m_listFlatGroup.begin(); it != m_listFlatGroup.end(); it++)
-		{
-			const MulticastPair& item = *it;
-			it->first->send_to(boost::asio::buffer(buf_flat, strlen(buf_flat)), item.second->_ep);
-			sendTicks++;
-			sendBytes += strlen(buf_flat);
-		}
-	}
-	
-
-	//json格式
-	if(!m_listJsonRecver.empty() || !m_listJsonGroup.empty())
-	{
-		datasvr::TickData newTick;
-		newTick.set_market(curTick->market());
-		newTick.set_code(curTick->code());
-
-		newTick.set_price(curTick->price());
-		newTick.set_open(curTick->open());
-		newTick.set_high(curTick->high());
-		newTick.set_low(curTick->low());
-		newTick.set_preclose(curTick->preclose());
-		newTick.set_settlepx(curTick->settlepx());
-
-		newTick.set_totalvolume(curTick->totalvolume());
-		newTick.set_volume(curTick->volume());
-		newTick.set_totalmoney(curTick->totalturnover());
-		newTick.set_money(curTick->turnover());
-		newTick.set_openinterest(curTick->openinterest());
-		newTick.set_additional(curTick->additional());
-
-		newTick.set_tradingdate(curTick->tradingdate());
-		newTick.set_actiondate(curTick->actiondate());
-		newTick.set_actiontime(curTick->actiontime());
-
-		for(int i = 0; i < 10; i++)
-		{
-			if(curTick->bidprice(i) == 0 && curTick->askprice(i) == 0)
-				break;
-
-			newTick.add_bidprices(curTick->bidprice(i));
-			newTick.add_bidqty(curTick->bidqty(i));
-
-			newTick.add_askprices(curTick->askprice(i));
-			newTick.add_askqty(curTick->askqty(i));
-		}
-		const std::string& buf_json =  pb2json(newTick);
-
-		//广播
-		for(auto it = m_listJsonRecver.begin(); it != m_listJsonRecver.end(); it++)
-		{
-			const UDPReceiverPtr& receiver = (*it);
-			m_sktBroadcast->send_to(boost::asio::buffer(buf_json), receiver->_ep);
-			sendTicks++;
-			sendBytes += buf_json.size();
-		}
-
-		//组播
-		for(auto it = m_listJsonGroup.begin(); it != m_listJsonGroup.end(); it++)
-		{
-			const MulticastPair& item = *it;
-			it->first->send_to(boost::asio::buffer(buf_json), item.second->_ep);
-			sendTicks++;
-			sendBytes += buf_json.size();
-		}
-	}
-	*/
 }
 
 void UDPCaster::handle_send_broad(const EndPoint& ep, const boost::system::error_code& error, std::size_t bytes_transferred)
 {
 	if(error)
 	{
-		WTSLogger::error("Broadcasting of market data failed, remote addr: %s, error message: %s", ep.address().to_string().c_str(), error.message().c_str());
+		WTSLogger::error_f("Broadcasting of market data failed, remote addr: {}, error message: {}", ep.address().to_string().c_str(), error.message().c_str());
 	}
 }
 
@@ -499,7 +411,7 @@ void UDPCaster::handle_send_multi(const EndPoint& ep, const boost::system::error
 {
 	if(error)
 	{
-		WTSLogger::error("Multicasting of market data failed, remote addr: %s, error message: %s", ep.address().to_string().c_str(), error.message().c_str());
+		WTSLogger::error_f("Multicasting of market data failed, remote addr: {}, error message: {}", ep.address().to_string().c_str(), error.message().c_str());
 	}
 }
 

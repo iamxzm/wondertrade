@@ -14,7 +14,7 @@
 #include "../Includes/WTSMarcos.h"
 #include "../Share/StdUtils.hpp"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class MQManager;
 
 class MQServer
@@ -56,6 +56,7 @@ private:
 	typedef std::queue<PubData> PubDataQue;
 
 	PubDataQue		m_dataQue;
+	std::string		m_sendBuf;
 };
 
-NS_OTP_END
+NS_WTP_END

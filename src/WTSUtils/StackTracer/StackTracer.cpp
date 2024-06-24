@@ -2,6 +2,7 @@
 #include "StackTracer.h"
 
 #ifdef _WIN32
+#	ifdef _MSC_VER
 #include "StackWalker.h"
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "dbghelp.lib")
@@ -11,6 +12,11 @@ void print_stack_trace(TracerLogCallback cb)
 	StackWalker sw(cb);
 	sw.ShowCallstack();
 }
+#	else //_GCC
+void print_stack_trace(TracerLogCallback cb) {
+	cb("Cannot print stack trace due to being build on windows with GCC");
+}
+#	endif
 #else
 #include <cerrno>
 #include <execinfo.h>

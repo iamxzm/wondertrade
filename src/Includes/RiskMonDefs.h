@@ -23,7 +23,7 @@
  *	风控模块只处理高效的风控策略
  */
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSVariant;
 class WTSPortFundInfo;
 
@@ -54,7 +54,7 @@ public:
 	/*
 	 *	写日志
 	 */
-	virtual void	writeRiskLog(const char* fmt, ...) = 0;
+	virtual void	writeRiskLog(const char* message) = 0;
 
 	/*
 	 *	获取当前日期
@@ -156,4 +156,4 @@ typedef IRiskMonitorFact* (*FuncCreateRiskMonFact)();
 //删除执行工厂
 typedef void(*FuncDeleteRiskMonFact)(IRiskMonitorFact* &fact);
 
-NS_OTP_END
+NS_WTP_END

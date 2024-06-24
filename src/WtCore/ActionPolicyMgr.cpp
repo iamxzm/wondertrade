@@ -9,20 +9,13 @@
  */
 #include "ActionPolicyMgr.h"
 
-#include <assert.h>
-
-#include "../Share/JsonToVariant.hpp"
 #include "../Share/StdUtils.hpp"
-
 #include "../WTSTools/WTSLogger.h"
 
-#ifdef _WIN32
-#define my_stricmp _stricmp
-#else
-#define my_stricmp strcasecmp
-#endif
+#include "../Includes/WTSVariant.hpp"
+#include "../WTSUtils/WTSCfgLoader.h"
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 ActionPolicyMgr::ActionPolicyMgr()
 {
@@ -35,25 +28,9 @@ ActionPolicyMgr::~ActionPolicyMgr()
 
 bool ActionPolicyMgr::init(const char* filename)
 {
-	std::string json;
-	StdFile::read_file_content(filename, json);
-	if (json.empty())
-	{
-		WTSLogger::error("Action policy configuration file %s loading failed", filename);
+	WTSVariant* cfg = WTSCfgLoader::load_from_file(filename, true);
+	if (cfg == NULL)
 		return false;
-	}
-
-	rj::Document document;
-	document.Parse(json.c_str());
-
-	if (document.HasParseError())
-	{
-		WTSLogger::error("Action policy configuration file %s parsing failed", filename);
-		return false;
-	}
-
-	WTSVariant* cfg = WTSVariant::createObject();
-	jsonToVariant(document, cfg);
 
 	auto keys = cfg->memberNames();
 	for (auto it = keys.begin(); it != keys.end(); it++)
@@ -73,18 +50,17 @@ bool ActionPolicyMgr::init(const char* filename)
 				uint32_t uLimit = vObj->getUInt32("limit");
 				uint32_t uLimitS = vObj->getUInt32("limit_s");
 				uint32_t uLimitL = vObj->getUInt32("limit_l");
-				if (my_stricmp(action, "open") == 0)
+				if (wt_stricmp(action, "open") == 0)
 					aRule._atype = AT_Open;
-				else if (my_stricmp(action, "close") == 0)
+				else if (wt_stricmp(action, "close") == 0)
 					aRule._atype = AT_Close;
-				else if (my_stricmp(action, "closetoday") == 0)
+				else if (wt_stricmp(action, "closetoday") == 0)
 					aRule._atype = AT_CloseToday;
-				else if (my_stricmp(action, "closeyestoday") == 0)
+				else if (wt_stricmp(action, "closeyestoday") == 0)
 					aRule._atype = AT_CloseYestoday;
 				else 
 				{
-					//WTSLogger::error("开平策略加载失败: 未识别的开平类型%s", action);
-					WTSLogger::error("Loading action policy failed: unrecognized type %s", action);
+					WTSLogger::error_f("Loading action policy failed: unrecognized type {}", action);
 					continue;
 				}
 
@@ -126,8 +102,7 @@ const ActionRuleGroup& ActionPolicyMgr::getActionRules(const char* pid)
 		if (it == _rules.end())
 		{
 			it = _rules.find("default");
-			//WTSLogger::error("开平规则组%s不存在, 自动切换到默认规则组", gpName.c_str());
-			WTSLogger::error("Action policy group %s not exists, changed to default group", gpName.c_str());
+			WTSLogger::error_f("Action policy group {} not exists, changed to default group", gpName.c_str());
 		}
 
 		assert(it != _rules.end());

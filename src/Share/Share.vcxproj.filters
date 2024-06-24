@@ -57,9 +57,6 @@
     <ClInclude Include="IniHelper.hpp">
       <Filter>Utils</Filter>
     </ClInclude>
-    <ClInclude Include="JsonToVariant.hpp">
-      <Filter>Utils</Filter>
-    </ClInclude>
     <ClInclude Include="StdUtils.hpp">
       <Filter>Utils</Filter>
     </ClInclude>
@@ -123,9 +120,6 @@
     <ClInclude Include="..\Includes\IDataWriter.h">
       <Filter>Interfaces</Filter>
     </ClInclude>
-    <ClInclude Include="..\Includes\IExpFactory.h">
-      <Filter>Interfaces</Filter>
-    </ClInclude>
     <ClInclude Include="..\Includes\IHotMgr.h">
       <Filter>Interfaces</Filter>
     </ClInclude>
@@ -156,16 +150,10 @@
     <ClInclude Include="..\Includes\WTSError.hpp">
       <Filter>Objects</Filter>
     </ClInclude>
-    <ClInclude Include="..\Includes\WTSExpressData.hpp">
-      <Filter>Objects</Filter>
-    </ClInclude>
     <ClInclude Include="..\Includes\WTSHotItem.hpp">
       <Filter>Objects</Filter>
     </ClInclude>
     <ClInclude Include="..\Includes\WTSObject.hpp">
-      <Filter>Objects</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Includes\WTSParams.hpp">
       <Filter>Objects</Filter>
     </ClInclude>
     <ClInclude Include="..\Includes\WTSRiskDef.hpp">
@@ -218,6 +206,33 @@
     </ClInclude>
     <ClInclude Include="..\Includes\ExecuteDefs.h">
       <Filter>Interfaces</Filter>
+    </ClInclude>
+    <ClInclude Include="ModuleHelper.hpp">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="fmtlib.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Includes\IRdmDtReader.h">
+      <Filter>Interfaces</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Includes\IBtDtReader.h">
+      <Filter>Interfaces</Filter>
+    </ClInclude>
+    <ClInclude Include="CpuHelper.hpp">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="WtObjectPool.hpp">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjectPool.hpp">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="WtKVCache.hpp">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="SpinMutex.hpp">
+      <Filter>Utils</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

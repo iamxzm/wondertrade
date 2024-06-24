@@ -15,7 +15,7 @@
 #include "../Includes/IParserApi.h"
 
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSVariant;
 class IHotMgr;
 
@@ -55,7 +55,7 @@ public:
 	 *	@quote		实时行情
 	 *	@bNeedSlice	是否需要切片,如果是从外部接入的快照行情数据,则需要切片,如果是内部广播的就不需要切片
 	 */
-	virtual void handleQuote(WTSTickData *quote, bool bNeedSlice) override;
+	virtual void handleQuote(WTSTickData *quote, uint32_t procFlag) override;
 
 	/*
 	 *	处理委托队列数据（股票level2）
@@ -75,7 +75,7 @@ public:
 		*/
 	virtual void handleTransaction(WTSTransData* transData) override;
 
-	virtual void handleParserLog(WTSLogLevel ll, const char* format, ...) override;
+	virtual void handleParserLog(WTSLogLevel ll, const char* message) override;
 
 	virtual IBaseDataMgr* getBaseDataMgr() override { return _bd_mgr; }
 
@@ -86,7 +86,16 @@ private:
 
 	bool				_stopped;
 
-	typedef faster_hashset<std::string>	ExchgFilter;
+	/*
+	 *	检查时间设置项
+	 *	如果为true，则在收到行情的时候进行时间检查
+	 *	主要适用于直接从行情源接入
+	 *	因为直接从行情源接入很可能会有错误时间戳的数据进来
+	 *	该选项默认为false
+	 */
+	bool				_check_time;
+
+	typedef faster_hashset<LongKey>	ExchgFilter;
 	ExchgFilter			_exchg_filter;
 	ExchgFilter			_code_filter;
 	IBaseDataMgr*		_bd_mgr;
@@ -115,4 +124,4 @@ public:
 	ParserAdapterMap _adapters;
 };
 
-NS_OTP_END
+NS_WTP_END

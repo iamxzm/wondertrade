@@ -15,12 +15,12 @@
 #include "../Includes/ISelStraCtx.h"
 #include "../Includes/SelStrategyDefs.h"
 #include "../Includes/WTSDataDef.hpp"
-
+#include "../Share/fmtlib.h"
 #include "../Share/DLLHelper.hpp"
 
 class SelStrategy;
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 class HisDataReplayer;
 
@@ -29,6 +29,28 @@ class SelMocker : public ISelStraCtx, public IDataSink
 public:
 	SelMocker(HisDataReplayer* replayer, const char* name, int32_t slippage = 0);
 	virtual ~SelMocker();
+
+private:
+	template<typename... Args>
+	void log_debug(const char* format, const Args& ...args)
+	{
+		const char* buffer = fmtutil::format(format, args...);
+		stra_log_debug(buffer);
+	}
+
+	template<typename... Args>
+	void log_info(const char* format, const Args& ...args)
+	{
+		const char* buffer = fmtutil::format(format, args...);
+		stra_log_info(buffer);
+	}
+
+	template<typename... Args>
+	void log_error(const char* format, const Args& ...args)
+	{
+		const char* buffer = fmtutil::format(format, args...);
+		stra_log_error(buffer);
+	}
 
 private:
 	void	dump_outputs();
@@ -48,7 +70,7 @@ public:
 public:
 	//////////////////////////////////////////////////////////////////////////
 	//IDataSink
-	virtual void	handle_tick(const char* stdCode, WTSTickData* curTick) override;
+	virtual void	handle_tick(const char* stdCode, WTSTickData* curTick, bool isBarEnd = true) override;
 	virtual void	handle_bar_close(const char* stdCode, const char* period, uint32_t times, WTSBarStruct* newBar) override;
 	virtual void	handle_schedule(uint32_t uDate, uint32_t uTime) override;
 
@@ -77,7 +99,7 @@ public:
 
 	//////////////////////////////////////////////////////////////////////////
 	//策略接口
-	virtual double stra_get_position(const char* stdCode, const char* userTag = "") override;
+	virtual double stra_get_position(const char* stdCode, bool bOnlyValid = false, const char* userTag = "") override;
 	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "") override;
 	virtual double stra_get_price(const char* stdCode) override;
 
@@ -92,9 +114,9 @@ public:
 
 	virtual void stra_sub_ticks(const char* stdCode) override;
 
-	virtual void stra_log_info(const char* fmt, ...) override;
-	virtual void stra_log_debug(const char* fmt, ...) override;
-	virtual void stra_log_error(const char* fmt, ...) override;
+	virtual void stra_log_info(const char* message) override;
+	virtual void stra_log_debug(const char* message) override;
+	virtual void stra_log_error(const char* message) override;
 
 	virtual void stra_save_user_data(const char* key, const char* val) override;
 
@@ -147,6 +169,7 @@ protected:
 		double		_volume;
 		double		_closeprofit;
 		double		_dynprofit;
+		double		_frozen;
 
 		std::vector<DetailInfo> _details;
 
@@ -155,7 +178,10 @@ protected:
 			_volume = 0;
 			_closeprofit = 0;
 			_dynprofit = 0;
+			_frozen = 0;
 		}
+
+		inline double valid() const { return _volume - _frozen; }
 	} PosInfo;
 	typedef faster_hashmap<std::string, PosInfo> PositionMap;
 	PositionMap		_pos_map;
@@ -231,4 +257,7 @@ protected:
 	StraFactInfo	_factory;
 
 	SelStrategy*	_strategy;
+
+	//tick订阅列表
+	faster_hashset<std::string> _tick_subs;
 };

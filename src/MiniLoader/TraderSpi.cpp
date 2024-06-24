@@ -4,8 +4,9 @@
 #include <stdint.h>
 #include <fstream>
 
-#include "./ThostTraderApi/ThostFtdcTraderApi.h"
+#include "../API/CTPMini1.5.8/ThostFtdcTraderApi.h"
 #include "../Share/StrUtil.hpp"
+#include "../Share/fmtlib.h"
 #include "../Includes/WTSTypes.h"
 
 #include <rapidjson/document.h>
@@ -15,7 +16,7 @@ namespace rj = rapidjson;
 #include "TraderSpi.h"
 
 
-USING_NS_OTP;
+USING_NS_WTP;
 
 extern std::map<std::string, std::string>	MAP_NAME;
 extern std::map<std::string, std::string>	MAP_SESSION;
@@ -61,6 +62,7 @@ typedef struct _Commodity
 	ContractCategory	m_ccCategory;
 	CoverMode			m_coverMode;
 	PriceMode			m_priceMode;
+	TradingMode			m_tradeMode;
 
 } Commodity;
 typedef std::map<std::string, Commodity> CommodityMap;
@@ -102,7 +104,7 @@ std::string extractProductID(const char* instrument)
 std::string extractProductName(const char* cname)
 {
 	std::string strRet;
-	int idx = strlen(cname) - 1;
+	auto idx = strlen(cname) - 1;
 	while (isdigit(cname[idx]) && idx > 0)
 	{
 		idx--;
@@ -176,7 +178,7 @@ void CTraderSpi::OnRspUserLogin(CThostFtdcRspUserLoginField *pRspUserLogin,
 		SESSION_ID = pRspUserLogin->SessionID;
 		int iNextOrderRef = atoi(pRspUserLogin->MaxOrderRef);
 		iNextOrderRef++;
-		sprintf(ORDER_REF, "%d", iNextOrderRef);
+		fmtutil::format_to(ORDER_REF, "{}", iNextOrderRef);
 		///获取当前交易日
 		m_lTradingDate = atoi(pUserApi->GetTradingDay());
 
@@ -322,6 +324,7 @@ void CTraderSpi::OnRspQryInstrument(CThostFtdcInstrumentField *pInstrument, CTho
 							pm = PM_Limit;
 					}
 					commInfo.m_priceMode = pm;
+					commInfo.m_tradeMode = TM_Both;
 
 					if (pInstrument->PriceTick < 0.001)
 						commInfo.m_uPrecision = 4;
@@ -370,6 +373,7 @@ void CTraderSpi::DumpToJson()
 			jComm.AddMember("covermode", (uint32_t)commInfo.m_coverMode, allocator);
 			jComm.AddMember("pricemode", (uint32_t)commInfo.m_priceMode, allocator);
 			jComm.AddMember("category", (uint32_t)commInfo.m_ccCategory, allocator);
+			jComm.AddMember("trademode", (uint32_t)commInfo.m_tradeMode, allocator);
 			jComm.AddMember("precision", commInfo.m_uPrecision, allocator);
 			jComm.AddMember("pricetick", commInfo.m_fPriceTick, allocator);
 			jComm.AddMember("volscale", commInfo.m_uVolScale, allocator);

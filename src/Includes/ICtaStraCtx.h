@@ -13,7 +13,7 @@
 #include <functional>
 #include "../Includes/WTSMarcos.h"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 class WTSCommodityInfo;
 class WTSTickData;
 struct WTSBarStruct;
@@ -61,13 +61,19 @@ public:
 	virtual void enum_position(FuncEnumCtaPosCallBack cb) = 0;
 
 	//策略接口
-	virtual void stra_enter_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) = 0;
-	virtual void stra_enter_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) = 0;
-	virtual void stra_exit_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) = 0;
-	virtual void stra_exit_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) = 0;
+	virtual void stra_enter_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) = 0;
+	virtual void stra_enter_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) = 0;
+	virtual void stra_exit_long(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) = 0;
+	virtual void stra_exit_short(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) = 0;
 
-	virtual double stra_get_position(const char* stdCode, const char* userTag = "") = 0;
-	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0, bool insert_mongo = true) = 0;
+	/*
+	 *	获取当前持仓
+	 *	@stdCode	合约代码
+	 *	@userTag	下单标记，如果下单标记为空，则读取持仓汇总，如果下单标记不为空，则读取对应的持仓明细
+	 *	@bOnlyValid	是否只读可用持仓，默认为false，只有当userTag为空时生效，主要针对T+1的品种
+	 */
+	virtual double stra_get_position(const char* stdCode, bool bOnlyValid = false, const char* userTag = "") = 0;
+	virtual void stra_set_position(const char* stdCode, double qty, const char* userTag = "", double limitprice = 0.0, double stopprice = 0.0) = 0;
 	virtual double stra_get_price(const char* stdCode) = 0;
 
 	virtual uint32_t stra_get_tdate() = 0;
@@ -94,9 +100,9 @@ public:
 
 	virtual void stra_sub_ticks(const char* stdCode) = 0;
 
-	virtual void stra_log_info(const char* fmt, ...) = 0;
-	virtual void stra_log_debug(const char* fmt, ...) = 0;
-	virtual void stra_log_error(const char* fmt, ...) = 0;
+	virtual void stra_log_info(const char* message) = 0;
+	virtual void stra_log_debug(const char* message) = 0;
+	virtual void stra_log_error(const char* message) = 0;
 
 	virtual void stra_save_user_data(const char* key, const char* val){}
 
@@ -106,4 +112,4 @@ protected:
 	std::string _name;
 };
 
-NS_OTP_END
+NS_WTP_END

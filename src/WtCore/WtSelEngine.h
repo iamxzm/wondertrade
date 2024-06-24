@@ -7,7 +7,7 @@
 
 #include <memory>
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 
 typedef enum tagTaskPeriodType
 {
@@ -49,7 +49,7 @@ public:
 public:
 	//////////////////////////////////////////////////////////////////////////
 	//WtEngine½Ó¿Ú
-	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDataManager* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier) override;
+	virtual void init(WTSVariant* cfg, IBaseDataMgr* bdMgr, WtDtMgr* dataMgr, IHotMgr* hotMgr, EventNotifier* notifier) override;
 
 	virtual void run(bool bAsync = false) override;
 
@@ -103,4 +103,4 @@ private:
 	WTSVariant*		_cfg;
 };
 
-NS_OTP_END
+NS_WTP_END

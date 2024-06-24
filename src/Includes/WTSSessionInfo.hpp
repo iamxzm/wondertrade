@@ -13,7 +13,7 @@
 #include "WTSObject.hpp"
 #include "../Share/TimeUtils.hpp"
 
-NS_OTP_BEGIN
+NS_WTP_BEGIN
 
 static const char* DEFAULT_SESSIONID = "TRADING";
 
@@ -56,15 +56,15 @@ public:
 
 	void addTradingSection(uint32_t sTime, uint32_t eTime)
 	{
-		sTime = offsetTime(sTime);
-		eTime = offsetTime(eTime);
+		sTime = offsetTime(sTime, true);
+		eTime = offsetTime(eTime, false);
 		m_tradingTimes.emplace_back(TradingSection(sTime, eTime));
 	}
 
 	void setAuctionTime(uint32_t sTime, uint32_t eTime)
 	{
-		m_auctionTime.first = offsetTime(sTime);
-		m_auctionTime.second = offsetTime(eTime);
+		m_auctionTime.first = offsetTime(sTime, true);
+		m_auctionTime.second = offsetTime(eTime, false);
 	}
 
 	void setOffsetMins(int32_t offset){m_uOffsetMins = offset;}
@@ -116,7 +116,7 @@ public:
 		if(isInAuctionTime(uTime))
 			return 0;
 
-		uint32_t offTime = offsetTime(uTime);
+		uint32_t offTime = offsetTime(uTime, true);
 
 		uint32_t offset = 0;
 		bool bFound = false;
@@ -222,7 +222,7 @@ public:
 		uint32_t sec = uTime%100;
 		uint32_t h = uTime/10000;
 		uint32_t m = uTime%10000/100;
-		uint32_t offMin = offsetTime(h*100 + m);
+		uint32_t offMin = offsetTime(h*100 + m, true);
 		h = offMin/100;
 		m = offMin%100;
 		uint32_t seconds = h*60*60 + m*60 + sec;
@@ -324,10 +324,18 @@ public:
 		if(m_tradingTimes.empty())
 			return 0;
 
+		uint32_t ret = 0;
 		if(bOffseted)
-			return m_tradingTimes[m_tradingTimes.size()-1].second;
+			ret = m_tradingTimes[m_tradingTimes.size()-1].second;
 		else
-			return originalTime(m_tradingTimes[m_tradingTimes.size()-1].second);
+			ret = originalTime(m_tradingTimes[m_tradingTimes.size()-1].second);
+
+		// By Wesley @ 2021.12.25
+		// 如果收盘时间是0点，无法跟开盘时间进行比较，所以这里要做一个修正
+		if (ret == 0 && bOffseted)
+			ret = 2400;
+
+		return ret;
 	}
 
 	inline uint32_t getTradingSeconds()
@@ -344,6 +352,10 @@ public:
 			uint32_t minute = (e%100 - s%100);
 			count += hour*60+minute;
 		}
+
+		//By Welsey @ 2021.12.25
+		//这种只能是全天候交易时段
+		if (count == 0) count = 1440;
 		return count*60;
 	}
 
@@ -361,6 +373,9 @@ public:
 			uint32_t minute = (e % 100 - s % 100);
 			count += hour * 60 + minute;
 		}
+		//By Welsey @ 2021.12.25
+		//这种只能是全天候交易时段
+		if (count == 0) count = 1440;
 		return count;
 	}
 
@@ -384,7 +399,7 @@ public:
 
 	inline bool	isLastOfSection(uint32_t uTime)
 	{
-		uint32_t offTime = offsetTime(uTime);
+		uint32_t offTime = offsetTime(uTime, false);
 		TradingTimes::iterator it = m_tradingTimes.begin();
 		for(; it != m_tradingTimes.end(); it++)
 		{
@@ -398,7 +413,7 @@ public:
 
 	inline bool	isFirstOfSection(uint32_t uTime)
 	{
-		uint32_t offTime = offsetTime(uTime);
+		uint32_t offTime = offsetTime(uTime, true);
 		TradingTimes::iterator it = m_tradingTimes.begin();
 		for(; it != m_tradingTimes.end(); it++)
 		{
@@ -412,7 +427,7 @@ public:
 
 	inline bool	isInAuctionTime(uint32_t uTime)
 	{
-		uint32_t offTime = offsetTime(uTime);
+		uint32_t offTime = offsetTime(uTime, true);
 
 		if(m_auctionTime.first == 0 && m_auctionTime.second == 0)
 			return false;
@@ -425,15 +440,25 @@ public:
 
 	const TradingTimes &getTradingTimes() const{return m_tradingTimes;}
 
-	inline uint32_t	offsetTime(uint32_t uTime) const
+	inline uint32_t	offsetTime(uint32_t uTime, bool bAlignLeft) const
 	{
 		int32_t curMinute = (uTime/100)*60 + uTime%100;
 		curMinute += m_uOffsetMins;
-		if(curMinute >= 1440)
-			curMinute -= 1440;
-		else if(curMinute < 0)
-			curMinute += 1440;
-
+		if(bAlignLeft)
+		{
+			if (curMinute >= 1440)
+				curMinute -= 1440;
+			else if (curMinute < 0)
+				curMinute += 1440;
+		}
+		else
+		{
+			if (curMinute > 1440)
+				curMinute -= 1440;
+			else if (curMinute <= 0)
+				curMinute += 1440;
+		}
+		
 		return (curMinute/60)*100 + curMinute%60;
 
 		return uTime;
@@ -452,4 +477,4 @@ public:
 	}
 };
 
-NS_OTP_END
+NS_WTP_END
