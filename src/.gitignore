@@ -10,5 +10,3 @@
 *.opensdf
 *.sdf
 .vs
-CMakeSettings.json
-/out

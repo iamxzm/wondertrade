@@ -49,6 +49,5 @@ public:
 
 	virtual uint32_t			calcTradingDate(const char* stdPID, uint32_t uDate, uint32_t uTime, bool isSession = false) = 0;
 	virtual uint64_t			getBoundaryTime(const char* stdPID, uint32_t tDate, bool isSession = false, bool isStart = true) = 0;
-	//virtual double				calc_fee(const char* stdCode, double price, double qty, uint32_t offset) = 0;
 };
 NS_OTP_END

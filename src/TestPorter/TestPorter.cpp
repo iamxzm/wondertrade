@@ -9,7 +9,7 @@
 void PORTER_FLAG on_init(CtxHandler ctxid)
 {
 	printf("on_init\r\n");
-	cta_sub_ticks(ctxid, "CFFEX.IF.HOT");
+	hft_sub_ticks(ctxid, "CFFEX.IF.HOT");
 }
 
 void PORTER_FLAG on_tick(CtxHandler ctxid, const char* stdCode, WTSTickStruct* newTick)
@@ -90,7 +90,7 @@ void test_porter()
 #endif
 	init_porter("logcfg.json", true, "./generated");
 
-	reg_cta_factories("./cta");////
+	reg_hft_factories("./hft");
 
 	config_porter("config.json", true);
 

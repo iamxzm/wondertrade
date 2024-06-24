@@ -28,7 +28,6 @@
 #include "../WTSTools/WTSCmpHelper.hpp"
 
 #include "../WTSUtils/SignalHook.hpp"
-#include <iostream>
 
 #ifdef _WIN32
 #define my_stricmp _stricmp
@@ -144,8 +143,6 @@ uint32_t WtBtRunner::initCtaMocker(const char* name, int32_t slippage /* = 0 */,
 
 	_cta_mocker = new ExpCtaMocker(&_replayer, name, slippage, persistData, &_notifier);
 	if(hook) _cta_mocker->install_hook();
-
-	_cta_mocker->set_initacc(_init_money);
 	_replayer.register_sink(_cta_mocker, name);
 	return _cta_mocker->id();
 }
@@ -160,7 +157,6 @@ uint32_t WtBtRunner::initHftMocker(const char* name, bool hook/* = false*/)
 
 	_hft_mocker = new ExpHftMocker(&_replayer, name);
 	if (hook) _hft_mocker->install_hook();
-	_hft_mocker->set_initacc(_init_money);
 	_replayer.register_sink(_hft_mocker, name);
 	return _hft_mocker->id();
 }
@@ -301,39 +297,6 @@ void WtBtRunner::init(const char* logProfile /* = "" */, bool isFile /* = true *
 	WtHelper::setInstDir(getBinDir().c_str());
 }
 
-unsigned long long timetrans(std::string time,bool isStart)
-{
-	uint64_t ulltime = 0;
-	if (!time.empty())
-	{
-		std::string year, month, day;
-		year = time.substr(0, 4);
-		month = time.substr(5, 2);
-		day = time.substr(8, 2);
-
-		std::string s_time = "";
-		s_time += year;
-		s_time += month;
-		s_time += day;
-		stringstream strValue;
-		if (isStart)
-		{
-			s_time += "2100";
-			strValue << s_time;
-			strValue >> ulltime;
-			return ulltime;
-		}
-		else
-		{
-			s_time += "1515";
-			strValue << s_time;
-			strValue >> ulltime;
-			return ulltime;
-		}
-	}
-	return 0;
-}
-
 void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 {
 	if(_inited)
@@ -368,17 +331,14 @@ void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 	_replayer.init(cfg->get("replayer"), &_notifier);
 
 	WTSVariant* cfgEnv = cfg->get("env");
-	_init_money = cfgEnv->getDouble("init_money");
 	const char* mode = cfgEnv->getCString("mocker");
 	WTSVariant* cfgMode = cfg->get(mode);
-
 	if (strcmp(mode, "cta") == 0 && cfgMode)
 	{
 		const char* name = cfgMode->getCString("name");
 		int32_t slippage = cfgMode->getInt32("slippage");
 		_cta_mocker = new ExpCtaMocker(&_replayer, name, slippage, &_notifier);
 		_cta_mocker->init_cta_factory(cfgMode);
-		_cta_mocker->set_initacc(_init_money);
 		_replayer.register_sink(_cta_mocker, name);
 	}
 	else if (strcmp(mode, "hft") == 0 && cfgMode)
@@ -386,7 +346,6 @@ void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 		const char* name = cfgMode->getCString("name");
 		_hft_mocker = new ExpHftMocker(&_replayer, name);
 		_hft_mocker->init_hft_factory(cfgMode);
-		_hft_mocker->set_initacc(_init_money);
 		_replayer.register_sink(_hft_mocker, name);
 	}
 	else if (strcmp(mode, "sel") == 0 && cfgMode)
@@ -409,117 +368,6 @@ void WtBtRunner::config(const char* cfgFile, bool isFile /* = true */)
 		_exec_mocker->init(cfgMode);
 		_replayer.register_sink(_exec_mocker, name);
 	}
-}
-
-void WtBtRunner::config_setting(const char* cfgFile, bool isFile /* = true */)
-{
-	if (_inited)
-	{
-		WTSLogger::error("WtBtEngine has already been inited");
-		return;
-	}
-	std::string content;
-	if (isFile)
-		StdFile::read_file_content(cfgFile, content);
-	else
-		content = cfgFile;
-
-	rj::Document root;
-	if (root.Parse(content.c_str()).HasParseError())
-	{
-		WTSLogger::info("Parsing configuration file failed");
-		return;
-	}
-
-	WTSVariant* cfg = WTSVariant::createObject();
-	jsonToVariant(root, cfg);
-
-	const char* markerDataType = cfg->getCString("marketDataType");
-	const char* traderWsUrl = cfg->getCString("traderWsUrl");
-	const char* strategyRecordId = cfg->getCString("strategyRecordId");
-	const char* type = cfg->getCString("type");
-	const char* quotationSubUrl = cfg->getCString("quotationSubUrl");
-	const char* initMoney = cfg->getCString("initMoney");
-	const char* backtestStartDate = cfg->getCString("backtestStartDate");
-	const char* backtestEndDate = cfg->getCString("backtestEndDate");
-	const char* logstashHost = cfg->getCString("logstashHost");
-	int logstashPort = cfg->getInt32("logstashPort");
-	/*const char* RealStartDate = cfg->getCString("RealStartDate");
-	const char* RealEndDate = cfg->getCString("RealEndDate");*/
-	WTSLogger::info("after read setting.json");
-
-	std::string content_1;
-	StdFile::read_file_content("config.json", content_1);
-
-	rj::Document root_1;
-	if (root_1.Parse(content_1.c_str()).HasParseError())
-	{
-		WTSLogger::info("Parsing configuration file failed");
-		return;
-	}
-
-	//assert(root_1.IsObject());
-	WTSVariant* cfg_1 = WTSVariant::createObject();
-	jsonToVariant(root_1, cfg_1);
-
-	unsigned long long stime = timetrans(backtestStartDate, true);
-	unsigned long long etime = timetrans(backtestEndDate, false);
-	WTSVariant* cfgEnv = cfg_1->get("env");
-	const char* mode = cfgEnv->getCString("mocker");
-	WTSVariant* cfgMode = cfg_1->get(mode);
-	rj::Value& var = root_1;
-	root_1["replayer"]["stime"].SetUint64(stime);
-	root_1["replayer"]["etime"].SetUint64(etime);
-	double dinitMoney = atof(initMoney);
-	root_1["env"]["init_money"] = dinitMoney;
-	if (strcmp(mode, "hft") == 0 && cfgMode)
-	{
-		std::string stra_id = strategyRecordId;
-		root_1["hft"]["name"].SetString(stra_id.c_str(), root_1.GetAllocator());
-	}
-
-	rj::StringBuffer strBuf;
-	rj::Writer<rj::StringBuffer> write(strBuf);
-	root_1.Accept(write);
-
-	std::string data = strBuf.GetString();
-	std::cout << data << std::endl;
-	//rj::Value& var = root_1;
-	//if (root_1.HasMember("env"))
-	//{
-	//	var = root_1["env"];
-	//	if (var.HasMember("init_money"))
-	//	{
-	//		var["init_money"] = initMoney;
-	//		// std::cout << var.getstring() << std::endl;
-	//	}
-	//}
-	/*std::string data = strBuf.GetString();
-	std::cout << data << std::endl;
-	std::ofstream out("config.json", std::ios_base::out);
-	out << data << std::endl;*/
-	/*write.StartObject();
-
-	write.Key("env");
-	write.StartObject();
-	write.Key("init_money");
-	write.Double(initMoney);
-	write.EndObject();
-	write.EndObject();*/
-
-	/*std::cout << strBuf.GetString() << std::endl;
-	std::string data = strBuf.GetString();
-
-	root_1.Accept(write);
-	std::cout << strBuf.GetString() << std::endl;*/
-	std::ofstream out("config.json", std::ios_base::out);
-	out << data << std::endl;
-	/*root_1.Accept(write);
-	std::string data = strBuf.GetString();
-	std::cout << data << std::endl;*/
-	
-	int a;
-
 }
 
 void WtBtRunner::run(bool bNeedDump /* = false */, bool bAsync /* = false */)

@@ -58,13 +58,13 @@ extern "C"
 #pragma region "CTA½Ó¿Ú"
 	EXPORT_FLAG	CtxHandler	create_cta_context(const char* name);
 
-	EXPORT_FLAG	void		cta_enter_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo);
+	EXPORT_FLAG	void		cta_enter_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice);
 
-	EXPORT_FLAG	void		cta_exit_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo);
+	EXPORT_FLAG	void		cta_exit_long(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice);
 
-	EXPORT_FLAG	void		cta_enter_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo);
+	EXPORT_FLAG	void		cta_enter_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice);
 
-	EXPORT_FLAG	void		cta_exit_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice, bool insert_mongo);
+	EXPORT_FLAG	void		cta_exit_short(CtxHandler cHandle, const char* stdCode, double qty, const char* userTag, double limitprice, double stopprice);
 
 	EXPORT_FLAG	double		cta_get_position_profit(CtxHandler cHandle, const char* stdCode);
 
@@ -78,7 +78,7 @@ extern "C"
 
 	EXPORT_FLAG	double		cta_get_position(CtxHandler cHandle, const char* stdCode, const char* openTag);
 
-	EXPORT_FLAG	void		cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, const char* uesrTag, double limitprice, double stopprice, bool insert_mongo);
+	EXPORT_FLAG	void		cta_set_position(CtxHandler cHandle, const char* stdCode, double qty, const char* uesrTag, double limitprice, double stopprice);
 
 	EXPORT_FLAG	double 		cta_get_price(const char* stdCode);
 
